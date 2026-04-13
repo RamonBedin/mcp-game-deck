@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  v1.0 &nbsp;&bull;&nbsp; Unity 6+ &nbsp;&bull;&nbsp; MCP Protocol &nbsp;&bull;&nbsp; Requires Claude Code &amp; Node.js
+  v1.0.1 &nbsp;&bull;&nbsp; Unity 6+ &nbsp;&bull;&nbsp; MCP Protocol &nbsp;&bull;&nbsp; Requires Claude Code &amp; Node.js
 </p>
 
 ---

@@ -33,6 +33,27 @@ import {
   AUTH_TOKEN_FILE,
 } from "./constants.js";
 
+// ─── Host Validation ───
+
+const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+/**
+ * Validates that the MCP host is a loopback address.
+ * Falls back to localhost if a non-local host is configured.
+ * @param host The host string to validate.
+ * @returns A safe loopback host string.
+ */
+function validateHost(host: string): string
+{
+  if (ALLOWED_HOSTS.has(host))
+  {
+    return host;
+  }
+
+  process.stderr.write(`[warn] UNITY_MCP_HOST '${host}' is not a loopback address. Falling back to localhost for security.\n`);
+  return DEFAULT_HOST;
+}
+
 // ─── Configuration ───
 
 const UNITY_PORT = parseInt(process.env.UNITY_MCP_PORT ?? String(DEFAULT_MCP_PORT), 10);
@@ -56,27 +77,6 @@ const SERVER = new Server(
 
 let requestCounter = 0;
 let isShuttingDown = false;
-
-// ─── Host Validation ───
-
-const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-
-/**
- * Validates that the MCP host is a loopback address.
- * Falls back to localhost if a non-local host is configured.
- * @param host The host string to validate.
- * @returns A safe loopback host string.
- */
-function validateHost(host: string): string
-{
-  if (ALLOWED_HOSTS.has(host))
-  {
-    return host;
-  }
-
-  process.stderr.write(`[warn] UNITY_MCP_HOST '${host}' is not a loopback address. Falling back to localhost for security.\n`);
-  return DEFAULT_HOST;
-}
 
 // ─── Auth Token ───
 
