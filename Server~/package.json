@@ -1,0 +1,27 @@
+{
+  "name": "mcp-game-deck-server",
+  "version": "0.1.0",
+  "description": "Agent SDK server for MCP Game Deck — bridges Claude Agent SDK with Unity MCP Server via WebSocket.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-game-deck": "./dist/mcp-proxy.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:mcp": "node dist/mcp-proxy.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.77",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^16.4.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.6.0"
+  }
+}

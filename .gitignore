@@ -1,0 +1,87 @@
+# ============================================
+# MCP Game Deck — .gitignore
+# Stacks: C#/Unity, TypeScript/Node.js
+# ============================================
+
+# ----- Claude Code (local settings only — agents/skills/hooks/rules ARE committed) -----
+.claude/settings.local.json
+
+# ----- Unity -----
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+/[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+Asset[Ss]tore[Tt]ools/
+
+# Unity auto-generated
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Keep .meta files in version control
+# *.meta
+
+# Crash reports
+sysinfo.txt
+crashlytics-build.properties
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Profiler
+*.data
+*.raw
+
+# ----- Node.js / TypeScript (Agent SDK Server in Server~/) -----
+Server~/node_modules/
+Server~/dist/
+node_modules/
+*.js.map
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ----- IDE / Editor -----
+.vs/
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ----- OS -----
+*.lnk
+ehthumbs.db
+ehthumbs_vista.db
+
+# ----- Misc -----
+*.log
+*.bak
+*.orig
