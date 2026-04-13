@@ -530,7 +530,7 @@
 
 .input-row {
     flex-direction: row;
-    align-items: flex-end;
+    align-items: center;
     background-color: var(--chat-bg);
     border-radius: var(--chat-radius);
     border-width: 1px;
@@ -542,6 +542,8 @@
 
 .prompt-input {
     flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
     min-height: 24px;
     max-height: 160px;
     font-size: var(--chat-font-size);
@@ -549,6 +551,7 @@
     border-width: 0;
     padding: 8px 12px;
     color: var(--chat-text);
+    overflow: hidden;
 }
 
 .prompt-input > .unity-text-field__input {
@@ -556,6 +559,8 @@
     border-width: 0;
     padding: 0;
     color: var(--chat-text);
+    white-space: normal;
+    overflow: hidden;
 }
 
 .prompt-input > .unity-text-field__input:focus {
@@ -851,7 +856,7 @@
     border-width: 1px;
     border-color: var(--chat-border);
     border-radius: var(--chat-radius-sm);
-    margin-right: 6px;
+    margin: 2px;
     flex-shrink: 0;
     -unity-text-align: middle-center;
 }
