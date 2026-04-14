@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Globalization;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
@@ -301,7 +302,7 @@ namespace GameDeck.Editor.ChatUI
 
             if (_sessionCost > 0 && _costLabel != null)
             {
-                _costLabel.text = $"Session Cost: ${_sessionCost:F3}";
+                _costLabel.text = string.Format(CultureInfo.InvariantCulture, "Session Cost: ${0:F3}", _sessionCost);
             }
         }
 

@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  v1.0.2 &nbsp;&bull;&nbsp; Unity 6+ &nbsp;&bull;&nbsp; MCP Protocol &nbsp;&bull;&nbsp; Requires Claude Code &amp; Node.js
+  v1.0.3 &nbsp;&bull;&nbsp; Unity 6+ &nbsp;&bull;&nbsp; MCP Protocol &nbsp;&bull;&nbsp; Requires Claude Code &amp; Node.js
 </p>
 
 ---
@@ -322,7 +322,7 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  <strong>MCP Game Deck v1.0.2</strong>
+  <strong>MCP Game Deck v1.0.3</strong>
   <br>
   Built for Unity 6 &nbsp;&bull;&nbsp; Powered by MCP &nbsp;&bull;&nbsp; Designed by Ramon Bedin
 </p>
