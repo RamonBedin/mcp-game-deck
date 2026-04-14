@@ -84,6 +84,20 @@ namespace GameDeck.Editor.Settings
         {
             var s = GameDeckSettings.Instance;
 
+            if (Utils.UpdateChecker.IsUpdateAvailable)
+            {
+                EditorGUILayout.HelpBox(
+                    $"Update available: v{Utils.UpdateChecker.LatestVersion} (current: v{Utils.UpdateChecker.CurrentVersion})",
+                    MessageType.Warning);
+
+                if (GUILayout.Button("View Release on GitHub"))
+                {
+                    Application.OpenURL(Utils.UpdateChecker.ReleaseUrl);
+                }
+
+                EditorGUILayout.Space(SPACE_SECTION_HEADER);
+            }
+
             var prevLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 180f;
 

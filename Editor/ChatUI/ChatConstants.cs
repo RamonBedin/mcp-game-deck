@@ -48,7 +48,7 @@ namespace GameDeck.Editor.ChatUI
         public const string PERM_AUTO_LABEL = "Auto";
         public const string PERM_PLAN_LABEL = "Plan";
         public const string PERM_ASK_ID = "default";
-        public const string PERM_AUTO_ID = "acceptEdits";
+        public const string PERM_AUTO_ID = "bypassPermissions";
         public const string PERM_PLAN_ID = "plan";
         public const string PERM_DEFAULT_LABEL = PERM_ASK_LABEL;
 
