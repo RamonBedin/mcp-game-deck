@@ -24,7 +24,7 @@ import { initSessions, upsertSession, listSessions, deleteSession, getSession, a
 import type { ClientMessage, ServerMessage, Attachment } from "./messages.js";
 import type { PermissionResult, CanUseTool } from "@anthropic-ai/claude-agent-sdk";
 import { HEALTH_CHECK_TIMEOUT_MS, MCP_SERVER_ID, MCP_TRANSPORT_TYPE, MCP_COMMAND, DEFAULT_PERMISSION_MODE, PERMISSION_TIMEOUT_MS } from "./constants.js";
-import { SYSTEM_PROMPT } from "./system-prompt.js";
+import { getSystemPrompt } from "./system-prompt.js";
 
 const DIR_NAME = path.dirname(fileURLToPath(import.meta.url));
 const MCP_PROXY_PATH = path.join(DIR_NAME, "mcp-proxy.js");
@@ -35,6 +35,7 @@ const PENDING_PERMISSIONS = new Map<string, PendingPermission>();
 const AGENTS = await loadAgents(CONFIG.cwd);
 const SKILLS = await loadSkills(CONFIG.cwd);
 const COMMANDS = skillsToCommands(SKILLS);
+const CORE_SYSTEM_PROMPT = await getSystemPrompt();
 const WSS = new WebSocketServer({ port: CONFIG.port });
 
 /** Pending permission requests waiting for user response. */
@@ -266,8 +267,6 @@ async function handlePrompt(ws: WebSocket, prompt: string, sessionId?: string, a
     ...(!isBypass && { canUseTool: createCanUseTool(ws) }),
     model: modelOverride ?? CONFIG.model,
     cwd: CONFIG.cwd,
-
-    systemPrompt: SYSTEM_PROMPT,
   };
 
   if (sessionId)
@@ -275,16 +274,23 @@ async function handlePrompt(ws: WebSocket, prompt: string, sessionId?: string, a
     options.resume = sessionId;
   }
 
+  let appendPrompt: string = CORE_SYSTEM_PROMPT;
+
   if (agentName)
   {
     const agentPrompt = await getAgentPrompt(AGENTS, agentName);
 
     if (agentPrompt)
     {
-      options.systemPrompt = `${SYSTEM_PROMPT}\n\n---\n\n# Agent: ${agentName}\n\n${agentPrompt}`;
+      appendPrompt = `${CORE_SYSTEM_PROMPT}\n\n---\n\n# Active Agent: ${agentName}\n\n${agentPrompt}`;
     }
   }
 
+  options.systemPrompt = {
+    type: "preset" as const,
+    preset: "claude_code" as const,
+    append: appendPrompt,
+  };
   try
   {
     let effectivePrompt: string | AsyncIterable<SDKUserMessage> = prompt;
