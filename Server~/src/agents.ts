@@ -1,7 +1,7 @@
 /**
  * Agent and command (skill) loader.
  *
- * Reads agent definitions from .claude/agents/ and skill definitions from .claude/skills/.
+ * Reads agent definitions from Agents~/ and skill definitions from Skills~/.
  * The Agent SDK loads these natively via settingSources: ["project"], so we only need
  * to expose metadata via WebSocket for the Unity Chat UI dropdowns (per T-305 note).
  */
@@ -10,12 +10,12 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentInfo, CommandInfo } from "./messages.js";
-import { CLAUDE_DIR, AGENTS_DIR, SKILLS_DIR, MARKDOWN_EXT, FALLBACK_DESC_FILES, FRONTMATTER_TOOLS_KEY, MAX_DESCRIPTION_LENGTH } from "./constants.js";
+import { PACKAGE_AGENTS_DIR, PACKAGE_SKILLS_DIR, MARKDOWN_EXT, FALLBACK_DESC_FILES, FRONTMATTER_TOOLS_KEY, MAX_DESCRIPTION_LENGTH } from "./constants.js";
 import { getKnowledgeBasePath } from "./system-prompt.js";
 
 // ─── Agent types ───
 
-/** Full agent metadata loaded from a .claude/agents/ markdown file. */
+/** Full agent metadata loaded from an Agents~/ markdown file. */
 export interface AgentDefinition 
 {
   name: string;
@@ -28,31 +28,33 @@ export interface AgentDefinition
 // ─── Agent loading ───
 
 /**
- * Loads all agent definitions from .claude/agents/.
+ * Loads all agent definitions from the package Agents~/ directory.
  * Parses YAML-like frontmatter for structured metadata.
- * @param projectDir Absolute path to the Unity project root.
+ * @param _projectDir Absolute path to the Unity project root (unused, kept for API compat).
  * @returns Sorted array of {@link AgentDefinition} entries.
  */
-export async function loadAgents(projectDir: string): Promise<AgentDefinition[]> 
+export async function loadAgents(_projectDir: string): Promise<AgentDefinition[]>
 {
   const agents: AgentDefinition[] = [];
   const seenNames = new Set<string>();
-  const searchDirs = [join(projectDir, CLAUDE_DIR, AGENTS_DIR),];
-  const packageDir = process.env.PACKAGE_DIR;
+  const searchDirs: string[] = [];
 
-  if (packageDir)
-  {
-    searchDirs.push(join(packageDir, CLAUDE_DIR, AGENTS_DIR));
-  }
   try
   {
     const scriptDir = dirname(fileURLToPath(import.meta.url));
     const packageRoot = dirname(dirname(scriptDir));
-    searchDirs.push(join(packageRoot, CLAUDE_DIR, AGENTS_DIR));
-  } 
-  catch(error) 
+    searchDirs.push(join(packageRoot, PACKAGE_AGENTS_DIR));
+  }
+  catch(error)
   {
     console.warn("[AgentLoader] Could not resolve package root for agent discovery:", error);
+  }
+
+  const packageDir = process.env.PACKAGE_DIR;
+
+  if (packageDir)
+  {
+    searchDirs.push(join(packageDir, PACKAGE_AGENTS_DIR));
   }
 
   for (const agentsDir of searchDirs) 
@@ -104,7 +106,7 @@ export async function loadAgents(projectDir: string): Promise<AgentDefinition[]>
 
 // ─── Skill/command loading ───
 
-/** Metadata for a skill loaded from a .claude/skills/ subdirectory. */
+/** Metadata for a skill loaded from a Skills~/ subdirectory. */
 export interface SkillDefinition 
 {
   name: string;
@@ -113,31 +115,37 @@ export interface SkillDefinition
 }
 
 /**
- * Loads skill definitions from .claude/skills/.
+ * Loads skill definitions from the package Skills~/ directory.
  * Each subdirectory is a skill. Reads the prompt.md or README.md for description.
+ * User commands from ProjectSettings/GameDeck/commands/ are loaded first (override built-in).
  * @param projectDir Absolute path to the Unity project root.
  * @returns Sorted array of {@link SkillDefinition} entries.
  */
-export async function loadSkills(projectDir: string): Promise<SkillDefinition[]> 
+export async function loadSkills(projectDir: string): Promise<SkillDefinition[]>
 {
   const skills: SkillDefinition[] = [];
   const seenNames = new Set<string>();
-  const searchDirs = [join(projectDir, CLAUDE_DIR, SKILLS_DIR),];
-  const packageDir = process.env.PACKAGE_DIR;
+  const searchDirs: string[] = [];
 
-  if (packageDir)
-  {
-    searchDirs.push(join(packageDir, CLAUDE_DIR, SKILLS_DIR));
-  }
+  // User custom commands take priority (FEAT-06 prep)
+  searchDirs.push(join(projectDir, "ProjectSettings", "GameDeck", "commands"));
+
   try
   {
     const scriptDir = dirname(fileURLToPath(import.meta.url));
     const packageRoot = dirname(dirname(scriptDir));
-    searchDirs.push(join(packageRoot, CLAUDE_DIR, SKILLS_DIR));
-  } 
+    searchDirs.push(join(packageRoot, PACKAGE_SKILLS_DIR));
+  }
   catch(error)
   {
     console.warn("[SkillLoader] Could not resolve package root for skill discovery:", error);
+  }
+
+  const packageDir = process.env.PACKAGE_DIR;
+
+  if (packageDir)
+  {
+    searchDirs.push(join(packageDir, PACKAGE_SKILLS_DIR));
   }
 
   for (const skillsDir of searchDirs) 

@@ -3,9 +3,6 @@
 # Stacks: C#/Unity, TypeScript/Node.js
 # ============================================
 
-# ----- Claude Code (local settings only — agents/skills/hooks/rules ARE committed) -----
-.claude/settings.local.json
-
 # ----- Unity -----
 [Ll]ibrary/
 [Tt]emp/

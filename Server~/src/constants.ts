@@ -88,14 +88,11 @@ export const AUTH_TOKEN_FILE = "Library/GameDeck/auth-token";
 
 // ── Agent / Skill Discovery ──
 
-/** Name of the Claude configuration directory. */
-export const CLAUDE_DIR = ".claude";
+/** Package-relative directory for agent definitions. */
+export const PACKAGE_AGENTS_DIR = "Agents~";
 
-/** Subdirectory name for agent definitions. */
-export const AGENTS_DIR = "agents";
-
-/** Subdirectory name for skill definitions. */
-export const SKILLS_DIR = "skills";
+/** Package-relative directory for skill definitions. */
+export const PACKAGE_SKILLS_DIR = "Skills~";
 
 /** Markdown file extension. */
 export const MARKDOWN_EXT = ".md";
