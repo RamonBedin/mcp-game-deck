@@ -1,7 +1,7 @@
 {
   "name": "com.mcp-game-deck",
   "displayName": "MCP Game Deck",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "unity": "6000.0",
   "description": "AI-powered Unity Editor package with 268 MCP tools, embedded chat UI with file attachments, interactive setup wizard, and knowledge-driven agents. Control scenes, assets, scripts, lighting, physics, builds and more from natural language. Includes token-based auth, permission system, and audit logging.",
   "author": {

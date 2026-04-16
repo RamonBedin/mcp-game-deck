@@ -67,7 +67,7 @@ export const HEALTH_CHECK_TIMEOUT_MS = 2000;
 export const MCP_SERVER_NAME = "MCP Game Deck";
 
 /** Version string of the MCP proxy server. */
-export const MCP_SERVER_VERSION = "0.1.0";
+export const MCP_SERVER_VERSION = "1.1.0";
 
 /** MCP server identifier used in Agent SDK mcpServers config. */
 export const MCP_SERVER_ID = "unity-mcp";

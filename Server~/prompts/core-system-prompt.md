@@ -127,7 +127,7 @@ Consult these files for Unity domain knowledge before recommending architecture 
 | 15 | Store requirements, live ops, analytics, monetization | `{{KB_PATH}}/15-publishing-live-ops.md` |
 | 16 | Case studies — 12 real games, 10 recurring architectural patterns | `{{KB_PATH}}/16-unity-project-case-studies.md` |
 
-## Slash Commands (19)
+## Slash Commands (22)
 Users invoke these with `/<command>` in chat.
 
 | Command | Description |
@@ -144,9 +144,12 @@ Users invoke these with `/<command>` in chat.
 | `/estimate` | Estimate task effort with complexity analysis and confidence levels. |
 | `/hotfix` | Emergency fix workflow with audit trail for critical bugs. |
 | `/map-systems` | Decompose a game concept into systems with dependency mapping. |
+| `/new-feature` | Plan a feature implementation with tasks, architecture, and file list. |
+| `/new-system` | Generate a Unity system — MonoBehaviour + ScriptableObject config from structured input. |
 | `/perf-profile` | Structured performance profiling with budgets and recommendations. |
 | `/playtest-report` | Generate or analyze a structured playtest report. |
 | `/prototype` | Rapid prototyping workflow — validate a mechanic with throwaway code. |
+| `/refactor` | Analyze and refactor a file or system with before/after comparison. |
 | `/reverse-document` | Generate design or architecture docs from existing code. |
 | `/scope-check` | Analyze a feature for scope creep against the original plan. |
 | `/sprint-plan` | Generate or update a sprint plan from the project backlog. |

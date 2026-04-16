@@ -5,16 +5,16 @@
 </p>
 
 <p align="center">
-  <code>268 MCP Tools</code> &nbsp;&middot;&nbsp;
+  <code>269 MCP Tools</code> &nbsp;&middot;&nbsp;
   <code>7 Resources</code> &nbsp;&middot;&nbsp;
   <code>5 Prompts</code> &nbsp;&middot;&nbsp;
   <code>10 Agents</code> &nbsp;&middot;&nbsp;
-  <code>18 Slash Commands</code> &nbsp;&middot;&nbsp;
+  <code>22 Slash Commands</code> &nbsp;&middot;&nbsp;
   <code>16-doc Knowledge Base</code>
 </p>
 
 <p align="center">
-  v1.0.3 &nbsp;&bull;&nbsp; Unity 6+ &nbsp;&bull;&nbsp; MCP Protocol &nbsp;&bull;&nbsp; Requires Claude Code &amp; Node.js
+  v1.1.0 &nbsp;&bull;&nbsp; Unity 6+ &nbsp;&bull;&nbsp; MCP Protocol &nbsp;&bull;&nbsp; Requires Claude Code &amp; Node.js
 </p>
 
 ---
@@ -23,19 +23,19 @@
 
 MCP Game Deck is a Unity Editor package that exposes your entire project to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). It is **not** an AI itself — it is the bridge that lets Claude Code see, create, modify, and inspect everything in your Unity Editor: scenes, GameObjects, prefabs, materials, scripts, builds, and more.
 
-**How it works:** The package runs a custom MCP server inside the Unity Editor. Claude Code connects to it and gains access to 268 tools that control the editor. You talk to Claude Code, Claude Code talks to your Unity project.
+**How it works:** The package runs a custom MCP server inside the Unity Editor. Claude Code connects to it and gains access to 269 tools that control the editor. You talk to Claude Code, Claude Code talks to your Unity project.
 
 **What's included:**
 
-- **MCP Server** — A custom C# HTTP server with 268 tools, 7 resources, and 5 prompts. Runs inside the Editor process. No external MCP libraries.
-- **Intelligence Layer** — 10 specialized agents, 18 slash commands, and a 16-document knowledge base that give Claude Code deep Unity domain expertise.
+- **MCP Server** — A custom C# HTTP server with 269 tools, 7 resources, and 5 prompts. Runs inside the Editor process. No external MCP libraries.
+- **Intelligence Layer** — 10 specialized agents, 22 slash commands, and a 16-document knowledge base embedded in the package. Gives Claude Code deep Unity domain expertise without copying files to your project.
 - **Chat UI** — An optional EditorWindow (powered by Claude Agent SDK + Node.js) for chatting with Claude directly inside Unity.
 
 ---
 
 ## Features
 
-### 268 MCP Tools
+### 269 MCP Tools
 
 Full programmatic control over the Unity Editor, organized into 37 categories:
 
@@ -125,7 +125,7 @@ Domain experts with deep knowledge and access to all MCP tools:
 | **performance-analyst** | Profiling, memory analysis, frame time budgets, bottlenecks |
 | **qa-lead** | Test strategy, bug triage, release quality gates, regression planning |
 
-### 18 Slash Commands
+### 22 Slash Commands
 
 Quick-access structured workflows:
 
@@ -138,13 +138,17 @@ Quick-access structured workflows:
 | `/bug-report` | Structured bug reports with reproduction steps and severity |
 | `/changelog` | Auto-generate changelog from git history |
 | `/code-review` | Architectural and quality code review for Unity C# |
+| `/create-command` | Create a new custom slash command from a SKILL.md template |
 | `/design-review` | Review game design docs for completeness and balance |
 | `/estimate` | Task effort estimation with complexity analysis |
 | `/hotfix` | Emergency fix workflow with audit trail |
 | `/map-systems` | Decompose a game concept into systems with dependency mapping |
+| `/new-feature` | Plan a feature implementation with tasks, architecture, and file list |
+| `/new-system` | Generate a complete Unity system (MonoBehaviour + ScriptableObject config) |
 | `/perf-profile` | Structured performance profiling with budgets |
 | `/playtest-report` | Generate or analyze structured playtest reports |
 | `/prototype` | Rapid prototyping — validate a mechanic with throwaway code |
+| `/refactor` | Analyze and refactor a file or system with before/after comparison |
 | `/reverse-document` | Generate design/architecture docs from existing code |
 | `/scope-check` | Analyze a feature for scope creep |
 | `/sprint-plan` | Generate or update a sprint plan from the project backlog |
@@ -204,8 +208,6 @@ Comprehensive Unity reference documentation covering:
    npm run build
    ```
 
-6. On first import, the package automatically copies `.claude/`, `knowledge-base/`, and `CLAUDE.md` to your project root
-
 ### First Launch
 
 The MCP server starts automatically when the Unity Editor loads. To use the integrated chat:
@@ -217,7 +219,7 @@ The MCP server starts automatically when the Unity Editor loads. To use the inte
 To use with **Claude Code CLI** instead:
 
 1. Navigate to your Unity project root
-2. Run `claude` — the CLAUDE.md instructs Claude on available tools
+2. Run `claude` — the Agent SDK server injects the system prompt automatically
 3. Claude will connect to the MCP server on port `8090`
 
 ---
@@ -228,7 +230,7 @@ To use with **Claude Code CLI** instead:
 Unity Editor
  |
  |-- MCP Server (C# HTTP, port 8090)
- |    |-- 268 Tools ......... create, modify, inspect editor state
+ |    |-- 269 Tools ......... create, modify, inspect editor state
  |    |-- 7 Resources ....... read-only project data
  |    '-- 5 Prompts ......... structured workflow templates
  |
@@ -265,7 +267,6 @@ Settings are stored in `ProjectSettings/GameDeckSettings.json` and editable via 
 ```
 mcp-game-deck/
 |-- package.json              Unity package manifest
-|-- CLAUDE.md                 AI context file (copied to user project)
 |-- README.md                 This file
 |
 |-- Editor/                   C# editor-only code
@@ -276,23 +277,23 @@ mcp-game-deck/
 |    |    |-- Registry/       In-memory registries for tools, resources, prompts
 |    |    |-- Server/         TCP/HTTP server, JSON-RPC 2.0 handler
 |    |    '-- Utils/          MainThreadDispatcher, JsonHelper, McpLogger
-|    |-- Tools/               268 MCP tools (37 categories)
+|    |-- Tools/               269 MCP tools (37 categories)
 |    |-- Resources/           7 MCP resources
 |    |-- Prompts/             5 MCP prompts
 |    |-- ChatUI/              Integrated chat EditorWindow
-|    |-- Settings/            Project settings UI and persistence
-|    '-- Utils/               PackageSetup, helpers
+|    '-- Settings/            Project settings UI and persistence
 |
 |-- Server~/                  Agent SDK Server (TypeScript, ~ = ignored by Unity)
 |    |-- src/                 Source files
+|    |-- prompts/             Core system prompt template
 |    |-- dist/                Compiled output
 |    '-- package.json         Node.js dependencies
 |
-|-- .claude/                  AI intelligence layer
-|    |-- agents/              10 specialized agent definitions
-|    '-- skills/              18 slash command definitions
+|-- Agents~/                  10 specialized agent definitions (Markdown with frontmatter)
 |
-'-- knowledge-base/           16 Unity reference documents
+|-- Skills~/                  22 slash command definitions (SKILL.md per command)
+|
+'-- KnowledgeBase~/           16 Unity reference documents
 ```
 
 ---
@@ -322,7 +323,7 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  <strong>MCP Game Deck v1.0.3</strong>
+  <strong>MCP Game Deck v1.1.0</strong>
   <br>
   Built for Unity 6 &nbsp;&bull;&nbsp; Powered by MCP &nbsp;&bull;&nbsp; Designed by Ramon Bedin
 </p>
