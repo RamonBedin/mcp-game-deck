@@ -553,7 +553,8 @@ namespace GameDeck.Editor.ChatUI
                 return;
             }
 
-            var isCommand = prompt.StartsWith("/") && !prompt.Contains(' ');
+            var firstWord = prompt.Split(' ', 2)[0];
+            var isCommand = firstWord.StartsWith("/") && firstWord.Length > 1;
             var action = isCommand ? "command" : "prompt";
 
             HideWelcomeScreen();
@@ -595,7 +596,9 @@ namespace GameDeck.Editor.ChatUI
             var modelPart = model != null ? $",\"model\":{EscapeJson(model)}" : "";
             var permPart = $",\"permissionMode\":{EscapeJson(permMode)}";
             var attachPart = !string.IsNullOrEmpty(attachmentsJson) ? $",\"attachments\":{attachmentsJson}" : "";
-            var json = $"{{\"action\":\"{action}\",\"{(isCommand ? "command" : "prompt")}\":{EscapeJson(prompt)}{sessionPart}{agentPart}{modelPart}{permPart}{attachPart}}}";
+            var json = isCommand
+                ? $"{{\"action\":\"command\",\"command\":{EscapeJson(firstWord)},\"prompt\":{EscapeJson(prompt)}{sessionPart}{agentPart}{modelPart}{permPart}{attachPart}}}"
+                : $"{{\"action\":\"prompt\",\"prompt\":{EscapeJson(prompt)}{sessionPart}{agentPart}{modelPart}{permPart}{attachPart}}}";
 
             SetGenerating(true);
             await _wsClient.SendAsync(json);

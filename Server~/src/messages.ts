@@ -29,10 +29,11 @@ export interface PromptAction
 }
 
 /** Client message requesting execution of a slash command (skill). */
-export interface CommandAction 
+export interface CommandAction
 {
   action: "command";
   command: string;
+  prompt?: string | null;
   sessionId?: string | null;
 }
 

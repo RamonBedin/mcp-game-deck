@@ -127,7 +127,7 @@ Consult these files for Unity domain knowledge before recommending architecture 
 | 15 | Store requirements, live ops, analytics, monetization | `{{KB_PATH}}/15-publishing-live-ops.md` |
 | 16 | Case studies — 12 real games, 10 recurring architectural patterns | `{{KB_PATH}}/16-unity-project-case-studies.md` |
 
-## Slash Commands (18)
+## Slash Commands (19)
 Users invoke these with `/<command>` in chat.
 
 | Command | Description |
@@ -139,6 +139,7 @@ Users invoke these with `/<command>` in chat.
 | `/bug-report` | Create a structured bug report with reproduction steps and severity. |
 | `/changelog` | Auto-generate changelog from git history. |
 | `/code-review` | Architectural and quality code review for Unity C#. |
+| `/create-command` | Create a new custom slash command — generates and saves a SKILL.md template. |
 | `/design-review` | Review a game design document for completeness and balance. |
 | `/estimate` | Estimate task effort with complexity analysis and confidence levels. |
 | `/hotfix` | Emergency fix workflow with audit trail for critical bugs. |

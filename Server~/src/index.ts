@@ -33,8 +33,6 @@ const ACTIVE_QUERIES = new Map<WebSocket, Query>();
 
 const PENDING_PERMISSIONS = new Map<string, PendingPermission>();
 const AGENTS = await loadAgents(CONFIG.cwd);
-const SKILLS = await loadSkills(CONFIG.cwd);
-const COMMANDS = skillsToCommands(SKILLS);
 const CORE_SYSTEM_PROMPT = await getSystemPrompt();
 const WSS = new WebSocketServer({ port: CONFIG.port });
 
@@ -140,9 +138,11 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void>
       send(ws, { type: "agents", agents: agentsToInfo(AGENTS) });
       break;
 
-    case "list-commands":
-      send(ws, { type: "commands", commands: COMMANDS });
+    case "list-commands": {
+      const skills = await loadSkills(CONFIG.cwd);
+      send(ws, { type: "commands", commands: skillsToCommands(skills) });
       break;
+    }
 
     case "list-sessions":
       send(ws, { type: "sessions", sessions: listSessions() });
@@ -194,8 +194,10 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void>
       break;
 
     case "command": {
-      const skillPrompt = await getSkillPrompt(SKILLS, msg.command);
-      const effectivePrompt = skillPrompt ? `The user invoked the "${msg.command}" command.\n\n${skillPrompt}` : msg.command;
+      const skills = await loadSkills(CONFIG.cwd);
+      const skillPrompt = await getSkillPrompt(skills, msg.command);
+      const userArgs = msg.prompt && msg.prompt !== msg.command ? msg.prompt.slice(msg.command.length).trim() : "";
+      const effectivePrompt = skillPrompt ? `The user invoked "${msg.prompt ?? msg.command}".\n\n${skillPrompt}${userArgs ? "\n\nUser provided arguments: " + userArgs : ""}` : msg.prompt ?? msg.command;
       await handlePrompt(ws, effectivePrompt, msg.sessionId ?? undefined);
       break;
     }

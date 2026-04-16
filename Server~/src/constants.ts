@@ -98,7 +98,7 @@ export const PACKAGE_SKILLS_DIR = "Skills~";
 export const MARKDOWN_EXT = ".md";
 
 /** Filenames to check (in order) when loading a skill description. */
-export const FALLBACK_DESC_FILES = ["prompt.md", "README.md", "index.md"] as const;
+export const FALLBACK_DESC_FILES = ["SKILL.md", "prompt.md", "README.md", "index.md"] as const;
 
 /** Frontmatter key that holds the tools list. */
 export const FRONTMATTER_TOOLS_KEY = "tools";
