@@ -11,6 +11,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentInfo, CommandInfo } from "./messages.js";
 import { CLAUDE_DIR, AGENTS_DIR, SKILLS_DIR, MARKDOWN_EXT, FALLBACK_DESC_FILES, FRONTMATTER_TOOLS_KEY, MAX_DESCRIPTION_LENGTH } from "./constants.js";
+import { getKnowledgeBasePath } from "./system-prompt.js";
 
 // ─── Agent types ───
 
@@ -282,8 +283,9 @@ export async function getAgentPrompt(agents: AgentDefinition[], name: string): P
 
   const content = await readFile(agent.filePath, "utf-8");
   const fmEnd = content.match(/^---\s*\n[\s\S]*?\n---\s*\n/);
+  const body = fmEnd ? content.slice(fmEnd[0].length).trim() : content.trim();
 
-  return fmEnd ? content.slice(fmEnd[0].length).trim() : content.trim();
+  return body.replaceAll("{{KB_PATH}}", getKnowledgeBasePath());
 }
 
 // ─── Wire format converters ───

@@ -6,9 +6,9 @@ using UnityEngine;
 namespace GameDeck.Editor.Utils
 {
     /// <summary>
-    /// Automatically copies package resources (.claude/, knowledge-base/, CLAUDE.md)
-    /// to the Unity project root on first install. Uses [InitializeOnLoadMethod] to
-    /// run once when the Editor loads after package import.
+    /// Automatically copies package resources (.claude/, CLAUDE.md) to the Unity
+    /// project root on first install. Uses [InitializeOnLoadMethod] to run once
+    /// when the Editor loads after package import.
     /// </summary>
     public static class PackageSetup
     {
@@ -17,7 +17,6 @@ namespace GameDeck.Editor.Utils
         private const string SETUP_DONE_KEY = "GameDeck_SetupDone_v1";
         private const string PARENT_DIR = "..";
         private const string DIR_CLAUDE = ".claude";
-        private const string DIR_KNOWLEDGE_BASE = "knowledge-base";
         private const string FILE_CLAUDE_MD = "CLAUDE.md";
         private const string FILE_SETTINGS_LOCAL = "settings.local.json";
 
@@ -46,7 +45,6 @@ namespace GameDeck.Editor.Utils
             var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, PARENT_DIR));
 
             CopyDirectoryIfNotExists(Path.Combine(packagePath, DIR_CLAUDE), Path.Combine(projectRoot, DIR_CLAUDE));
-            CopyDirectoryIfNotExists(Path.Combine(packagePath, DIR_KNOWLEDGE_BASE), Path.Combine(projectRoot, DIR_KNOWLEDGE_BASE));
             CopyFileIfNotExists(Path.Combine(packagePath, FILE_CLAUDE_MD), Path.Combine(projectRoot, FILE_CLAUDE_MD));
         }
 
