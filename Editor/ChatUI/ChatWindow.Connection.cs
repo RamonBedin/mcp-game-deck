@@ -107,6 +107,7 @@ namespace GameDeck.Editor.ChatUI
                 var client = _wsClient;
 
                 await client.SendAsync("{\"action\":\"list-agents\"}");
+                await client.SendAsync("{\"action\":\"list-commands\"}");
                 await client.SendAsync("{\"action\":\"list-sessions\"}");
                 await client.SendAsync("{\"action\":\"ping\"}");
 

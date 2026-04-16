@@ -19,7 +19,7 @@ import type { Query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { loadConfig } from "./config.js";
-import { loadAgents, loadSkills, agentsToInfo, skillsToCommands, getAgentPrompt } from "./agents.js";
+import { loadAgents, loadSkills, agentsToInfo, skillsToCommands, getAgentPrompt, getSkillPrompt } from "./agents.js";
 import { initSessions, upsertSession, listSessions, deleteSession, getSession, appendMessages } from "./sessions.js";
 import type { ClientMessage, ServerMessage, Attachment } from "./messages.js";
 import type { PermissionResult, CanUseTool } from "@anthropic-ai/claude-agent-sdk";
@@ -193,9 +193,12 @@ async function handleMessage(ws: WebSocket, msg: ClientMessage): Promise<void>
       await handlePrompt(ws, msg.prompt, msg.sessionId ?? undefined, msg.agent ?? undefined, msg.model ?? undefined, msg.permissionMode ?? undefined, msg.attachments ?? undefined);
       break;
 
-    case "command":
-      await handlePrompt(ws, msg.command, msg.sessionId ?? undefined);
+    case "command": {
+      const skillPrompt = await getSkillPrompt(SKILLS, msg.command);
+      const effectivePrompt = skillPrompt ? `The user invoked the "${msg.command}" command.\n\n${skillPrompt}` : msg.command;
+      await handlePrompt(ws, effectivePrompt, msg.sessionId ?? undefined);
       break;
+    }
   }
 }
 

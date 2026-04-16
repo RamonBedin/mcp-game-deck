@@ -288,6 +288,42 @@ export async function getAgentPrompt(agents: AgentDefinition[], name: string): P
   return body.replaceAll("{{KB_PATH}}", getKnowledgeBasePath());
 }
 
+// ─── Skill prompt resolution ───
+
+/**
+ * Reads the body (everything after the YAML frontmatter) of a skill's
+ * SKILL.md file and returns it as the skill's prompt template.
+ * @param skills      The loaded skill list.
+ * @param commandName Slash-prefixed command identifier (e.g. "/code-review").
+ *                    The leading "/" is stripped before lookup.
+ * @returns The skill prompt text, or null if the skill or SKILL.md was not found.
+ */
+export async function getSkillPrompt(skills: SkillDefinition[], commandName: string): Promise<string | null>
+{
+  const name = commandName.startsWith("/") ? commandName.slice(1) : commandName;
+  const skill = skills.find((s) => s.name === name);
+
+  if (!skill)
+  {
+    return null;
+  }
+  try
+  {
+    const skillFile = join(skill.dirPath, "SKILL.md");
+    const content = await readFile(skillFile, "utf-8");
+    const fmEnd = content.match(/^---\s*\n[\s\S]*?\n---\s*\n/);
+    return fmEnd ? content.slice(fmEnd[0].length).trim() : content.trim();
+  }
+  catch(error)
+  {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+    {
+      console.warn(`[SkillLoader] Unexpected error reading SKILL.md in ${skill.dirPath}:`, error);
+    }
+    return null;
+  }
+}
+
 // ─── Wire format converters ───
 
 /**

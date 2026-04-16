@@ -244,11 +244,19 @@ namespace GameDeck.Editor.ChatUI
             WireSuggestionChips();
             InitializeModelDropdown();
             InitializePermissionModeDropdown();
+            InitializeCommandPopup();
 
             _agentDropdown?.RegisterValueChangedCallback(evt => _selectedAgent = evt.newValue);
+            _promptInput?.RegisterValueChangedCallback(evt => OnPromptInputChanged(evt.newValue));
 
             _promptInput?.RegisterCallback<KeyDownEvent>(evt =>
             {
+                if (TryHandleCommandPopupKey(evt))
+                {
+                    evt.StopImmediatePropagation();
+                    return;
+                }
+
                 if (evt.keyCode is KeyCode.Return or KeyCode.KeypadEnter)
                 {
                     evt.StopImmediatePropagation();
@@ -545,6 +553,9 @@ namespace GameDeck.Editor.ChatUI
                 return;
             }
 
+            var isCommand = prompt.StartsWith("/") && !prompt.Contains(' ');
+            var action = isCommand ? "command" : "prompt";
+
             HideWelcomeScreen();
             _renderer?.FinalizeToolExecution();
 
@@ -584,7 +595,7 @@ namespace GameDeck.Editor.ChatUI
             var modelPart = model != null ? $",\"model\":{EscapeJson(model)}" : "";
             var permPart = $",\"permissionMode\":{EscapeJson(permMode)}";
             var attachPart = !string.IsNullOrEmpty(attachmentsJson) ? $",\"attachments\":{attachmentsJson}" : "";
-            var json = $"{{\"action\":\"prompt\",\"prompt\":{EscapeJson(prompt)}{sessionPart}{agentPart}{modelPart}{permPart}{attachPart}}}";
+            var json = $"{{\"action\":\"{action}\",\"{(isCommand ? "command" : "prompt")}\":{EscapeJson(prompt)}{sessionPart}{agentPart}{modelPart}{permPart}{attachPart}}}";
 
             SetGenerating(true);
             await _wsClient.SendAsync(json);

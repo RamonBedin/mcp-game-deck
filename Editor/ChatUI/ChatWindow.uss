@@ -526,6 +526,7 @@
     background-color: var(--chat-surface);
     flex-shrink: 0;
     min-height: 60px;
+    position: relative;
 }
 
 .input-row {
@@ -928,4 +929,52 @@
     max-height: 300px;
     border-radius: var(--chat-radius-sm);
     margin-top: 6px;
+}
+
+/* ─── Slash Command Autocomplete Popup ─── */
+
+.command-popup {
+    position: absolute;
+    bottom: 100%;
+    left: 24px;
+    right: 24px;
+    margin-bottom: 6px;
+    max-height: 240px;
+    background-color: var(--chat-surface);
+    border-radius: var(--chat-radius-sm);
+    border-width: 1px;
+    border-color: var(--chat-border);
+    padding: 4px 0;
+    overflow: hidden;
+}
+
+.command-popup__list {
+    max-height: 232px;
+}
+
+.command-item {
+    padding: 6px 12px;
+    flex-shrink: 0;
+    cursor: link;
+}
+
+.command-item:hover {
+    background-color: var(--chat-surface-hover);
+}
+
+.command-item--selected {
+    background-color: var(--chat-surface-hover);
+}
+
+.command-item__name {
+    -unity-font-style: bold;
+    font-size: var(--chat-font-size);
+    color: var(--chat-text);
+}
+
+.command-item__desc {
+    font-size: var(--chat-font-size-sm);
+    color: var(--chat-text-muted);
+    white-space: normal;
+    margin-top: 2px;
 }

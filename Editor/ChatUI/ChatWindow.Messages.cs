@@ -93,6 +93,10 @@ namespace GameDeck.Editor.ChatUI
                         PopulateAgentDropdown(json);
                         break;
 
+                    case "commands":
+                        OnCommandsReceived(json);
+                        break;
+
                     case "sessions":
                         PopulateSessionList(json);
                         break;
