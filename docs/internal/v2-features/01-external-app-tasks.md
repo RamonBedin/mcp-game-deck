@@ -509,7 +509,7 @@ Don't start any of those until Feature 01's "Definition of done" (in spec) is fu
 | 2.1 | ✅ done | 2026-04-25 | Tipos completos, tsc limpo, sem any |
 | 2.2 | ✅ done | 2026-04-25 | Tipos Rust + serde + testes round-trip passando |
 | 2.3 | ✅ done | 2026-04-25 | 20 commands registrados |
-| 2.4 | ⏳ pending | — | — |
+| 2.4 | ✅ done | 2026-04-25 | 20 wrappers tipados, type safety verificado |
 | 2.5 | ⏳ pending | — | — |
 | 2.6 | ⏳ pending | — | — |
 | 3.1 | ⏳ pending | — | — |
