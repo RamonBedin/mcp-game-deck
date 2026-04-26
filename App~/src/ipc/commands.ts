@@ -94,3 +94,11 @@ export const getSettings = (): Promise<AppSettings> => invoke("get_settings");
 
 export const updateSettings = (patch: AppSettingsPatch): Promise<void> =>
   invoke("update_settings", { patch });
+
+// --- Dev-only ------------------------------------------------------------
+// Gated by `import.meta.env.DEV` at the call site (see SettingsRoute).
+// In release builds the underlying command returns an error; the wrapper
+// signature stays stable to keep the typed surface consistent.
+
+export const devEmitTestEvent = (): Promise<void> =>
+  invoke("dev_emit_test_event");

@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod events;
 pub mod types;
 
 pub fn run() {
@@ -24,6 +25,7 @@ pub fn run() {
             commands::rules::toggle_rule,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::dev::dev_emit_test_event,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

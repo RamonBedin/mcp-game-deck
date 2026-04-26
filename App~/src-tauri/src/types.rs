@@ -110,6 +110,76 @@ pub struct AppSettingsPatch {
     pub unity_project_path: Option<String>,
 }
 
+// --- Events --------------------------------------------------------------
+// Payloads emitted by Rust → React via Tauri events. Names mirror the
+// emitter helpers in events.rs and the TS payload types in src/ipc/types.ts.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnityStatusChangedPayload {
+    pub status: ConnectionStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+// Distinct from ConnectionStatus — Node SDK has its own state machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeSdkStatus {
+    Starting,
+    Running,
+    Crashed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeSdkStatusChangedPayload {
+    pub status: NodeSdkStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageStreamChunkPayload {
+    pub message_id: MessageId,
+    pub chunk: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageStreamCompletePayload {
+    pub message_id: MessageId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AskUserType {
+    Single,
+    Multi,
+    FreeText,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskUserRequestedPayload {
+    pub question_id: String,
+    pub question: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<String>>,
+    // `type` is a reserved word in Rust — rename on the wire.
+    #[serde(rename = "type")]
+    pub kind: AskUserType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionRequestedPayload {
+    pub request_id: String,
+    pub tool: String,
+    pub params: Value,
+}
+
 // --- Errors --------------------------------------------------------------
 
 // Tagged enum — JSON shape: { "kind": "<snake_case>", "message": "..." }

@@ -60,6 +60,48 @@ export interface AppSettings {
 
 export type AppSettingsPatch = Partial<AppSettings>;
 
+// --- Events --------------------------------------------------------------
+// Payloads emitted by Rust → React via Tauri events. Names mirror the
+// emitter helpers in src-tauri/src/events.rs. Event names themselves are
+// kebab-case strings (see src/ipc/events.ts).
+
+export interface UnityStatusChangedPayload {
+  status: ConnectionStatus;
+  reason?: string;
+}
+
+// Distinct from ConnectionStatus — Node SDK has its own state machine.
+export type NodeSdkStatus = "starting" | "running" | "crashed";
+
+export interface NodeSdkStatusChangedPayload {
+  status: NodeSdkStatus;
+  pid?: number;
+}
+
+export interface MessageStreamChunkPayload {
+  messageId: MessageId;
+  chunk: string;
+}
+
+export interface MessageStreamCompletePayload {
+  messageId: MessageId;
+}
+
+export type AskUserType = "single" | "multi" | "free-text";
+
+export interface AskUserRequestedPayload {
+  questionId: string;
+  question: string;
+  options?: string[];
+  type: AskUserType;
+}
+
+export interface PermissionRequestedPayload {
+  requestId: string;
+  tool: string;
+  params: unknown;
+}
+
 // --- Errors --------------------------------------------------------------
 
 export type AppErrorKind =
