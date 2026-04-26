@@ -1,13 +1,5 @@
 import { create } from "zustand";
-
-export interface PlanMeta {
-  name: string;
-  lastModified: number;
-}
-
-export interface Plan extends PlanMeta {
-  content: string;
-}
+import type { Plan, PlanMeta } from "../ipc/types";
 
 interface PlansState {
   plans: PlanMeta[];

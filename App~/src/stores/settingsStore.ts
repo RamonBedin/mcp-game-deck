@@ -1,16 +1,10 @@
 import { create } from "zustand";
-
-export type Theme = "dark" | "light";
-
-export interface AppSettings {
-  theme: Theme;
-  unityProjectPath: string | null;
-}
+import type { AppSettings, AppSettingsPatch } from "../ipc/types";
 
 interface SettingsState {
   settings: AppSettings;
   setSettings: (settings: AppSettings) => void;
-  patchSettings: (patch: Partial<AppSettings>) => void;
+  patchSettings: (patch: AppSettingsPatch) => void;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {

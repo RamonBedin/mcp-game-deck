@@ -1,9 +1,5 @@
 import { create } from "zustand";
-
-export interface RuleMeta {
-  name: string;
-  enabled: boolean;
-}
+import type { RuleMeta } from "../ipc/types";
 
 interface RulesState {
   rules: RuleMeta[];

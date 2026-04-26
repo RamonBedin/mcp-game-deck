@@ -1,15 +1,5 @@
 import { create } from "zustand";
-
-export type MessageRole = "user" | "assistant" | "system";
-export type PermissionMode = "auto" | "ask" | "plan";
-
-export interface Message {
-  id: string;
-  role: MessageRole;
-  content: string;
-  timestamp: number;
-  agent?: string;
-}
+import type { Message, PermissionMode } from "../ipc/types";
 
 interface ConversationState {
   messages: Message[];
