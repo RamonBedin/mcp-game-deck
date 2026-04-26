@@ -1,9 +1,17 @@
 // STUB — replaced by Feature 02 orchestrator.
 //
-// Reads newline-delimited input from stdin and emits a `log` JSON-RPC 2.0
-// notification on stdout for each line received. Exists only to prove the
-// pipe between the Tauri Rust supervisor and a Node child process works
-// during Group 3 plumbing tasks (3.1 spawn, 3.2 framing, 3.3 restart).
+// Bridges stdio with a tiny JSON-RPC 2.0 dialect. Used by the Group 3
+// plumbing tasks in App~/src-tauri/src/node_supervisor:
+// - 3.1: prove the spawn pipe works
+// - 3.2 (current): exercise request/response correlation + notifications
+// - 3.3: support restart / crash detection
+//
+// Supported requests:
+//   ping  →  { pong: true }
+//   echo  →  whatever was sent in `params`
+//
+// Periodic notifications:
+//   log   every 5s heartbeat (proves the notification path)
 //
 // ESM module — Server~/package.json declares `"type": "module"`.
 
@@ -15,23 +23,65 @@ const sendNotification = (method, params) => {
   );
 };
 
+const sendResponse = (id, { result, error } = {}) => {
+  const msg = { jsonrpc: "2.0", id };
+  if (error !== undefined) msg.error = error;
+  else msg.result = result ?? null;
+  process.stdout.write(JSON.stringify(msg) + "\n");
+};
+
 const log = (text, level = "info") => sendNotification("log", { level, text });
 
 log("[stub] agent-sdk-stub.js started");
+
+// Heartbeat — proves the notification path independently of any request flow.
+const heartbeat = setInterval(() => {
+  log(`[stub] heartbeat ts=${Date.now()}`);
+}, 5000);
+heartbeat.unref();
+
+const handleRequest = ({ id, method, params }) => {
+  switch (method) {
+    case "ping":
+      sendResponse(id, { result: { pong: true } });
+      break;
+    case "echo":
+      sendResponse(id, { result: params ?? null });
+      break;
+    default:
+      sendResponse(id, {
+        error: { code: -32601, message: `method not found: ${method}` },
+      });
+  }
+};
 
 const rl = readline.createInterface({ input: process.stdin });
 
 rl.on("line", (line) => {
   const trimmed = line.trim();
   if (trimmed.length === 0) return;
-  log(`[stub] received: ${trimmed}`);
+
+  let msg;
+  try {
+    msg = JSON.parse(trimmed);
+  } catch (err) {
+    log(`[stub] failed to parse line: ${err.message}`, "error");
+    return;
+  }
+
+  if (msg.id != null && typeof msg.method === "string") {
+    handleRequest(msg);
+    return;
+  }
+
+  // Notifications from supervisor (none expected today, but log them).
+  log(`[stub] received notification: ${msg.method ?? "?"}`);
 });
 
 rl.on("close", () => {
+  clearInterval(heartbeat);
   process.exit(0);
 });
 
-// Graceful shutdown when the supervisor sends SIGTERM (Unix) or
-// closes stdin (Windows — readline's "close" handles that).
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));

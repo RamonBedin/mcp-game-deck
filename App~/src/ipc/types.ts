@@ -102,6 +102,13 @@ export interface PermissionRequestedPayload {
   params: unknown;
 }
 
+// Diagnostic — used by the Group 3 stub. The real Node SDK will emit typed
+// events instead (message-received, ask-user-requested, etc).
+export interface NodeLogPayload {
+  level: "info" | "warn" | "error";
+  text: string;
+}
+
 // --- Errors --------------------------------------------------------------
 
 export type AppErrorKind =

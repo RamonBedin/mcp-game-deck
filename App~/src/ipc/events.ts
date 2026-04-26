@@ -11,6 +11,7 @@ import type {
   Message,
   MessageStreamChunkPayload,
   MessageStreamCompletePayload,
+  NodeLogPayload,
   NodeSdkStatusChangedPayload,
   PermissionRequestedPayload,
   UnityStatusChangedPayload,
@@ -40,3 +41,6 @@ export const onAskUserRequested =
 
 export const onPermissionRequested =
   wrap<PermissionRequestedPayload>("permission-requested");
+
+// Group 3 stub diagnostic — Node SDK heartbeat / log lines.
+export const onNodeLog = wrap<NodeLogPayload>("node-log");

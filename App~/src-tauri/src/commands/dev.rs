@@ -1,14 +1,16 @@
-//! Dev-only Tauri commands. The function bodies are gated by
-//! `#[cfg(debug_assertions)]`; in release builds the command exists but
-//! returns an error. The frontend hides these behind `import.meta.env.DEV`,
-//! so production callers never reach them.
-//!
-//! Function bodies cannot be cfg-gated out of `tauri::generate_handler!`
-//! cleanly without duplicating the entire handler list, so we keep the
-//! signature stable and gate the body instead.
+//! Dev / diagnostic Tauri commands. The frontend hides these behind
+//! `import.meta.env.DEV` so production users never reach them, though the
+//! commands themselves are always registered (cfg-gating individual commands
+//! out of `tauri::generate_handler!` would force duplicating the entire
+//! handler list).
 
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
+use crate::node_supervisor::NodeSupervisor;
+
+/// Emits a one-shot `unity-status-changed` event with `disconnected`. Used by
+/// task 2.6's verification flow. The polling loop in App.tsx reverts the
+/// status within ~2s.
 #[tauri::command]
 #[allow(unused_variables)]
 pub fn dev_emit_test_event(app: AppHandle) -> Result<(), String> {
@@ -29,4 +31,11 @@ pub fn dev_emit_test_event(app: AppHandle) -> Result<(), String> {
     {
         Err("dev_emit_test_event is disabled in release builds".to_string())
     }
+}
+
+/// Pings the Node SDK child via JSON-RPC. Returns the `pong` boolean.
+/// Round-trip latency on localhost is typically <50ms.
+#[tauri::command]
+pub async fn node_ping(supervisor: State<'_, NodeSupervisor>) -> Result<bool, String> {
+    supervisor.ping().await.map_err(|e| e.to_string())
 }

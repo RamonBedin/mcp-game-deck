@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { devEmitTestEvent } from "../ipc/commands";
+import { useEffect, useState } from "react";
+import { devEmitTestEvent, nodePing } from "../ipc/commands";
 import { onUnityStatusChanged } from "../ipc/events";
 import type { ConnectionStatus } from "../ipc/types";
 import { useConnectionStore } from "../stores/connectionStore";
@@ -21,6 +21,9 @@ export default function SettingsRoute() {
   const unityStatus = useConnectionStore((s) => s.unityStatus);
   const nodeSdkStatus = useConnectionStore((s) => s.nodeSdkStatus);
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
+
+  const [pingResult, setPingResult] = useState<string | null>(null);
+  const [pinging, setPinging] = useState(false);
 
   // Subscribe to unity-status-changed events. The 2s poll in App.tsx will
   // overwrite the disconnected state on the next tick — that's the intended
@@ -50,6 +53,21 @@ export default function SettingsRoute() {
     };
   }, [setUnityStatus]);
 
+  const handlePing = async () => {
+    setPinging(true);
+    setPingResult("…");
+    const start = performance.now();
+    try {
+      const pong = await nodePing();
+      const elapsed = Math.round(performance.now() - start);
+      setPingResult(`pong=${pong} (${elapsed}ms)`);
+    } catch (err) {
+      setPingResult(`error: ${String(err)}`);
+    } finally {
+      setPinging(false);
+    }
+  };
+
   return (
     <section>
       <h1 className="text-2xl font-semibold">Settings</h1>
@@ -74,21 +92,45 @@ export default function SettingsRoute() {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Dev tools
           </h2>
-          <button
-            type="button"
-            onClick={() => {
-              void devEmitTestEvent().catch((err) =>
-                console.error("[dev] emit test event failed:", err),
-              );
-            }}
-            className="mt-3 rounded bg-amber-700 px-3 py-1.5 text-sm text-amber-50 hover:bg-amber-600"
-          >
-            Emit unity-status-changed (disconnected)
-          </button>
-          <p className="mt-2 text-xs text-slate-500">
-            Click to fire a one-shot event. Polling will revert Unity to
-            "connected" within ~2s.
-          </p>
+
+          <div className="mt-3 flex flex-col gap-3">
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  void devEmitTestEvent().catch((err) =>
+                    console.error("[dev] emit test event failed:", err),
+                  );
+                }}
+                className="rounded bg-amber-700 px-3 py-1.5 text-sm text-amber-50 hover:bg-amber-600"
+              >
+                Emit unity-status-changed (disconnected)
+              </button>
+              <p className="mt-1 text-xs text-slate-500">
+                Polling reverts Unity to "connected" within ~2s.
+              </p>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={() => void handlePing()}
+                disabled={pinging}
+                className="rounded bg-sky-700 px-3 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Ping Node SDK
+              </button>
+              {pingResult !== null && (
+                <p className="mt-1 font-mono text-xs text-slate-400">
+                  {pingResult}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-slate-500">
+                Round-trips a JSON-RPC `ping`. Watch DevTools console for the
+                node heartbeat (every 5s).
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </section>

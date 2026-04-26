@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getNodeSdkStatus, getUnityStatus } from "./ipc/commands";
+import { onNodeLog } from "./ipc/events";
 import { useConnectionStore } from "./stores/connectionStore";
 
 const NAV_ITEMS = [
@@ -29,7 +30,6 @@ export default function App() {
         setUnityStatus(unity);
         setNodeSdkStatus(node);
       } catch (err) {
-        // Stub commands can't fail; this guards against future real impls.
         console.error("[connection] poll failed:", err);
       }
     };
@@ -41,6 +41,37 @@ export default function App() {
       window.clearInterval(id);
     };
   }, [setUnityStatus, setNodeSdkStatus]);
+
+  // Forward Node SDK log notifications to the DevTools console. Lives at
+  // the layout root so it survives route changes — once subscribed for the
+  // app's lifetime, never unsubscribed during normal use.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    onNodeLog((payload) => {
+      if (cancelled) return;
+      const fn =
+        payload.level === "error"
+          ? console.error
+          : payload.level === "warn"
+            ? console.warn
+            : console.log;
+      fn("[node]", payload.text);
+    })
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      })
+      .catch((err) => {
+        console.error("[app] failed to subscribe to node-log:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   return (
     <div className="flex min-h-screen w-full bg-slate-900 text-slate-100">

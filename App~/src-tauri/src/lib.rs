@@ -14,7 +14,7 @@ pub fn run() {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let supervisor = app_handle.state::<NodeSupervisor>();
-                match supervisor.spawn().await {
+                match supervisor.spawn(app_handle.clone()).await {
                     Ok(pid) => println!("[node-supervisor] spawned PID {pid}"),
                     Err(e) => eprintln!("[node-supervisor] spawn failed: {e}"),
                 }
@@ -24,9 +24,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 // Prevent the default close so we can shut the child down
-                // before the process exits. Without this, tokio's
-                // kill_on_drop is the only safety net — works, but logs are
-                // noisier and timing is fuzzier.
+                // cleanly before the process exits.
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 tauri::async_runtime::spawn(async move {
@@ -59,6 +57,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::dev::dev_emit_test_event,
+            commands::dev::node_ping,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

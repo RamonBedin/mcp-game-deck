@@ -102,3 +102,7 @@ export const updateSettings = (patch: AppSettingsPatch): Promise<void> =>
 
 export const devEmitTestEvent = (): Promise<void> =>
   invoke("dev_emit_test_event");
+
+// Round-trips a JSON-RPC `ping` to the Node SDK child. Used by Group 3
+// verification; resolves to true if the child responds with `{ pong: true }`.
+export const nodePing = (): Promise<boolean> => invoke("node_ping");
