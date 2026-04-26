@@ -512,7 +512,7 @@ Don't start any of those until Feature 01's "Definition of done" (in spec) is fu
 | 2.4 | ✅ done | 2026-04-25 | 20 wrappers tipados, type safety verificado |
 | 2.5 | ✅ done | 2026-04-25 | Polling 2s funcionando, status ao vivo na Settings |
 | 2.6 | ✅ done | 2026-04-25 | Eventos Rust→React funcionando após adicionar capabilities |
-| 3.1 | ⏳ pending | — | — |
+| 3.1 | ✅ done | 2026-04-25 | Node child spawna, cleanup limpo, sem zombies |
 | 3.2 | ⏳ pending | — | — |
 | 3.3 | ⏳ pending | — | — |
 | 4.1 | ⏳ pending | — | — |
