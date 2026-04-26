@@ -505,7 +505,7 @@ Don't start any of those until Feature 01's "Definition of done" (in spec) is fu
 | 1.1 | ✅ done | 2026-04-25 | Janela vazia abriu, validado em Windows |
 | 1.2 | ✅ done | 2026-04-25 | Dark theme aplicado, Tailwind classes verificadas |
 | 1.3 | ✅ done | 2026-04-25 | Sidebar nav funcionando, 4 routes alternam |
-| 1.4 | ⏳ pending | — | — |
+| 1.4 | ✅ done | 2026-04-25 | 5 stores criados, settings tab renderiza dado |
 | 2.1 | ⏳ pending | — | — |
 | 2.2 | ⏳ pending | — | — |
 | 2.3 | ⏳ pending | — | — |
