@@ -507,7 +507,7 @@ Don't start any of those until Feature 01's "Definition of done" (in spec) is fu
 | 1.3 | ✅ done | 2026-04-25 | Sidebar nav funcionando, 4 routes alternam |
 | 1.4 | ✅ done | 2026-04-25 | 5 stores criados, settings tab renderiza dado |
 | 2.1 | ✅ done | 2026-04-25 | Tipos completos, tsc limpo, sem any |
-| 2.2 | ⏳ pending | — | — |
+| 2.2 | ✅ done | 2026-04-25 | Tipos Rust + serde + testes round-trip passando |
 | 2.3 | ⏳ pending | — | — |
 | 2.4 | ⏳ pending | — | — |
 | 2.5 | ⏳ pending | — | — |
