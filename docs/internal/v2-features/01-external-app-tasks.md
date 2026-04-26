@@ -503,7 +503,7 @@ Don't start any of those until Feature 01's "Definition of done" (in spec) is fu
 | Task | Status | Done date | Notes |
 |------|--------|-----------|-------|
 | 1.1 | ✅ done | 2026-04-25 | Janela vazia abriu, validado em Windows |
-| 1.2 | ⏳ pending | — | — |
+| 1.2 | ✅ done | 2026-04-25 | Dark theme aplicado, Tailwind classes verificadas |
 | 1.3 | ⏳ pending | — | — |
 | 1.4 | ⏳ pending | — | — |
 | 2.1 | ⏳ pending | — | — |
