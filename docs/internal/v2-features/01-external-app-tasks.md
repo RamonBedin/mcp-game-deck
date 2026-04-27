@@ -517,7 +517,7 @@ Don't start any of those until Feature 01's "Definition of done" (in spec) is fu
 | 3.3 | ✅ done | 2026-04-25 | Restart limpo, crash detection sem falsos positivos |
 | 4.1 | ✅ done | 2026-04-25 | TCP heartbeat 5s, reconnect com backoff |
 | 4.2 | ✅ done | 2026-04-26 | tools/call funcionando, auth via UNITY_PROJECT_PATH |
-| 5.1 | ⏳ pending | — | — |
+| 5.1 | ✅ done | 2026-04-26 | Chat UI + send + listener prontos (echo vem na 5.2) |
 | 5.2 | ⏳ pending | — | — |
 | 6.1 | ⏳ pending | — | — |
 

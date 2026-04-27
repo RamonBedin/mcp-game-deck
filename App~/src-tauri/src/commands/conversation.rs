@@ -1,15 +1,38 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use serde_json::json;
+use tauri::State;
 
+use crate::node_supervisor::NodeSupervisor;
 use crate::types::{AppError, Message, MessageId, PermissionMode};
 
+/// Forwards a chat message to the Node SDK as the `conversation/send`
+/// JSON-RPC method. The actual assistant reply arrives asynchronously via a
+/// `message/received` notification (handled in jsonrpc.rs and emitted as the
+/// `message-received` Tauri event).
+///
+/// Returns the message id assigned by the Node SDK (or `"ack"` if the stub
+/// hasn't implemented the full echo response shape yet — task 5.2 wires that).
 #[tauri::command]
-#[allow(unused_variables)]
-pub fn send_message(text: String, agent: Option<String>) -> Result<MessageId, AppError> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    Ok(format!("stub-{now}"))
+pub async fn send_message(
+    text: String,
+    agent: Option<String>,
+    supervisor: State<'_, NodeSupervisor>,
+) -> Result<MessageId, AppError> {
+    let params = json!({
+        "text": text,
+        "agent": agent,
+        "session_id": null,
+    });
+    let result = supervisor
+        .request("conversation/send", Some(params))
+        .await
+        .map_err(|e| AppError::NodeSdkUnavailable(e.to_string()))?;
+
+    let id = result
+        .get("message_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ack")
+        .to_string();
+    Ok(id)
 }
 
 #[tauri::command]

@@ -98,7 +98,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-900 text-slate-100">
+    <div className="flex h-screen w-full overflow-hidden bg-slate-900 text-slate-100">
       <aside className="w-[200px] shrink-0 border-r border-slate-800 bg-slate-950 p-4">
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
           MCP Game Deck
@@ -122,7 +122,7 @@ export default function App() {
           ))}
         </nav>
       </aside>
-      <main className="flex-1 p-8">
+      <main className="flex-1 overflow-y-auto p-8">
         <Outlet />
       </main>
     </div>

@@ -29,8 +29,8 @@ use tokio::process::{ChildStdin, ChildStdout};
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::timeout;
 
-use crate::events::emit_node_sdk_status_changed;
-use crate::types::{NodeSdkStatus, NodeSdkStatusChangedPayload};
+use crate::events::{emit_message_received, emit_node_sdk_status_changed};
+use crate::types::{Message, NodeSdkStatus, NodeSdkStatusChangedPayload};
 
 use super::protocol::{Incoming, Request, RpcError};
 
@@ -268,10 +268,22 @@ fn dispatch_notification(method: &str, params: Option<Value>, app: &AppHandle) {
         "log" => {
             let _ = app.emit(EVT_NODE_LOG, payload);
         }
+        "message/received" => match serde_json::from_value::<Message>(payload.clone()) {
+            Ok(msg) => {
+                let _ = emit_message_received(app, msg);
+            }
+            Err(e) => {
+                eprintln!("[jsonrpc] message/received bad payload: {e}");
+                let _ = app.emit(
+                    EVT_NODE_NOTIFICATION,
+                    json!({ "method": method, "params": payload }),
+                );
+            }
+        },
         _ => {
             // Generic envelope for unrouted notifications. Feature 02 will
-            // replace this with typed dispatches to message-received,
-            // ask-user-requested, etc.
+            // replace this with typed dispatches to ask-user-requested,
+            // permission-requested, etc.
             let _ = app.emit(
                 EVT_NODE_NOTIFICATION,
                 json!({ "method": method, "params": payload }),
