@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { devEmitTestEvent, nodePing, restartNodeSdk } from "../ipc/commands";
+import {
+  devCallUnityTool,
+  devEmitTestEvent,
+  nodePing,
+  restartNodeSdk,
+} from "../ipc/commands";
 import { onUnityStatusChanged } from "../ipc/events";
 import type { ConnectionStatus, NodeSdkStatus } from "../ipc/types";
 import { useConnectionStore } from "../stores/connectionStore";
@@ -37,6 +42,8 @@ export default function SettingsRoute() {
   const [pinging, setPinging] = useState(false);
   const [restartResult, setRestartResult] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
+  const [unityToolResult, setUnityToolResult] = useState<string | null>(null);
+  const [callingUnityTool, setCallingUnityTool] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +95,23 @@ export default function SettingsRoute() {
       setRestartResult(`error: ${String(err)}`);
     } finally {
       setRestarting(false);
+    }
+  };
+
+  const handleCallUnityTool = async () => {
+    setCallingUnityTool(true);
+    setUnityToolResult("…");
+    const start = performance.now();
+    try {
+      const result = await devCallUnityTool("console-get-logs", { count: 5 });
+      const elapsed = Math.round(performance.now() - start);
+      const preview = JSON.stringify(result).slice(0, 240);
+      setUnityToolResult(`(${elapsed}ms) ${preview}${preview.length === 240 ? "…" : ""}`);
+      console.log("[unity-tool] result:", result);
+    } catch (err) {
+      setUnityToolResult(`error: ${String(err)}`);
+    } finally {
+      setCallingUnityTool(false);
     }
   };
 
@@ -164,6 +188,32 @@ export default function SettingsRoute() {
               <p className="mt-1 text-xs text-slate-500">
                 Round-trips a JSON-RPC `ping`. Watch DevTools console for the
                 node heartbeat (every 5s).
+              </p>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={() => void handleCallUnityTool()}
+                disabled={callingUnityTool}
+                className="rounded bg-emerald-700 px-3 py-1.5 text-sm text-emerald-50 hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Call Unity tool (console-get-logs)
+              </button>
+              {unityToolResult !== null && (
+                <p className="mt-1 break-all font-mono text-xs text-slate-400">
+                  {unityToolResult}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-slate-500">
+                Requires{" "}
+                <code className="text-slate-400">UNITY_PROJECT_PATH</code> env
+                var pointing to a Unity project running this package. Token
+                read from{" "}
+                <code className="text-slate-400">
+                  $UNITY_PROJECT_PATH/Library/GameDeck/auth-token
+                </code>
+                .
               </p>
             </div>
           </div>

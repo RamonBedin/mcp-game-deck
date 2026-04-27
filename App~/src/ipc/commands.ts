@@ -107,3 +107,12 @@ export const devEmitTestEvent = (): Promise<void> =>
 // Round-trips a JSON-RPC `ping` to the Node SDK child. Used by Group 3
 // verification; resolves to true if the child responds with `{ pong: true }`.
 export const nodePing = (): Promise<boolean> => invoke("node_ping");
+
+// Forwards a `tools/call` to Unity's MCP server. The Rust side reads the
+// auth token from `$UNITY_PROJECT_PATH/Library/GameDeck/auth-token`.
+// Returns the unwrapped `result` field of the JSON-RPC response.
+export const devCallUnityTool = (
+  name: string,
+  args?: Record<string, unknown>,
+): Promise<unknown> =>
+  invoke("dev_call_unity_tool", { name, arguments: args ?? {} });

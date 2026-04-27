@@ -67,6 +67,7 @@ pub fn run() {
             commands::settings::update_settings,
             commands::dev::dev_emit_test_event,
             commands::dev::node_ping,
+            commands::dev::dev_call_unity_tool,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
