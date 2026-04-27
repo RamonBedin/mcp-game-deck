@@ -243,3 +243,24 @@ That's the bar. Anything beyond (real chat, plans, rules) is later features.
 4. **macOS notarization cost** — addressed when first macOS release is needed; not blocking dev.
 
 These are noted in `docs/internal/v2-architecture.md` already; do not re-litigate during Feature 01 implementation.
+
+## Build size note
+
+Measured on Windows after `pnpm tauri build` (April 2026, Tauri 2.10.x).
+
+| Artifact | Path (under `App~/src-tauri/target/release/`) | Size |
+|---|---|---|
+| Windows installer (Wix MSI) | `bundle/msi/MCP Game Deck_0.1.0_x64_en-US.msi` | **2.93 MB** |
+| Windows installer (NSIS) | `bundle/nsis/MCP Game Deck_0.1.0_x64-setup.exe` | **1.94 MB** |
+| Standalone executable | `mcp-game-deck-app.exe` | **8.99 MB** |
+
+Target was <30 MB compressed for the `.msi`. Tauri 2.x with the system WebView2 runtime (pre-installed on Win10/11) ships extremely lean — final installer is ~10× under target.
+
+### Production runtime caveats (resolved by Feature 07, not 6.1)
+
+- **Node SDK path** is resolved via `env!("CARGO_MANIFEST_DIR")` — embeds the developer's machine path at compile time. The release binary works only on a machine where the repo lives at the same path. Distribution-ready resolution (resource bundling or env var injection) lands with Feature 07's pin.
+- **Auth token** requires `UNITY_PROJECT_PATH` env var to be set before launch. Feature 07's pin sets this when spawning the app.
+
+### macOS / Linux
+
+Deferred. The `targets: "all"` config in `src-tauri/tauri.conf.json` will build them when run on those OSes, but neither is shipped for v2.0.

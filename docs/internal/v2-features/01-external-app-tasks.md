@@ -519,6 +519,6 @@ Don't start any of those until Feature 01's "Definition of done" (in spec) is fu
 | 4.2 | ✅ done | 2026-04-26 | tools/call funcionando, auth via UNITY_PROJECT_PATH |
 | 5.1 | ✅ done | 2026-04-26 | Chat UI + send + listener prontos (echo vem na 5.2) |
 | 5.2 | ✅ done | 2026-04-26 | Echo round-trip funcionando, múltiplas mensagens OK |
-| 6.1 | ⏳ pending | — | — |
+| 6.1 | ✅ done | 2026-04-26 | MSI 2.93 MB, NSIS 1.94 MB, exe 8.99 MB — sob meta de 30MB |
 
 Mark tasks as `✅ done` after Ramon commits the corresponding code.
