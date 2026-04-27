@@ -2,29 +2,38 @@ pub mod commands;
 pub mod events;
 pub mod node_supervisor;
 pub mod types;
+pub mod unity_client;
 
 use tauri::{Manager, WindowEvent};
 
 use node_supervisor::NodeSupervisor;
+use unity_client::UnityClient;
 
 pub fn run() {
     tauri::Builder::default()
         .manage(NodeSupervisor::new())
+        .manage(UnityClient::new())
         .setup(|app| {
             let app_handle = app.handle().clone();
+
+            // Node SDK supervisor — spawn child + JSON-RPC framing.
+            let app_for_node = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                let supervisor = app_handle.state::<NodeSupervisor>();
-                match supervisor.spawn(app_handle.clone()).await {
+                let supervisor = app_for_node.state::<NodeSupervisor>();
+                match supervisor.spawn(app_for_node.clone()).await {
                     Ok(pid) => println!("[node-supervisor] spawned PID {pid}"),
                     Err(e) => eprintln!("[node-supervisor] spawn failed: {e}"),
                 }
             });
+
+            // Unity client — connect, heartbeat, reconnect with backoff.
+            let unity = app_handle.state::<UnityClient>();
+            unity.start(app_handle.clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // Prevent the default close so we can shut the child down
-                // cleanly before the process exits.
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 tauri::async_runtime::spawn(async move {

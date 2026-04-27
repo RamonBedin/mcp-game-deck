@@ -2,10 +2,14 @@ use tauri::{AppHandle, State};
 
 use crate::node_supervisor::NodeSupervisor;
 use crate::types::{AppError, ConnectionStatus, NodeSdkStatus};
+use crate::unity_client::UnityClient;
 
+/// Reads the current Unity TCP connection status from `UnityClient`. Sync.
+/// Polled every 2s by App.tsx; events from `unity-status-changed` provide
+/// the fast-path updates.
 #[tauri::command]
-pub fn get_unity_status() -> ConnectionStatus {
-    ConnectionStatus::Connected
+pub fn get_unity_status(client: State<'_, UnityClient>) -> ConnectionStatus {
+    client.current_status()
 }
 
 /// Reads the live state machine maintained by the supervisor. Sync —
@@ -18,6 +22,9 @@ pub fn get_node_sdk_status(supervisor: State<'_, NodeSupervisor>) -> NodeSdkStat
 
 #[tauri::command]
 pub fn reconnect_unity() -> Result<(), AppError> {
+    // The connection loop already retries on backoff; a manual nudge would
+    // require interrupting the current sleep. Out of scope for 4.1; revisit
+    // if there's a UX need.
     Ok(())
 }
 
