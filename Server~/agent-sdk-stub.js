@@ -1,14 +1,17 @@
 // STUB — replaced by Feature 02 orchestrator.
 //
-// Bridges stdio with a tiny JSON-RPC 2.0 dialect. Used by the Group 3
+// Bridges stdio with a tiny JSON-RPC 2.0 dialect. Used by the Group 3 / 5
 // plumbing tasks in App~/src-tauri/src/node_supervisor:
 // - 3.1: prove the spawn pipe works
-// - 3.2 (current): exercise request/response correlation + notifications
+// - 3.2: exercise request/response correlation + notifications
 // - 3.3: support restart / crash detection
+// - 5.2: closes the Feature 01 chat round-trip via a literal echo
 //
 // Supported requests:
-//   ping  →  { pong: true }
-//   echo  →  whatever was sent in `params`
+//   ping              →  { pong: true }
+//   echo              →  whatever was sent in `params`
+//   conversation/send →  { message_id }, plus a `message/received`
+//                        notification with the assistant echo
 //
 // Periodic notifications:
 //   log   every 5s heartbeat (proves the notification path)
@@ -40,6 +43,27 @@ const heartbeat = setInterval(() => {
 }, 5000);
 heartbeat.unref();
 
+// STUB — Feature 02 orchestrator replaces this with real Claude Agent SDK
+// driven multi-turn conversations. The literal `echo:` prefix is the
+// signature that Feature 01's round-trip is alive end-to-end.
+const handleConversationSend = (requestId, params) => {
+  const text = (params && typeof params.text === "string") ? params.text : "";
+
+  const assistantId = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const message = {
+    id: assistantId,
+    role: "assistant",
+    content: `echo: ${text}`,
+    timestamp: Date.now(),
+  };
+
+  // Emit the assistant message first so the UI renders it on the same tick
+  // the send-promise resolves (avoids a flicker where the user sees the
+  // promise complete before the reply lands).
+  sendNotification("message/received", message);
+  sendResponse(requestId, { result: { message_id: assistantId } });
+};
+
 const handleRequest = ({ id, method, params }) => {
   switch (method) {
     case "ping":
@@ -47,6 +71,9 @@ const handleRequest = ({ id, method, params }) => {
       break;
     case "echo":
       sendResponse(id, { result: params ?? null });
+      break;
+    case "conversation/send":
+      handleConversationSend(id, params);
       break;
     default:
       sendResponse(id, {
