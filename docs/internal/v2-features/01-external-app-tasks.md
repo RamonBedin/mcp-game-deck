@@ -514,7 +514,7 @@ Don't start any of those until Feature 01's "Definition of done" (in spec) is fu
 | 2.6 | ✅ done | 2026-04-25 | Eventos Rust→React funcionando após adicionar capabilities |
 | 3.1 | ✅ done | 2026-04-25 | Node child spawna, cleanup limpo, sem zombies |
 | 3.2 | ✅ done | 2026-04-25 | JSON-RPC funcionando, timeout + EOF rejection OK |
-| 3.3 | ⏳ pending | — | — |
+| 3.3 | ✅ done | 2026-04-25 | Restart limpo, crash detection sem falsos positivos |
 | 4.1 | ⏳ pending | — | — |
 | 4.2 | ⏳ pending | — | — |
 | 5.1 | ⏳ pending | — | — |

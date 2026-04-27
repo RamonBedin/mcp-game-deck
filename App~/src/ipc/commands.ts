@@ -17,6 +17,7 @@ import type {
   ConnectionStatus,
   Message,
   MessageId,
+  NodeSdkStatus,
   PermissionMode,
   Plan,
   PlanMeta,
@@ -29,7 +30,7 @@ import type {
 export const getUnityStatus = (): Promise<ConnectionStatus> =>
   invoke("get_unity_status");
 
-export const getNodeSdkStatus = (): Promise<ConnectionStatus> =>
+export const getNodeSdkStatus = (): Promise<NodeSdkStatus> =>
   invoke("get_node_sdk_status");
 
 export const reconnectUnity = (): Promise<void> => invoke("reconnect_unity");

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getNodeSdkStatus, getUnityStatus } from "./ipc/commands";
-import { onNodeLog } from "./ipc/events";
+import { onNodeLog, onNodeSdkStatusChanged } from "./ipc/events";
 import { useConnectionStore } from "./stores/connectionStore";
 
 const NAV_ITEMS = [
@@ -42,9 +42,33 @@ export default function App() {
     };
   }, [setUnityStatus, setNodeSdkStatus]);
 
+  // Fast-path Node SDK transitions via Tauri events. Polling is the
+  // backstop; this catches Starting / Running / Crashed within milliseconds
+  // instead of waiting up to 2s for the next tick.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    onNodeSdkStatusChanged((payload) => {
+      if (cancelled) return;
+      setNodeSdkStatus(payload.status);
+    })
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      })
+      .catch((err) => {
+        console.error("[app] failed to subscribe to node-sdk-status-changed:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [setNodeSdkStatus]);
+
   // Forward Node SDK log notifications to the DevTools console. Lives at
-  // the layout root so it survives route changes — once subscribed for the
-  // app's lifetime, never unsubscribed during normal use.
+  // the layout root so it survives route changes.
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;

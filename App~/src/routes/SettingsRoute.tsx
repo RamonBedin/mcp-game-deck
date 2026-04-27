@@ -1,17 +1,28 @@
 import { useEffect, useState } from "react";
-import { devEmitTestEvent, nodePing } from "../ipc/commands";
+import { devEmitTestEvent, nodePing, restartNodeSdk } from "../ipc/commands";
 import { onUnityStatusChanged } from "../ipc/events";
-import type { ConnectionStatus } from "../ipc/types";
+import type { ConnectionStatus, NodeSdkStatus } from "../ipc/types";
 import { useConnectionStore } from "../stores/connectionStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
-const statusClass = (status: ConnectionStatus): string => {
+const unityStatusClass = (status: ConnectionStatus): string => {
   switch (status) {
     case "connected":
       return "text-emerald-400";
     case "busy":
       return "text-amber-400";
     case "disconnected":
+      return "text-rose-400";
+  }
+};
+
+const nodeSdkStatusClass = (status: NodeSdkStatus): string => {
+  switch (status) {
+    case "running":
+      return "text-emerald-400";
+    case "starting":
+      return "text-amber-400";
+    case "crashed":
       return "text-rose-400";
   }
 };
@@ -24,10 +35,9 @@ export default function SettingsRoute() {
 
   const [pingResult, setPingResult] = useState<string | null>(null);
   const [pinging, setPinging] = useState(false);
+  const [restartResult, setRestartResult] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
 
-  // Subscribe to unity-status-changed events. The 2s poll in App.tsx will
-  // overwrite the disconnected state on the next tick — that's the intended
-  // "revert" path for the dev test trigger.
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -68,12 +78,24 @@ export default function SettingsRoute() {
     }
   };
 
+  const handleRestart = async () => {
+    setRestarting(true);
+    setRestartResult("restarting…");
+    try {
+      await restartNodeSdk();
+      setRestartResult("ok — watch status above");
+    } catch (err) {
+      setRestartResult(`error: ${String(err)}`);
+    } finally {
+      setRestarting(false);
+    }
+  };
+
   return (
     <section>
       <h1 className="text-2xl font-semibold">Settings</h1>
       <p className="mt-2 text-slate-400">
-        Live connection status (polled every 2s). Real settings UI lands in
-        later tasks.
+        Live connection status (polled every 2s, plus event-driven fast path).
       </p>
 
       <dl className="mt-6 grid grid-cols-[140px_1fr] gap-y-2 text-sm">
@@ -81,11 +103,25 @@ export default function SettingsRoute() {
         <dd className="text-slate-200">{theme}</dd>
 
         <dt className="text-slate-500">Unity</dt>
-        <dd className={statusClass(unityStatus)}>{unityStatus}</dd>
+        <dd className={unityStatusClass(unityStatus)}>{unityStatus}</dd>
 
         <dt className="text-slate-500">Node SDK</dt>
-        <dd className={statusClass(nodeSdkStatus)}>{nodeSdkStatus}</dd>
+        <dd className={nodeSdkStatusClass(nodeSdkStatus)}>{nodeSdkStatus}</dd>
       </dl>
+
+      <div className="mt-6">
+        <button
+          type="button"
+          onClick={() => void handleRestart()}
+          disabled={restarting}
+          className="rounded bg-slate-700 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Restart Node SDK
+        </button>
+        {restartResult !== null && (
+          <p className="mt-1 font-mono text-xs text-slate-400">{restartResult}</p>
+        )}
+      </div>
 
       {import.meta.env.DEV && (
         <div className="mt-8 border-t border-slate-800 pt-6">

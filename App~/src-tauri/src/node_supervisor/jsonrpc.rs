@@ -18,6 +18,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -28,6 +29,9 @@ use tokio::process::{ChildStdin, ChildStdout};
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::timeout;
 
+use crate::events::emit_node_sdk_status_changed;
+use crate::types::{NodeSdkStatus, NodeSdkStatusChangedPayload};
+
 use super::protocol::{Incoming, Request, RpcError};
 
 const REQUEST_TIMEOUT_SECS: u64 = 30;
@@ -36,12 +40,43 @@ const EVT_NODE_LOG: &str = "node-log";
 const EVT_NODE_NOTIFICATION: &str = "node-notification";
 
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, RpcError>>>>>;
+pub type StatusArc = Arc<StdMutex<NodeSdkStatus>>;
 
 #[derive(Clone)]
 pub struct Connection {
     next_id: Arc<AtomicU64>,
     pending: PendingMap,
     writer_tx: mpsc::Sender<String>,
+}
+
+/// Atomically swap the Node SDK status and emit `node-sdk-status-changed`
+/// iff the value actually changed. Idempotent: no event if already the
+/// target status. Used by both the supervisor (Starting/Running) and the
+/// reader_loop (Crashed on EOF), so identical state machines either path.
+pub(super) fn transition_node_status(
+    app: &AppHandle,
+    status_arc: &StatusArc,
+    new_status: NodeSdkStatus,
+    pid: Option<u32>,
+) {
+    let changed = {
+        let mut guard = status_arc.lock().unwrap();
+        if *guard == new_status {
+            false
+        } else {
+            *guard = new_status;
+            true
+        }
+    };
+    if changed {
+        let _ = emit_node_sdk_status_changed(
+            app,
+            NodeSdkStatusChangedPayload {
+                status: new_status,
+                pid,
+            },
+        );
+    }
 }
 
 #[derive(Debug)]
@@ -72,12 +107,17 @@ impl std::fmt::Display for RequestError {
 impl std::error::Error for RequestError {}
 
 impl Connection {
-    pub fn new(stdin: ChildStdin, stdout: ChildStdout, app: AppHandle) -> Self {
+    pub fn new(
+        stdin: ChildStdin,
+        stdout: ChildStdout,
+        app: AppHandle,
+        status: StatusArc,
+    ) -> Self {
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         let (writer_tx, writer_rx) = mpsc::channel::<String>(WRITER_QUEUE_CAPACITY);
 
         tokio::spawn(writer_loop(stdin, writer_rx));
-        tokio::spawn(reader_loop(stdout, pending.clone(), app));
+        tokio::spawn(reader_loop(stdout, pending.clone(), app, status));
 
         Self {
             next_id: Arc::new(AtomicU64::new(1)),
@@ -139,7 +179,12 @@ async fn writer_loop(mut stdin: ChildStdin, mut rx: mpsc::Receiver<String>) {
     // Channel closed (Connection dropped) or write failure → exit task.
 }
 
-async fn reader_loop(stdout: ChildStdout, pending: PendingMap, app: AppHandle) {
+async fn reader_loop(
+    stdout: ChildStdout,
+    pending: PendingMap,
+    app: AppHandle,
+    status: StatusArc,
+) {
     let mut lines = BufReader::new(stdout).lines();
     loop {
         match lines.next_line().await {
@@ -153,11 +198,15 @@ async fn reader_loop(stdout: ChildStdout, pending: PendingMap, app: AppHandle) {
             Ok(None) => {
                 eprintln!("[jsonrpc] child stdout closed (EOF)");
                 drain_pending(&pending).await;
+                // If shutdown() already set Crashed, transition is a no-op
+                // (no spurious event during intentional teardown).
+                transition_node_status(&app, &status, NodeSdkStatus::Crashed, None);
                 break;
             }
             Err(e) => {
                 eprintln!("[jsonrpc] read error: {e}");
                 drain_pending(&pending).await;
+                transition_node_status(&app, &status, NodeSdkStatus::Crashed, None);
                 break;
             }
         }
