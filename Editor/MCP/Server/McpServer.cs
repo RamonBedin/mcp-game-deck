@@ -21,7 +21,10 @@ namespace GameDeck.MCP.Server
     /// Singleton TCP server that implements a minimal HTTP transport for MCP JSON-RPC.
     /// Uses <see cref="TcpListener"/> with <see cref="SocketOptionName.ReuseAddress"/>
     /// so the port is released instantly on stop — no EADDRINUSE after assembly reloads.
-    /// Lifecycle: stop before assembly reload, restart after, stop on play mode, restart on edit mode.
+    /// Lifecycle: stop before assembly reload, restart after. Server stays up across
+    /// play mode transitions so MCP tools remain available while inspecting / debugging
+    /// a running game (matches behavior of other Unity MCP servers — see IvanMurzak/Unity-MCP,
+    /// mitchchristow/unity-mcp).
     /// </summary>
     [InitializeOnLoad]
     public static class McpServer
@@ -345,7 +348,6 @@ namespace GameDeck.MCP.Server
             EditorApplication.quitting += HandleEditorQuitting;
             AssemblyReloadEvents.beforeAssemblyReload += HandleBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload += HandleAfterAssemblyReload;
-            EditorApplication.playModeStateChanged += HandlePlayModeStateChanged;
         }
 
         #endregion
@@ -385,33 +387,7 @@ namespace GameDeck.MCP.Server
             EditorApplication.quitting -= HandleEditorQuitting;
             AssemblyReloadEvents.beforeAssemblyReload -= HandleBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload -= HandleAfterAssemblyReload;
-            EditorApplication.playModeStateChanged -= HandlePlayModeStateChanged;
             _eventsSubscribed = false;
-        }
-
-        /// <summary>
-        /// Handles play mode transitions. Stops server when entering play mode,
-        /// restarts when returning to edit mode.
-        /// </summary>
-        /// <param name="state">The play mode state change.</param>
-        private static void HandlePlayModeStateChanged(PlayModeStateChange state)
-        {
-            switch (state)
-            {
-                case PlayModeStateChange.ExitingEditMode:
-                    if (_running)
-                    {
-                        StopServer();
-                    }
-                    break;
-
-                case PlayModeStateChange.EnteredEditMode:
-                    if (!_running)
-                    {
-                        StartServer();
-                    }
-                    break;
-            }
         }
 
         #endregion

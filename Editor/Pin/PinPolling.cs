@@ -127,11 +127,8 @@ namespace GameDeck.Editor.Pin
             _nextTickAt = EditorApplication.timeSinceStartup + TICK_INTERVAL_SECONDS;
             TickCount++;
 
-            // Refresh the cached port so the threaded log handler picks up settings changes.
             _cachedPort = GameDeckSettings.Instance._mcpPort;
 
-            // Observe the bind-failure flag set from the (possibly worker-thread) log handler
-            // and stamp the timestamp here on the main thread so EditorApplication APIs are safe.
             if (_bindFailureFlag)
             {
                 _bindFailureFlag = false;
@@ -194,8 +191,6 @@ namespace GameDeck.Editor.Pin
                 if (connected)
                 {
                     _lastSuccessfulProbeAt = EditorApplication.timeSinceStartup;
-                    // A successful probe means the port is reachable from this Unity instance,
-                    // so any prior bind-failure log line is no longer relevant — clear the window.
                     _lastBindFailureAt = double.MinValue;
                 }
 
@@ -331,7 +326,6 @@ namespace GameDeck.Editor.Pin
             }
 
             var port = _cachedPort;
-
             if (port == 0)
             {
                 return;

@@ -1,5 +1,6 @@
 #nullable enable
 
+using GameDeck.Editor.Settings;
 using UnityEditor;
 using UnityEditor.Toolbars;
 using UnityEngine;
@@ -18,13 +19,8 @@ namespace GameDeck.Editor.Pin
         #region CONSTANTS
 
         public const string ELEMENT_PATH = "MCP Game Deck/Pin";
-        private const string TOOLTIP = "MCP Game Deck";
-
-        #endregion
-
-        #region FIELDS
-
-        private static readonly bool _testUpdateAvailable = false;
+        public const string UPDATE_AVAILABLE_PREF = "MCPGameDeck.UpdateAvailable";
+        public const string LATEST_VERSION_PREF = "MCPGameDeck.LatestVersion";
 
         #endregion
 
@@ -51,8 +47,14 @@ namespace GameDeck.Editor.Pin
         [MainToolbarElement(ELEMENT_PATH, defaultDockPosition = MainToolbarDockPosition.Left)]
         public static MainToolbarElement CreatePin()
         {
-            var icon = PinIcon.BuildComposite(PinPolling.CurrentStatus, _testUpdateAvailable);
-            var content = new MainToolbarContent(icon, TOOLTIP);
+            var status = PinPolling.CurrentStatus;
+            var port = GameDeckSettings.Instance._mcpPort;
+            var updateAvailable = EditorPrefs.GetBool(UPDATE_AVAILABLE_PREF, false);
+            var updateVersion = EditorPrefs.GetString(LATEST_VERSION_PREF, "");
+
+            var icon = PinIcon.BuildComposite(status, updateAvailable);
+            var tooltip = PinTooltip.GetText(status, port, updateAvailable, updateVersion);
+            var content = new MainToolbarContent(icon, tooltip);
             return new MainToolbarButton(content, OnPinClicked);
         }
 
