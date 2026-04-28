@@ -325,26 +325,32 @@ If multi-project becomes common feedback, v2.x can add automatic port-fallback i
 
 ## Locked decision #5 — Pin UI placement and styling
 
-**Decided:** April 2026.
+**Decided:** April 2026. **Revised:** April 2026 (after task 1.2 validation revealed UX issue with Toolbar Overlay placement).
 
-### Placement — Toolbar Overlay (Unity 6 official)
+### Placement — global Editor toolbar (left slot, via reflection)
 
-- **Use `[Overlay]` attribute** with `IconToolbarOverlay` (Unity 6's documented Toolbar Overlay API).
-- **Default location:** anchored near the play/pause/step controls at the top of the Scene/Game viewport.
-- **User can move it.** Toolbar Overlays support drag-to-reposition out of the box; Unity persists the user's preference per-project. No extra code needed.
-- **Why not the legacy global Editor Toolbar (top menu bar):** that route requires reflection into Unity's internal `Toolbar` class, which is unstable across Unity versions and not officially supported. Toolbar Overlays are first-class in Unity 6 and forward-compatible.
+- **Where:** the global Editor toolbar at the very top of the Unity window, on the **left side**, immediately after the existing project picker / cloud account dropdowns (e.g. between `Asset Store ▾` and the next dropdown, or at the rightmost end of the left cluster).
+- **Why this slot:** always visible regardless of which view (Scene / Game / Console) the user is in. Matches the placement convention established by Benzi.ai, ParrelSync, and similar Editor tooling — users already expect status pins to live there.
+- **Implementation:** reflection into `UnityEditor.Toolbar` (internal class) to inject a custom `OnGUI` handler into the left toolbar zone. Pattern is well-established in the Asset Store ecosystem; multiple OSS implementations exist as reference.
+- **Why NOT Toolbar Overlay (`[Overlay]` + `IconToolbarOverlay`):** initially chosen for being the documented Unity 6 API, but in practice Toolbar Overlays only appear inside the Scene view panel and require manual user activation per project. UX is wrong for a always-on status indicator — user shouldn't have to open Scene view and toggle a checkbox just to see whether the app is connected.
+- **Trade-off accepted:** reflection into internal Unity APIs is not officially supported and may break across major Unity versions (e.g. Unity 7). Mitigation:
+  - Wrap reflection in a try/catch that logs (once) and gracefully no-ops if the internal layout shifts.
+  - Test on each Unity major release before bumping the package's `unity` version field.
+  - The pin's functionality (status, launch, menu) does not depend on the toolbar mount working — if reflection fails, the pin is invisible but the C# MCP Server, the Tauri app, and Project Settings continue to work.
+  - Document the `unity` field constraint in the package manifest (currently `6000.3+`).
+- **Drag-to-reposition:** not supported. The pin sits at a fixed slot. Acceptable trade-off for the gain of being always visible.
 
-### Visual — icon + status dot + tooltip
+### Visual — icon + status dot + tooltip (unchanged)
 
-- **Icon:** small product icon (~20×20 px) on the left side of the pin.
-- **Status dot:** ~8×8 px colored circle in the bottom-right corner of the icon (overlay).
+- **Icon:** small product icon (~16×16 px) on the left of the pin. Smaller than originally specified (was 20×20) because the global toolbar slot is tighter — Unity's other items are typically 16 px.
+- **Status dot:** ~6×6 px colored circle in the bottom-right corner of the icon (overlay).
   - 🟢 green `#22c55e` — connected and ready
   - 🟡 yellow `#eab308` — Unity busy (compiling, entering play mode, asset import)
   - 🔴 red `#ef4444` — app not running OR MCP server bind failure
   - ⚫ gray `#6b7280` — no app installed (first run)
-- **Update badge:** when `UpdateChecker.IsUpdateAvailable == true`, the pin draws a tiny blue dot (~5×5 px) in the **top-right** corner of the icon (so it doesn't collide with the status dot in the bottom-right). Subtle, no animation.
-- **No text label.** Recognition is via icon + color. Saves toolbar real estate.
-- **Total pin footprint:** ~24×24 px including padding.
+- **Update badge:** when `UpdateChecker.IsUpdateAvailable == true`, the pin draws a tiny blue dot (~4×4 px) in the **top-right** corner of the icon (so it doesn't collide with the status dot in the bottom-right). Subtle, no animation.
+- **No text label.** Recognition is via icon + color. Saves toolbar real estate — the global toolbar is already crowded.
+- **Total pin footprint:** ~20×20 px including padding (was 24×24 in the Toolbar Overlay version).
 
 ### Tooltip text per state
 
@@ -363,7 +369,7 @@ Hover shows tooltip explaining current state and (when relevant) what to do:
 ### Icon — placeholder for now, real one comes from Feature 09
 
 - **Feature 07 ships with a placeholder.** A simple monochrome generic icon (e.g. a stylized "MCP" wordmark, or a generic chat-bubble glyph) — anything recognizable but not the final brand.
-- **Stored as a Unity Editor resource** under `Editor/Resources/pin-icon-placeholder.png` (and dark-mode variant if needed) — Unity's `EditorGUIUtility.IconContent` or direct `Texture2D` load.
+- **Stored as a Unity Editor resource** under `Editor/Resources/pin-icon-placeholder.png` (and dark-mode variant if needed) — loaded via `UnityEngine.Resources.Load<Texture2D>("pin-icon-placeholder")`.
 - **The Tauri app icon (`src-tauri/icons/`) is also a placeholder** for now (Feature 01 generated it from a default template).
 - **Both real icons land in Feature 09 (Claude Design hand-off):**
   - Feature 09 produces the brand assets (logo, color palette, typography).
@@ -373,9 +379,10 @@ Hover shows tooltip explaining current state and (when relevant) what to do:
 
 ### Why these choices
 
-- **Toolbar Overlay over legacy injection:** documented API, future-proof, lets user customize position for free.
+- **Global toolbar over Scene-view overlay:** always visible, matches user expectations from similar Editor tools, no per-project activation friction.
+- **Reflection trade-off accepted:** the alternative (Toolbar Overlay) gave wrong UX. Reflection is fragile but well-trodden — multiple production tools rely on the same pattern across Unity versions.
 - **Icon + status dot over plain colored dot:** brand recognition (when icon lands in F09) + status at a glance. Works equally well in Unity's light and dark Editor themes.
-- **No text label:** every Unity user already has dozens of toolbar buttons; another text label adds noise. Color + icon is sufficient given the tooltip.
+- **No text label:** the global toolbar is tight on space; icon + color is sufficient given the tooltip.
 - **Update badge in opposite corner from status dot:** prevents visual collision, keeps both signals readable simultaneously.
 - **Placeholder icon now, real icon in F09:** unblocks Feature 07 work without waiting on design, and avoids a half-finished brand. Swap is trivial later.
 
@@ -383,10 +390,17 @@ Hover shows tooltip explaining current state and (when relevant) what to do:
 
 | Risk | Mitigation |
 |------|------------|
-| Toolbar Overlay API changes between Unity 6 minor versions | Stick to `[Overlay]` + `IconToolbarOverlay` (the documented surface). Smoke test on Unity 6.0, 6.1, etc. as new versions ship. |
+| Unity bumps a major version and breaks the reflection mount | Wrap reflection in try/catch; pin no-ops gracefully. Audit on each Unity major before updating the package's `unity` field. |
 | Status dot too small to see on high-DPI displays | Use `EditorGUIUtility.pixelsPerPoint` to scale dot size. Test on 4K monitors. |
 | Placeholder icon ships in v2.0 release if F09 isn't ready | Acceptable. Document in release notes that icon is a placeholder; brand lands in a follow-up patch. |
 | Update badge confusable with status dot | Different corner (top-right vs bottom-right) and different color (blue vs status color). Unique enough. |
+| Toolbar reflection conflicts with another package using the same hook | Defensive subscription (idempotent unsubscribe-then-subscribe), check for existing children before injecting. |
+
+### Reference implementations to study
+
+- ParrelSync's status indicator (open-source Asset Store package)
+- Benzi.ai's pin (proprietary but visible in their public videos)
+- Several free "Toolbar Extender" snippets on GitHub Gist that show the reflection path — use them as reference for which internal Unity classes / fields to look up. Do NOT vendor them; write fresh code that documents what each reflected member is for.
 
 ---
 

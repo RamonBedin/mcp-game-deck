@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(where rg *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(rm *)"
     ]
   }
 }

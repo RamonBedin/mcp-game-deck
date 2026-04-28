@@ -42,7 +42,7 @@ The C# MCP Server (`Editor/MCP/`) and the rest of the Tauri app are unchanged fr
 
 | Layer | Choice | Notes |
 |-------|--------|-------|
-| Pin UI | Unity 6 Toolbar Overlay (`[Overlay]` + `IconToolbarOverlay`) | Documented API. User can drag-reposition. |
+| Pin UI | Reflection mount on global Editor toolbar (`UnityEditor.Toolbar`) | Decision #5 — always-visible status indicator. Trade-off: internal API, must be tested per Unity major. |
 | Pin polling | `EditorApplication.update` callback at ~2 Hz | Cheap TCP socket existence check. |
 | Binary download | C# `HttpClient` (already in Unity .NET BCL) | No new dependencies. |
 | Hashing | C# `System.Security.Cryptography.SHA256` | Already available. |
@@ -56,15 +56,15 @@ The C# MCP Server (`Editor/MCP/`) and the rest of the Tauri app are unchanged fr
 
 ```
 Editor/Pin/
-├── PinOverlay.cs              ← [Overlay] class, root toolbar widget
-├── PinPolling.cs              ← state machine: status colors based on TCP / EditorPrefs
-├── PinIcon.cs                 ← icon + status dot + update badge rendering
-├── PinTooltip.cs              ← tooltip text per state
-├── PinContextMenu.cs          ← right-click menu (Settings / Copy URL / Show folder / About)
-├── PinLauncher.cs             ← spawn Tauri with env vars + --route arg
-├── PinBinaryManager.cs        ← discover / download / verify the Tauri binary
-├── PinPaths.cs                ← cross-platform path helpers (%APPDATA% / ~/.local/...)
-└── PinDownloadDialog.cs       ← error dialogs for download failures
+├── PinToolbarMount.cs          ← [InitializeOnLoad] reflection-injects pin into global Editor toolbar (left slot)
+├── PinPolling.cs               ← state machine: status colors based on TCP / EditorPrefs
+├── PinIcon.cs                  ← icon + status dot + update badge rendering (already from task 1.2)
+├── PinTooltip.cs               ← tooltip text per state
+├── PinContextMenu.cs           ← right-click menu (Settings / Copy URL / Show folder / About)
+├── PinLauncher.cs              ← spawn Tauri with env vars + --route arg
+├── PinBinaryManager.cs         ← discover / download / verify the Tauri binary
+├── PinPaths.cs                 ← cross-platform path helpers (%APPDATA% / ~/.local/...)
+└── PinDownloadDialog.cs        ← error dialogs for download failures
 
 Editor/Resources/
 └── pin-icon-placeholder.png   ← placeholder (real icon comes from Feature 09)

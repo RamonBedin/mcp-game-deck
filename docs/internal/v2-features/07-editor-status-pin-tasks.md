@@ -15,8 +15,8 @@
 
 | # | Task | Size | Status | Date | Notes |
 |---|------|------|--------|------|-------|
-| 1.1 | Toolbar Overlay scaffold (gray pin, no logic) | S | ✅ | 2026-04-28 | Compila + log attach + overlay arrastável. [Icon] adiado para 1.3 |
-| 1.2 | Pin icon + status dot rendering | S | ⏳ | | |
+| 1.1 | Toolbar reflection mount (replaces [Overlay] approach) | M | ✅ | 2026-04-28 | Replaces the original Toolbar Overlay attempt; see decision #5 (revised). |
+| 1.2 | Pin icon + status dot rendering | S | ✅ | 2026-04-28 | Procedural Color32 rendering; PNG asset (1.3) superseded. |
 | 1.3 | Placeholder icon asset in Resources | S | ⏳ | | |
 | 2.1 | Polling loop wiring (Editor update tick) | S | ⏳ | | |
 | 2.2 | TCP probe + base state machine (gray / red / green) | M | ⏳ | | |
@@ -48,36 +48,64 @@
 
 > Goal: pin appears in Unity, draws icon + colored dot, but does nothing functional yet (always shows gray). This unblocks visual iteration before lifecycle complexity lands.
 
-### Task 1.1 — Toolbar Overlay scaffold
+### Task 1.1 — Toolbar reflection mount (replaces [Overlay] approach)
 
-**Size:** S
-**Refs:** spec "File layout", "Pin state machine"
+**Size:** M
+**Refs:** spec "File layout", design decision #5 (revised)
+
+**Context:** the original 1.1 used Unity 6's `[Overlay]` attribute to attach the pin to the Scene view. UX validation revealed this requires manual user activation and only shows inside Scene view — wrong fit for an always-on status indicator. Decision #5 was revised: pin now mounts on the **global Editor toolbar** via reflection into `UnityEditor.Toolbar` (internal API). The previous `PinOverlay.cs` is replaced by `PinToolbarMount.cs`.
 
 **Output:**
 
-- New file `Editor/Pin/PinOverlay.cs`
-- Class with `[Overlay(typeof(SceneView), id, displayName)]` + `[Icon("path-to-placeholder")]` attributes
-- Inherits from `IconToolbarOverlay`
-- `OnCreated()` logs once that pin attached
-- Returns a stub `VisualElement` from `CreatePanelContent()` — just an empty container, ~24×24 px
+- **Delete** `Editor/Pin/PinOverlay.cs` (and its `.meta`).
+- New file `Editor/Pin/PinToolbarMount.cs`:
+  - `[InitializeOnLoad]` static class.
+  - In static constructor:
+    - Use reflection to access `UnityEditor.Toolbar` internal class.
+    - Get the static `get_singleton` (or equivalent field/property holding the active Toolbar instance — study the reference implementations cited in design doc to find the correct path for Unity 6).
+    - Hook into the toolbar's left zone via the `m_LeftToolbarVisualTree` (or equivalent IMGUI/UIElements field). Resolve which exact field by inspecting Unity's source via reflection probing.
+    - Add a child `IMGUIContainer` (or `OnGUI` hook) that calls `DrawPin()`.
+  - `DrawPin()` is the same as before: builds a 20×20 rect and calls `PinIcon.Render(rect, status, updateAvailable)` with hardcoded test values for now (real wiring lands in Group 2).
+  - **All reflection wrapped in `try { ... } catch (Exception e) { McpLogger.Error("..."); }` blocks.** If anything in the reflection path fails, log once and no-op — do not throw, do not spam.
+  - Defensive subscription pattern: before adding the IMGUIContainer, check if a child with the same `name` already exists (e.g. `"mcp-game-deck-pin"`); remove it first, then add. Survives assembly reload without duplicating.
+  - Use `EditorApplication.delayCall` for the initial mount — the toolbar may not be available during static constructor execution; delaying ensures Unity has finished its own toolbar setup first.
+
+**Reference implementations to study before coding:**
+- ParrelSync (`ParrelSync/ParrelSync` on GitHub) — has a `ProjectPickerToolbar` or similar that injects.
+- Search GitHub for "Unity Toolbar Extender" — several short Gists demonstrate the reflection path.
+- Do NOT copy verbatim. Read them, understand the layout, write fresh code with comments documenting which internal Unity members are being reflected and why.
 
 **Validation:**
 
-1. `dotnet build` (or Unity recompile) clean — no errors.
-2. Open Scene view in Unity → top-right corner shows a `+` button to add overlays → "MCP Game Deck Pin" appears in the list.
-3. Add it. A blank box appears. Drag-reposition works.
-4. Console shows the attach log once.
+1. Compile clean. No reflection errors in Console at startup.
+2. Console shows the existing `[MCP] Pin overlay attached.` (or rename log to `Pin toolbar mount installed.`) on Editor startup.
+3. **Pin appears at the top of the Unity Editor**, in the global toolbar, on the left side after the project / cloud account dropdowns. Roughly between `Asset Store ▾` and the next dropdown (or at the rightmost end of the left cluster).
+4. Pin shows the icon + status dot (hardcoded green for testing) + optional update badge (hardcoded false). All from existing `PinIcon.Render`.
+5. Recompile (edit any C# file). Pin remains visible — no duplicate mount, no missing pin.
+6. Restart Unity. Pin appears within ~1 s of Editor opening.
+7. **No regression to other Editor toolbar items.** Project selector, cloud account, play/pause/step, Layout dropdown all still functional.
 
 **Commit:**
 
 ```
-feat(v2): scaffold Editor/Pin/PinOverlay.cs (Toolbar Overlay base)
+feat(v2): mount pin on global Editor toolbar via reflection
 
-Empty overlay using Unity 6 IconToolbarOverlay API. Renders a
-blank 24x24 container, no logic yet. Future tasks add icon, dot,
-polling, click handler.
+Replaces the Toolbar Overlay approach (Editor/Pin/PinOverlay.cs,
+now deleted) with PinToolbarMount.cs that injects an IMGUIContainer
+into the Editor's left toolbar zone via reflection on
+UnityEditor.Toolbar. Per decision #5 (revised): always-visible
+status indicator outweighs the per-Unity-version maintenance cost
+of reflecting into internal APIs.
 
-Refs: 07-editor-status-pin-tasks.md (task 1.1)
+Reflection paths wrapped in try/catch so the pin no-ops gracefully
+if Unity's internal layout shifts. Defensive subscription survives
+assembly reload without duplicating.
+
+Reuses PinIcon.Render unchanged (already validated in original 1.2).
+DrawPin still uses hardcoded test status; real polling wiring lands
+in Group 2.
+
+Refs: 07-editor-status-pin-tasks.md (task 1.1, revised)
 ```
 
 ---
