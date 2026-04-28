@@ -17,7 +17,7 @@
 |---|------|------|--------|------|-------|
 | 1.1 | Toolbar reflection mount (replaces [Overlay] approach) | M | ✅ | 2026-04-28 | Replaces the original Toolbar Overlay attempt; see decision #5 (revised). |
 | 1.2 | Pin icon + status dot rendering | S | ✅ | 2026-04-28 | Procedural Color32 rendering; PNG asset (1.3) superseded. |
-| 1.3 | Placeholder icon asset in Resources | S | ⏳ | | |
+| 1.3 | Placeholder icon asset in Resources | S | ✅ | 2026-04-28 | PNG generated via PinPlaceholderIconGenerator (deleted post-generation); Read/Write enabled for GetPixels32 sampling. |
 | 2.1 | Polling loop wiring (Editor update tick) | S | ⏳ | | |
 | 2.2 | TCP probe + base state machine (gray / red / green) | M | ⏳ | | |
 | 2.3 | Yellow state — Unity busy detection | S | ⏳ | | |
