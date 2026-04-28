@@ -23,7 +23,7 @@
 | 2.3 | Yellow state — Unity busy detection | S | ✅ | 2026-04-28 | EditorApplication.isCompiling/isPlayingOrWillChangePlaymode/isUpdating → BUSY when MCP recently connected; gray stays gray when offline. |
 | 2.4 | Bind-failure detection (red) | M | ✅ | 2026-04-28 | logMessageReceivedThreaded watches for EADDRINUSE / "address already in use" + cached port; volatile flag observed on main thread; 30s recency window cleared by successful probe or timeout. |
 | 2.5 | Tooltip per state | S | ✅ | 2026-04-28 | PinTooltip.GetText returns per-state text including BUSY reason (compiling / play mode / importing assets); applied via MainToolbarContent on every CreatePin re-execute. |
-| 2.6 | Update badge (blue dot from EditorPrefs) | S | ⏳ | | |
+| 2.6 | Update badge wiring | XS | ✅ | 2026-04-28 | PinToolbarElement.CreatePin reads MCPGameDeck.UpdateAvailable / LATEST_VERSION EditorPrefs; PinIcon renders blue badge top-right; tooltip appends "Update available: vX.Y.Z" line. |
 | 3.1 | Right-click context menu — Settings + Copy URL | S | ⏳ | | |
 | 3.2 | Right-click — Show install folder + About | S | ⏳ | | |
 | 4.1 | Cross-platform install path helpers | S | ⏳ | | |

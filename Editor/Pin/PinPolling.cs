@@ -54,6 +54,8 @@ namespace GameDeck.Editor.Pin
         private const double BIND_FAILURE_RECENCY_WINDOW_SECONDS = 30.0;
         private const string BIND_FAILURE_TOKEN_EADDRINUSE = "EADDRINUSE";
         private const string BIND_FAILURE_TOKEN_ADDRESS_IN_USE = "address already in use";
+        public const string UPDATE_AVAILABLE_PREF = "MCPGameDeck.UpdateAvailable";
+        public const string LATEST_VERSION_PREF = "MCPGameDeck.LatestVersion";
 
         #endregion
 
@@ -67,6 +69,9 @@ namespace GameDeck.Editor.Pin
         private static double _lastBindFailureAt = double.MinValue;
         private static volatile bool _bindFailureFlag;
         private static volatile int _cachedPort;
+        private static EPinStatus _lastRefreshedStatus = EPinStatus.NOT_INSTALLED;
+        private static bool _lastRefreshedUpdateAvailable;
+        private static string _lastRefreshedUpdateVersion = string.Empty;
 
         #endregion
 
@@ -91,6 +96,18 @@ namespace GameDeck.Editor.Pin
         /// </summary>
         public static bool BindFailureDetected => (EditorApplication.timeSinceStartup - _lastBindFailureAt) < BIND_FAILURE_RECENCY_WINDOW_SECONDS;
 
+        /// <summary>
+        /// Cached value of <see cref="UPDATE_AVAILABLE_PREF"/>, refreshed once per tick.
+        /// Drives both the blue update badge on the icon and the update line in the tooltip.
+        /// </summary>
+        public static bool UpdateAvailable { get; private set; }
+
+        /// <summary>
+        /// Cached value of <see cref="LATEST_VERSION_PREF"/>, refreshed once per tick.
+        /// Used by <see cref="PinTooltip"/> when an update is available.
+        /// </summary>
+        public static string UpdateVersion { get; private set; } = string.Empty;
+
         #endregion
 
         #region INITIALIZATION METHODS
@@ -105,6 +122,10 @@ namespace GameDeck.Editor.Pin
             _nextTickAt = EditorApplication.timeSinceStartup + TICK_INTERVAL_SECONDS;
             _nextProbeAt = EditorApplication.timeSinceStartup;
             _cachedPort = GameDeckSettings.Instance._mcpPort;
+            UpdateAvailable = EditorPrefs.GetBool(UPDATE_AVAILABLE_PREF, false);
+            UpdateVersion = EditorPrefs.GetString(LATEST_VERSION_PREF, string.Empty);
+            _lastRefreshedUpdateAvailable = UpdateAvailable;
+            _lastRefreshedUpdateVersion = UpdateVersion;
         }
 
         #endregion
@@ -250,9 +271,10 @@ namespace GameDeck.Editor.Pin
 
         /// <summary>
         /// Computes the visible <see cref="EPinStatus"/> from the cached probe outcome,
-        /// the time of the last successful probe, and Unity's current busy flags, then
-        /// publishes it to <see cref="CurrentStatus"/>. Refreshes the toolbar only when
-        /// the status actually changes to avoid redundant repaints.
+        /// the time of the last successful probe, and Unity's current busy flags, refreshes
+        /// <see cref="UpdateAvailable"/> / <see cref="UpdateVersion"/> from EditorPrefs, and
+        /// triggers a toolbar refresh only when one of these user-visible aspects has
+        /// actually changed since the last refresh.
         /// </summary>
         /// <remarks>
         /// Yellow / <see cref="EPinStatus.BUSY"/> requires both a busy flag AND a
@@ -285,12 +307,18 @@ namespace GameDeck.Editor.Pin
                 newStatus = PinPaths.GetBinaryPath() != null ? EPinStatus.NOT_RUNNING : EPinStatus.NOT_INSTALLED;
             }
 
-            if (CurrentStatus == newStatus)
+            CurrentStatus = newStatus;
+            UpdateAvailable = EditorPrefs.GetBool(UPDATE_AVAILABLE_PREF, false);
+            UpdateVersion = EditorPrefs.GetString(LATEST_VERSION_PREF, string.Empty);
+
+            if (newStatus == _lastRefreshedStatus && UpdateAvailable == _lastRefreshedUpdateAvailable && UpdateVersion == _lastRefreshedUpdateVersion)
             {
                 return;
             }
 
-            CurrentStatus = newStatus;
+            _lastRefreshedStatus = newStatus;
+            _lastRefreshedUpdateAvailable = UpdateAvailable;
+            _lastRefreshedUpdateVersion = UpdateVersion;
             TryRefreshToolbar();
         }
 

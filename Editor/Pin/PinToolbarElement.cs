@@ -19,8 +19,6 @@ namespace GameDeck.Editor.Pin
         #region CONSTANTS
 
         public const string ELEMENT_PATH = "MCP Game Deck/Pin";
-        public const string UPDATE_AVAILABLE_PREF = "MCPGameDeck.UpdateAvailable";
-        public const string LATEST_VERSION_PREF = "MCPGameDeck.LatestVersion";
 
         #endregion
 
@@ -49,8 +47,8 @@ namespace GameDeck.Editor.Pin
         {
             var status = PinPolling.CurrentStatus;
             var port = GameDeckSettings.Instance._mcpPort;
-            var updateAvailable = EditorPrefs.GetBool(UPDATE_AVAILABLE_PREF, false);
-            var updateVersion = EditorPrefs.GetString(LATEST_VERSION_PREF, "");
+            var updateAvailable = PinPolling.UpdateAvailable;
+            var updateVersion = PinPolling.UpdateVersion;
 
             var icon = PinIcon.BuildComposite(status, updateAvailable);
             var tooltip = PinTooltip.GetText(status, port, updateAvailable, updateVersion);
