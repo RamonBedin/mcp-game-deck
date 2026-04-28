@@ -20,13 +20,22 @@ namespace GameDeck.Editor.Pin
     /// <remarks>
     /// Two cadences run inside the same handler:
     /// <list type="bullet">
-    ///   <item><description>~500 ms general tick (bumps <see cref="TickCount"/>).</description></item>
+    ///   <item><description>~500 ms general tick (bumps <see cref="TickCount"/> and
+    ///   re-evaluates the visible status so live signals like
+    ///   <see cref="EditorApplication.isCompiling"/> and
+    ///   <see cref="EditorApplication.isPlayingOrWillChangePlaymode"/> are reflected
+    ///   without waiting for the next probe).</description></item>
     ///   <item><description>~1 s TCP probe of the configured MCP host/port. Probe runs
     ///   asynchronously with a 200 ms timeout; the result is applied back on the
     ///   editor main thread via <see cref="EditorApplication.delayCall"/>.</description></item>
     /// </list>
-    /// When the probe causes <see cref="CurrentStatus"/> to transition,
-    /// <see cref="MainToolbar.Refresh"/> is invoked so the pin's icon recolors —
+    /// State priority (highest wins): <see cref="EPinStatus.BUSY"/> when Unity is
+    /// compiling / entering play mode / importing AND a successful probe occurred
+    /// within <c>CONNECTED_RECENCY_WINDOW_SECONDS</c>; otherwise
+    /// <see cref="EPinStatus.CONNECTED"/> when the last probe succeeded; otherwise
+    /// <see cref="EPinStatus.NOT_RUNNING"/> if the binary is on disk; otherwise
+    /// <see cref="EPinStatus.NOT_INSTALLED"/>. Transitions trigger
+    /// <see cref="MainToolbar.Refresh"/> on the pin element so the icon recolors —
     /// <c>[MainToolbarElement]</c> factories only run at registration / refresh time.
     /// </remarks>
     public static class PinPolling
@@ -36,6 +45,7 @@ namespace GameDeck.Editor.Pin
         private const double TICK_INTERVAL_SECONDS = 0.5;
         private const double TCP_PROBE_INTERVAL_SECONDS = 1.0;
         private const int TCP_TIMEOUT_MS = 200;
+        private const double CONNECTED_RECENCY_WINDOW_SECONDS = 10.0;
 
         #endregion
 
@@ -44,6 +54,8 @@ namespace GameDeck.Editor.Pin
         private static double _nextTickAt;
         private static double _nextProbeAt;
         private static bool _probeInFlight;
+        private static bool _lastProbeConnected;
+        private static double _lastSuccessfulProbeAt = double.MinValue;
 
         #endregion
 
@@ -79,8 +91,10 @@ namespace GameDeck.Editor.Pin
         #region PRIVATE METHODS
 
         /// <summary>
-        /// Throttled editor-update callback that bumps <see cref="TickCount"/> and, on a
-        /// separate ~1 s cadence, kicks off a TCP probe against the configured MCP server.
+        /// Throttled editor-update callback that bumps <see cref="TickCount"/>, kicks off
+        /// a TCP probe on its own ~1 s cadence, and re-evaluates the visible status so
+        /// live signals (Unity busy, recently-connected window) are reflected within one
+        /// tick instead of having to wait for the next probe.
         /// </summary>
         private static void HandleTick()
         {
@@ -92,19 +106,13 @@ namespace GameDeck.Editor.Pin
             _nextTickAt = EditorApplication.timeSinceStartup + TICK_INTERVAL_SECONDS;
             TickCount++;
 
-            if (_probeInFlight)
+            if (!_probeInFlight && EditorApplication.timeSinceStartup >= _nextProbeAt)
             {
-                return;
+                _nextProbeAt = EditorApplication.timeSinceStartup + TCP_PROBE_INTERVAL_SECONDS;
+                StartTcpProbe();
             }
 
-            if (EditorApplication.timeSinceStartup < _nextProbeAt)
-            {
-                return;
-            }
-
-            _nextProbeAt = EditorApplication.timeSinceStartup + TCP_PROBE_INTERVAL_SECONDS;
-
-            StartTcpProbe();
+            EvaluateAndApplyState();
         }
 
         /// <summary>
@@ -149,7 +157,14 @@ namespace GameDeck.Editor.Pin
 
             EditorApplication.delayCall += () =>
             {
-                ApplyProbeResult(connected);
+                _lastProbeConnected = connected;
+
+                if (connected)
+                {
+                    _lastSuccessfulProbeAt = EditorApplication.timeSinceStartup;
+                }
+
+                EvaluateAndApplyState();
                 _probeInFlight = false;
             };
         }
@@ -204,17 +219,30 @@ namespace GameDeck.Editor.Pin
         }
 
         /// <summary>
-        /// Translates a probe result into the corresponding <see cref="EPinStatus"/>
-        /// value, falling back to <see cref="EPinStatus.NOT_INSTALLED"/> versus
-        /// <see cref="EPinStatus.NOT_RUNNING"/> based on whether the binary is
-        /// resolvable. Refreshes the toolbar only when the status actually changes
-        /// to avoid redundant repaints.
+        /// Computes the visible <see cref="EPinStatus"/> from the cached probe outcome,
+        /// the time of the last successful probe, and Unity's current busy flags, then
+        /// publishes it to <see cref="CurrentStatus"/>. Refreshes the toolbar only when
+        /// the status actually changes to avoid redundant repaints.
         /// </summary>
-        /// <param name="connected">Outcome of the most recent TCP probe.</param>
-        private static void ApplyProbeResult(bool connected)
+        /// <remarks>
+        /// Yellow / <see cref="EPinStatus.BUSY"/> requires both a busy flag AND a
+        /// successful probe within <see cref="CONNECTED_RECENCY_WINDOW_SECONDS"/>. This
+        /// keeps offline projects (gray) from flashing yellow when the user clicks Play.
+        /// </remarks>
+        private static void EvaluateAndApplyState()
         {
+            var busy = EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isUpdating;
+
+            var sinceLastSuccess = EditorApplication.timeSinceStartup - _lastSuccessfulProbeAt;
+            var recentlyConnected = sinceLastSuccess < CONNECTED_RECENCY_WINDOW_SECONDS;
+
             EPinStatus newStatus;
-            if (connected)
+            
+            if (busy && recentlyConnected)
+            {
+                newStatus = EPinStatus.BUSY;
+            }
+            else if (_lastProbeConnected)
             {
                 newStatus = EPinStatus.CONNECTED;
             }
