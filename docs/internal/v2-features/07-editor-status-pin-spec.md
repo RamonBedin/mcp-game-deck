@@ -1,6 +1,6 @@
 # Feature 07 — Editor Status Pin — Spec
 
-> **Status:** `agreed` — design decisions locked April 2026 (see `07-editor-status-pin.md` for full rationale).
+> **Status:** `agreed` — design decisions locked April 2026; spec revised 2026-04-28 to reflect actual mounting strategy (Unity 6 `[MainToolbarElement]` API, replacing the originally-planned reflection mount).
 > **Companion:** `07-editor-status-pin-tasks.md` (decomposed work breakdown for Claude Code execution).
 
 ## What this is
@@ -42,7 +42,7 @@ The C# MCP Server (`Editor/MCP/`) and the rest of the Tauri app are unchanged fr
 
 | Layer | Choice | Notes |
 |-------|--------|-------|
-| Pin UI | Reflection mount on global Editor toolbar (`UnityEditor.Toolbar`) | Decision #5 — always-visible status indicator. Trade-off: internal API, must be tested per Unity major. |
+| Pin UI | Unity 6 main toolbar API (`[MainToolbarElement]` in `UnityEditor.Toolbars`) | Decision #5 — always-visible status indicator on the global Editor toolbar. Replaces the originally-planned reflection mount; no internal-API risk. |
 | Pin polling | `EditorApplication.update` callback at ~2 Hz | Cheap TCP socket existence check. |
 | Binary download | C# `HttpClient` (already in Unity .NET BCL) | No new dependencies. |
 | Hashing | C# `System.Security.Cryptography.SHA256` | Already available. |
@@ -56,9 +56,9 @@ The C# MCP Server (`Editor/MCP/`) and the rest of the Tauri app are unchanged fr
 
 ```
 Editor/Pin/
-├── PinToolbarMount.cs          ← [InitializeOnLoad] reflection-injects pin into global Editor toolbar (left slot)
-├── PinPolling.cs               ← state machine: status colors based on TCP / EditorPrefs
-├── PinIcon.cs                  ← icon + status dot + update badge rendering (already from task 1.2)
+├── PinToolbarElement.cs        ← [MainToolbarElement] entry; builds the VisualElement that hosts the icon
+├── PinIcon.cs                  ← Color32 composite renderer: bg icon + status dot + update badge
+├── PinPolling.cs               ← state machine: status from TCP probe / EditorPrefs / busy flags
 ├── PinTooltip.cs               ← tooltip text per state
 ├── PinContextMenu.cs           ← right-click menu (Settings / Copy URL / Show folder / About)
 ├── PinLauncher.cs              ← spawn Tauri with env vars + --route arg
@@ -67,8 +67,12 @@ Editor/Pin/
 └── PinDownloadDialog.cs        ← error dialogs for download failures
 
 Editor/Resources/
-└── pin-icon-placeholder.png   ← placeholder (real icon comes from Feature 09)
+└── pin-icon-placeholder.png   ← placeholder, Read/Write enabled (real icon comes from Feature 09)
 ```
+
+**Generated once and removed:**
+
+- `Editor/Pin/PinPlaceholderIconGenerator.cs` — editor menu helper that produced the placeholder PNG; deleted after the asset was committed.
 
 **Modified files:**
 
@@ -116,6 +120,35 @@ State priority (highest wins):
 5. **Gray** — TCP connect fails AND binary doesn't exist on disk
 
 Tooltip text per state defined in design doc (decision #5).
+
+## Pin redraw mechanism
+
+The Unity 6 main toolbar API is static by default — Unity invokes the
+`[MainToolbarElement]`-decorated factory once at toolbar creation, and the
+returned `VisualElement` lives for the rest of the editor session. There
+is no built-in change-notification: a status flip in `PinPolling.CurrentStatus`
+will not update the visible icon unless the pin redraws itself.
+
+The pin therefore returns a custom `VisualElement` (not a plain
+`MainToolbarButton`) that owns its own `Image` child and schedules its own
+redraw via `schedule.Execute(RebuildIfChanged).Every(500)`. The callback:
+
+1. Reads `PinPolling.CurrentStatus` and `PinPolling.UpdateAvailable`.
+2. Compares against the last-rendered tuple cached on the element.
+3. On change: disposes the previous `Texture2D`, calls
+   `PinIcon.BuildComposite(...)`, assigns the new texture to `Image.image`,
+   updates the cached tuple.
+4. On no change: noop — avoids per-tick texture rebuilds.
+
+Tooltip is updated in the same callback via `element.tooltip = PinTooltip.GetText(...)`.
+
+Avoids `MainToolbar.Refresh()` (the global path) because it would recreate
+every toolbar element on every tick — expensive and visually janky on
+unrelated items (Layout dropdown, cloud account button, etc.).
+
+The redraw mechanism is wired in task 2.2, alongside the first dynamic
+state source (TCP probe). Tasks 1.1–1.3 used a one-shot `MainToolbarButton`
+because the status was stub-fixed and no redraw was needed.
 
 ## Binary distribution
 

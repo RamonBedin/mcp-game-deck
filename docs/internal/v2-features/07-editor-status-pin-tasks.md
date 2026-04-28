@@ -15,10 +15,10 @@
 
 | # | Task | Size | Status | Date | Notes |
 |---|------|------|--------|------|-------|
-| 1.1 | Toolbar reflection mount (replaces [Overlay] approach) | M | ✅ | 2026-04-28 | Replaces the original Toolbar Overlay attempt; see decision #5 (revised). |
+| 1.1 | Toolbar element registration via [MainToolbarElement] | M | ✅ | 2026-04-28 | Implemented via Unity 6 official API (PinToolbarElement.cs); replaces the original Toolbar Overlay and reflection-mount plans. |
 | 1.2 | Pin icon + status dot rendering | S | ✅ | 2026-04-28 | Procedural Color32 rendering; PNG asset (1.3) superseded. |
 | 1.3 | Placeholder icon asset in Resources | S | ✅ | 2026-04-28 | PNG generated via PinPlaceholderIconGenerator (deleted post-generation); Read/Write enabled for GetPixels32 sampling. |
-| 2.1 | Polling loop wiring (Editor update tick) | S | ⏳ | | |
+| 2.1 | Polling loop wiring (Editor update tick) | S | ✅ | 2026-04-28 | PinPolling subscribes EditorApplication.update with 500ms throttle; PinToolbarElement reads CurrentStatus (stub NOT_INSTALLED → gray). |
 | 2.2 | TCP probe + base state machine (gray / red / green) | M | ⏳ | | |
 | 2.3 | Yellow state — Unity busy detection | S | ⏳ | | |
 | 2.4 | Port-collision detection via log listener | M | ⏳ | | |
@@ -48,62 +48,56 @@
 
 > Goal: pin appears in Unity, draws icon + colored dot, but does nothing functional yet (always shows gray). This unblocks visual iteration before lifecycle complexity lands.
 
-### Task 1.1 — Toolbar reflection mount (replaces [Overlay] approach)
+### Task 1.1 — Toolbar element registration via [MainToolbarElement]
 
 **Size:** M
 **Refs:** spec "File layout", design decision #5 (revised)
 
-**Context:** the original 1.1 used Unity 6's `[Overlay]` attribute to attach the pin to the Scene view. UX validation revealed this requires manual user activation and only shows inside Scene view — wrong fit for an always-on status indicator. Decision #5 was revised: pin now mounts on the **global Editor toolbar** via reflection into `UnityEditor.Toolbar` (internal API). The previous `PinOverlay.cs` is replaced by `PinToolbarMount.cs`.
+**Context:** the original 1.1 used Unity 6's `[Overlay]` attribute to attach the pin to the Scene view. UX validation revealed this requires manual user activation and only shows inside Scene view — wrong fit for an always-on status indicator. Decision #5 was revised: pin now mounts on the **global Editor toolbar** via the official Unity 6 `[MainToolbarElement]` attribute (in `UnityEditor.Toolbars`). The previous `PinOverlay.cs` is replaced by `PinToolbarElement.cs` — no reflection into internal APIs, fully supported public surface.
 
 **Output:**
 
 - **Delete** `Editor/Pin/PinOverlay.cs` (and its `.meta`).
-- New file `Editor/Pin/PinToolbarMount.cs`:
-  - `[InitializeOnLoad]` static class.
-  - In static constructor:
-    - Use reflection to access `UnityEditor.Toolbar` internal class.
-    - Get the static `get_singleton` (or equivalent field/property holding the active Toolbar instance — study the reference implementations cited in design doc to find the correct path for Unity 6).
-    - Hook into the toolbar's left zone via the `m_LeftToolbarVisualTree` (or equivalent IMGUI/UIElements field). Resolve which exact field by inspecting Unity's source via reflection probing.
-    - Add a child `IMGUIContainer` (or `OnGUI` hook) that calls `DrawPin()`.
-  - `DrawPin()` is the same as before: builds a 20×20 rect and calls `PinIcon.Render(rect, status, updateAvailable)` with hardcoded test values for now (real wiring lands in Group 2).
-  - **All reflection wrapped in `try { ... } catch (Exception e) { McpLogger.Error("..."); }` blocks.** If anything in the reflection path fails, log once and no-op — do not throw, do not spam.
-  - Defensive subscription pattern: before adding the IMGUIContainer, check if a child with the same `name` already exists (e.g. `"mcp-game-deck-pin"`); remove it first, then add. Survives assembly reload without duplicating.
-  - Use `EditorApplication.delayCall` for the initial mount — the toolbar may not be available during static constructor execution; delaying ensures Unity has finished its own toolbar setup first.
+- New file `Editor/Pin/PinToolbarElement.cs`:
+  - Static class. No `[InitializeOnLoad]` needed — Unity invokes the factory automatically via the attribute.
+  - Constants:
+    - `ELEMENT_PATH = "MCP Game Deck/Pin"` — required by `[MainToolbarElement]`.
+    - `TOOLTIP = "MCP Game Deck"` — placeholder; per-state tooltip lands in 2.5.
+  - Static fields for the hardcoded test values: `_testStatus = EPinStatus.CONNECTED`, `_testUpdateAvailable = false`. Real polling wiring lands in Group 2.
+  - `[MainToolbarElement(ELEMENT_PATH, defaultDockPosition = MainToolbarDockPosition.Left)]`-decorated factory `CreatePin()` returning a `MainToolbarElement`:
+    - Builds the icon via `PinIcon.BuildComposite(_testStatus, _testUpdateAvailable)`.
+    - Wraps in a `MainToolbarContent(icon, TOOLTIP)`.
+    - Returns a `MainToolbarButton(content, OnPinClicked)`.
+  - Stub `OnPinClicked()` logs `[MCP] Pin clicked.` (real launch lands in task 4.5).
 
-**Reference implementations to study before coding:**
-- ParrelSync (`ParrelSync/ParrelSync` on GitHub) — has a `ProjectPickerToolbar` or similar that injects.
-- Search GitHub for "Unity Toolbar Extender" — several short Gists demonstrate the reflection path.
-- Do NOT copy verbatim. Read them, understand the layout, write fresh code with comments documenting which internal Unity members are being reflected and why.
+**Why no reflection:** Unity 6 ships `[MainToolbarElement]` (`UnityEditor.Toolbars` namespace) as the official API for pinning custom widgets to the global toolbar. No internal-API risk, no per-Unity-version maintenance, no reflection probing — the original plan to reflect into `UnityEditor.Toolbar` is obsolete.
 
 **Validation:**
 
-1. Compile clean. No reflection errors in Console at startup.
-2. Console shows the existing `[MCP] Pin overlay attached.` (or rename log to `Pin toolbar mount installed.`) on Editor startup.
-3. **Pin appears at the top of the Unity Editor**, in the global toolbar, on the left side after the project / cloud account dropdowns. Roughly between `Asset Store ▾` and the next dropdown (or at the rightmost end of the left cluster).
-4. Pin shows the icon + status dot (hardcoded green for testing) + optional update badge (hardcoded false). All from existing `PinIcon.Render`.
-5. Recompile (edit any C# file). Pin remains visible — no duplicate mount, no missing pin.
-6. Restart Unity. Pin appears within ~1 s of Editor opening.
-7. **No regression to other Editor toolbar items.** Project selector, cloud account, play/pause/step, Layout dropdown all still functional.
+1. Compile clean. No errors in Console at startup.
+2. **Pin appears in the Unity Editor's main toolbar**, at the position chosen by `defaultDockPosition`. User can drag-reposition via the toolbar overflow menu.
+3. Pin shows the icon + status dot (hardcoded green from `_testStatus = CONNECTED`) + optional update badge (hardcoded false). All produced by `PinIcon.BuildComposite`.
+4. Recompile (edit any C# file). Pin remains visible — Unity's `[MainToolbarElement]` machinery handles re-registration automatically.
+5. Restart Unity. Pin appears as soon as the toolbar finishes initializing.
+6. **No regression to other Editor toolbar items.** Project selector, cloud account, play/pause/step, Layout dropdown all still functional.
 
 **Commit:**
 
 ```
-feat(v2): mount pin on global Editor toolbar via reflection
+feat(v2): register pin on Editor toolbar via [MainToolbarElement]
 
 Replaces the Toolbar Overlay approach (Editor/Pin/PinOverlay.cs,
-now deleted) with PinToolbarMount.cs that injects an IMGUIContainer
-into the Editor's left toolbar zone via reflection on
-UnityEditor.Toolbar. Per decision #5 (revised): always-visible
-status indicator outweighs the per-Unity-version maintenance cost
-of reflecting into internal APIs.
+now deleted) with PinToolbarElement.cs that registers a custom
+toolbar entry via the official Unity 6 [MainToolbarElement] attribute
+(UnityEditor.Toolbars). Per decision #5 (revised): always-visible
+status indicator on the global Editor toolbar — and the public API
+removes the per-Unity-version maintenance cost the original
+reflection plan would have carried.
 
-Reflection paths wrapped in try/catch so the pin no-ops gracefully
-if Unity's internal layout shifts. Defensive subscription survives
-assembly reload without duplicating.
-
-Reuses PinIcon.Render unchanged (already validated in original 1.2).
-DrawPin still uses hardcoded test status; real polling wiring lands
-in Group 2.
+CreatePin returns a MainToolbarButton with icon built by
+PinIcon.BuildComposite. Hardcoded test values (_testStatus = CONNECTED,
+_testUpdateAvailable = false) keep the visuals deterministic until
+the polling wiring lands in Group 2.
 
 Refs: 07-editor-status-pin-tasks.md (task 1.1, revised)
 ```
@@ -118,18 +112,19 @@ Refs: 07-editor-status-pin-tasks.md (task 1.1, revised)
 **Output:**
 
 - New file `Editor/Pin/PinIcon.cs`
-- Static method `Render(Rect rect, PinStatus status, bool updateAvailable)` that draws:
-  - Background icon (placeholder, loaded once and cached)
-  - Status dot bottom-right (8×8 px, color from `PinStatus`)
-  - Update badge top-right (5×5 px blue) only if `updateAvailable`
-- `PinStatus` enum in same file: `Connected, Busy, NotRunning, BindFailure, NotInstalled`
-- `PinOverlay.CreatePanelContent()` calls `PinIcon.Render` from an `IMGUIContainer` for now (UIElements approach can come later if needed)
+- Static method `BuildComposite(EPinStatus status, bool updateAvailable)` returning a freshly-built 20×20 RGBA `Texture2D` containing:
+  - Background icon (placeholder loaded once via `Resources.Load<Texture2D>("pin-icon-placeholder")`, cached statically; falls back to a low-alpha gray fill when missing)
+  - Status dot bottom-right (color from `EPinStatus`)
+  - Update badge top-right (small blue square) only if `updateAvailable`
+- `EPinStatus` enum in same file: `CONNECTED, BUSY, NOT_RUNNING, BIND_FAILURE, NOT_INSTALLED` (SCREAMING_SNAKE_CASE per project C# conventions)
+- Color values declared as `Color32` constants (faster path through Unity's pixel APIs)
+- `PinToolbarElement.CreatePin()` calls `PinIcon.BuildComposite(_testStatus, _testUpdateAvailable)` and feeds the result into `MainToolbarContent`
 
 **Validation:**
 
 1. Compile clean.
-2. Pin in Scene view shows the placeholder icon + a dot. Hardcode `PinStatus.Connected` in `PinOverlay` to verify green; change to `BindFailure` to verify red; etc.
-3. Toggle `updateAvailable: true` → blue dot visible top-right; `false` → blue dot gone.
+2. Pin in the Editor toolbar shows the placeholder icon + a colored dot. Hardcode `_testStatus = EPinStatus.CONNECTED` to verify green; change to `BIND_FAILURE` to verify red; etc.
+3. Toggle `_testUpdateAvailable = true` → blue badge visible top-right; `false` → badge gone.
 4. Status dot is in bottom-right, update badge in top-right — they don't overlap.
 
 **Commit:**
@@ -137,10 +132,11 @@ Refs: 07-editor-status-pin-tasks.md (task 1.1, revised)
 ```
 feat(v2): pin icon + status dot rendering
 
-PinIcon.Render draws the placeholder icon plus a colored status
-dot (bottom-right) and an optional blue update badge (top-right).
-Hardcoded test status confirms all 5 colors render. Real status
-wiring lands in Group 2.
+PinIcon.BuildComposite produces a 20x20 Texture2D combining the
+placeholder background icon, a colored status dot (bottom-right)
+and an optional blue update badge (top-right). EPinStatus enum
+covers all five states. Hardcoded test status in PinToolbarElement
+confirms all colors render. Real status wiring lands in Group 2.
 
 Refs: 07-editor-status-pin-tasks.md (task 1.2)
 ```
@@ -154,25 +150,29 @@ Refs: 07-editor-status-pin-tasks.md (task 1.2)
 
 **Output:**
 
-- New file `Editor/Resources/pin-icon-placeholder.png` (64×64 px, monochrome, transparent background — simple chat-bubble or "MCP" wordmark, anything recognizable but obviously placeholder)
-- `.png.meta` file generated by Unity on import; texture type set to `Editor GUI and Legacy GUI`
-- `PinIcon.cs` loads it once via `EditorGUIUtility.Load("pin-icon-placeholder.png")` or `Resources.Load<Texture2D>("pin-icon-placeholder")`
-- **Apply the `[Icon("Packages/com.mcp-game-deck/Editor/Resources/pin-icon-placeholder.png")]` attribute to the `PinOverlay` class** (deferred from task 1.1 because the asset didn't exist yet — applying it earlier triggered a compile error since Unity validates the path at attribute-resolution time). Add `using UnityEditor.Overlays;` if not already imported (the `[Icon]` attribute lives there).
+- New file `Editor/Resources/pin-icon-placeholder.png` (64×64 px, monochrome, transparent background — placeholder until Feature 09 ships the real brand icon)
+- `.png.meta` configured via `TextureImporter`: `textureType = GUI`, `npotScale = None`, `alphaIsTransparency = true`, `mipmapEnabled = false`, `isReadable = true` (required because `PinIcon.DrawBackground` samples via `GetPixels32()`)
+- `PinIcon.cs` already loads via `Resources.Load<Texture2D>("pin-icon-placeholder")` (in place since 1.2); when the asset is missing it falls back to a low-alpha gray fill so the pin still renders during dev
+- One-shot helper `Editor/Pin/PinPlaceholderIconGenerator.cs` produces the PNG via a menu item (`MCP Game Deck > Internal > Generate Pin Placeholder Icon`) and applies the importer settings above. **Delete this file after committing the generated PNG + `.meta`** — the icon ships baked into the package; no need to keep the generator around.
 
 **Validation:**
 
-1. File present at `Editor/Resources/pin-icon-placeholder.png`.
-2. Unity imports without errors.
-3. Pin renders with the actual icon (not pink "missing texture").
-4. Icon legible at 20×20 (Unity scales it down — verify it doesn't turn into mush).
+1. Run the menu item; PNG appears at `Editor/Resources/pin-icon-placeholder.png` with sibling `.meta`.
+2. Confirm `Read/Write Enabled = true` on the texture (Inspector → Advanced). If false, `PinIcon.DrawBackground` will throw at runtime.
+3. Pin renders with the actual icon (not a pink "missing texture", not the gray fallback).
+4. Icon legible at 20×20 after Unity scales it down — verify it doesn't turn into mush.
+5. Delete `PinPlaceholderIconGenerator.cs` (and its `.meta` if Unity created one); recompile; menu item gone, pin still renders.
 
 **Commit:**
 
 ```
 feat(v2): placeholder icon for pin
 
-64x64 monochrome PNG in Editor/Resources/. Final brand icon
-swaps in via Feature 09. PinIcon loads via EditorGUIUtility.Load.
+64x64 monochrome PNG in Editor/Resources/, Read/Write enabled
+because PinIcon.DrawBackground samples it via GetPixels32. Generated
+once via PinPlaceholderIconGenerator (deleted post-generation per its
+own doc). PinIcon loads via Resources.Load. Final brand icon swaps
+in via Feature 09.
 
 Refs: 07-editor-status-pin-tasks.md (task 1.3)
 ```
@@ -193,15 +193,15 @@ Refs: 07-editor-status-pin-tasks.md (task 1.3)
 - New file `Editor/Pin/PinPolling.cs`
 - Static class with `[InitializeOnLoadMethod]` that subscribes to `EditorApplication.update`
 - Throttle: only run actual polling logic every ~500 ms (track `EditorApplication.timeSinceStartup`)
-- Polling logic for now: just sets a static `PinPolling.CurrentStatus = PinStatus.NotInstalled` and bumps a counter
-- `PinOverlay` reads `PinPolling.CurrentStatus` instead of hardcoded value
+- Polling logic for now: just sets a static `PinPolling.CurrentStatus = EPinStatus.NOT_INSTALLED` and bumps a counter
+- `PinToolbarElement.CreatePin()` reads `PinPolling.CurrentStatus` instead of `_testStatus`. Note: because the toolbar API is static (factory runs once), the visible icon won't refresh yet — that wires up in 2.2 alongside the redraw mechanism described in spec section "Pin redraw mechanism"
 - Subscribe defensively: `EditorApplication.update -= Tick; EditorApplication.update += Tick;` (idempotent on assembly reload)
 
 **Validation:**
 
 1. Compile clean.
-2. Pin shows gray (matches hardcoded `NotInstalled`).
-3. Add temporary `Debug.Log` inside the throttled tick — appears every ~500 ms in Console.
+2. Pin shows gray (matches hardcoded `NOT_INSTALLED`) on next domain reload.
+3. Add temporary `McpLogger.Info` inside the throttled tick (Collapse OFF in Console) — appears every ~500 ms.
 4. Trigger assembly reload (edit a .cs file) — no double-subscription, log frequency stays the same.
 
 **Commit:**
@@ -211,8 +211,10 @@ feat(v2): pin polling loop wired to EditorApplication.update
 
 Subscribes once via [InitializeOnLoadMethod], throttles to ~500 ms,
 defensively unsubscribes-then-subscribes to survive assembly reload.
-PinPolling.CurrentStatus is read by PinOverlay; logic still stub
-(always returns NotInstalled). State signals land in 2.2.
+PinPolling.CurrentStatus is read by PinToolbarElement.CreatePin
+on toolbar build; logic still stub (always returns NOT_INSTALLED).
+The redraw mechanism that lets status changes propagate live to the
+visible icon lands in task 2.2.
 
 Refs: 07-editor-status-pin-tasks.md (task 2.1)
 ```
@@ -230,25 +232,35 @@ Refs: 07-editor-status-pin-tasks.md (task 2.1)
   - Reads `GameDeckSettings._host` and `_mcpPort`
   - On each tick (throttled to ~1 s for TCP polling specifically), runs `TcpClient.ConnectAsync` with 200 ms timeout
   - Result → state:
-    - Success → `Connected` (green)
-    - Fail → check if binary exists at `PinPaths.GetBinaryPath()` (which won't exist yet — task 4.1 builds it; for now stub: assume always missing → `NotInstalled`)
+    - Success → `EPinStatus.CONNECTED` (green)
+    - Fail → check if binary exists at `PinPaths.GetBinaryPath()` (which won't exist yet — task 4.1 builds it; for now stub: assume always missing → `EPinStatus.NOT_INSTALLED`)
+  - Add `PinPolling.UpdateAvailable` (stub returns false; real read lands in 2.6)
 - Stub for `PinPaths.GetBinaryPath()` returning `null` for now
+- `PinToolbarElement.CreatePin()` refactored: returns a custom `VisualElement` (instead of a plain `MainToolbarButton`) that owns its own `Image` child. Uses `schedule.Execute(RebuildIfChanged).Every(500)` to poll `PinPolling.CurrentStatus` and `PinPolling.UpdateAvailable`, comparing against the last-rendered tuple cached on the element. On change: disposes the previous `Texture2D`, calls `PinIcon.BuildComposite`, assigns the new texture to `Image.image`. See spec section "Pin redraw mechanism".
+- Old hardcoded `_testStatus` / `_testUpdateAvailable` fields removed from `PinToolbarElement.cs`.
 
 **Validation:**
 
 1. Open Unity with the package; C# MCP Server starts (existing behavior). Pin should turn **green** within ~2 s.
-2. In `GameDeckSettings`, change `_mcpPort` to e.g. `9999` (unused). Pin should turn **gray** (NotInstalled stub) within ~2 s.
+2. In `GameDeckSettings`, change `_mcpPort` to e.g. `9999` (unused). Pin should turn **gray** (NOT_INSTALLED stub) within ~2 s.
 3. Restore port. Pin returns green.
-4. No exceptions in console even when TCP probe fails (timeout / refused).
+4. **Pin redraws live** as state changes — no Editor restart needed. Verified by toggling port back-and-forth in steps 2–3 with the pin visible: color flips within ~1.5 s of each change. Confirms the redraw mechanism is wired.
+5. No exceptions in console even when TCP probe fails (timeout / refused).
 
 **Commit:**
 
 ```
-feat(v2): TCP probe drives pin status (green vs gray)
+feat(v2): TCP probe drives pin status (green vs gray) + live redraw
 
 PinPolling now opens a TcpClient.ConnectAsync against the configured
-host/port every ~1s. Success -> Connected (green). Fail -> NotInstalled
+host/port every ~1s. Success -> CONNECTED (green). Fail -> NOT_INSTALLED
 stub (binary-existence check stub, real check in task 4.2).
+
+PinToolbarElement refactored: returns a custom VisualElement that
+schedules its own redraw via schedule.Execute(...).Every(500), reading
+PinPolling state and rebuilding the icon Texture2D only when the
+cached (status, updateAvailable) tuple changes. See spec section
+"Pin redraw mechanism" for rationale (avoids global MainToolbar.Refresh).
 
 Refs: 07-editor-status-pin-tasks.md (task 2.2)
 ```
@@ -264,8 +276,8 @@ Refs: 07-editor-status-pin-tasks.md (task 2.2)
 
 - `PinPolling.Tick()` extended:
   - Before TCP probe result is interpreted, check `EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isUpdating`
-  - If busy AND TCP succeeded → status = `Busy` (yellow)
-  - If busy AND TCP failed → still `Busy` (yellow takes priority over `NotInstalled` only when MCP is reachable; verify both behaviors with Ramon — recommend yellow only if MCP was last seen connected)
+  - If busy AND TCP succeeded → status = `EPinStatus.BUSY` (yellow)
+  - If busy AND TCP failed → still `EPinStatus.BUSY` (yellow takes priority over `NOT_INSTALLED` only when MCP is reachable; verify both behaviors with Ramon — recommend yellow only if MCP was last seen connected)
 
 **Decision in task:** keep simple — yellow ONLY when `EditorApplication.isCompiling || isPlayingOrWillChangePlaymode || isUpdating` AND last successful TCP probe within 10 s. Otherwise the yellow→red transition during play mode entry is confusing.
 
@@ -301,8 +313,8 @@ Refs: 07-editor-status-pin-tasks.md (task 2.3)
 - Looks for log lines containing the literal `"EADDRINUSE"` or `"address already in use"` AND mentioning the configured port
 - When detected, sets a flag `BindFailureDetected = true` with a timestamp; flag clears after 30 s of no new bind-failure messages OR after a successful TCP probe
 - State machine update:
-  - If TCP probe **fails** AND `BindFailureDetected` recent → `BindFailure` (red, but tooltip will explain)
-  - If TCP probe **fails** AND no bind failure → existing logic (`NotInstalled` if no binary, `NotRunning` if binary exists)
+  - If TCP probe **fails** AND `BindFailureDetected` recent → `EPinStatus.BIND_FAILURE` (red, but tooltip will explain)
+  - If TCP probe **fails** AND no bind failure → existing logic (`EPinStatus.NOT_INSTALLED` if no binary, `EPinStatus.NOT_RUNNING` if binary exists)
 
 **Validation:**
 
@@ -337,9 +349,9 @@ Refs: 07-editor-status-pin-tasks.md (task 2.4)
 **Output:**
 
 - New file `Editor/Pin/PinTooltip.cs`
-- Static method `GetText(PinStatus status, int port, bool updateAvailable, string updateVersion)` returning the tooltip string
+- Static method `GetText(EPinStatus status, int port, bool updateAvailable, string updateVersion)` returning the tooltip string
 - Texts per the spec table (decision #5 in design doc)
-- `PinOverlay` sets the panel's `tooltip` attribute (or uses a `VisualElement.tooltip` property) on each tick
+- The pin's redraw callback (added in 2.2) sets `element.tooltip = PinTooltip.GetText(...)` whenever the cached state tuple changes
 
 **Validation:**
 
@@ -372,9 +384,9 @@ Refs: 07-editor-status-pin-tasks.md (task 2.5)
 
 **Output:**
 
-- `PinPolling.UpdateAvailable` (new static bool property)
+- `PinPolling.UpdateAvailable` (already stubbed in 2.2; now wire it for real)
 - Read from `EditorPrefs.GetBool("MCPGameDeck.UpdateAvailable", false)` once per tick
-- `PinOverlay` reads + passes to `PinIcon.Render`
+- The redraw callback in `PinToolbarElement` already passes both `CurrentStatus` and `UpdateAvailable` to `PinIcon.BuildComposite` — no further wiring needed in the toolbar element
 - Verify `Editor/Utils/UpdateChecker.cs` already populates this key (check existing code; if not, add a minimal write — but prefer to keep UpdateChecker untouched until cleanup task 7.2)
 
 **Validation:**
@@ -411,9 +423,9 @@ Refs: 07-editor-status-pin-tasks.md (task 2.6)
 
 - New file `Editor/Pin/PinContextMenu.cs`
 - Static method `Show(Vector2 mousePos)` that builds a `GenericMenu` with:
-  - `Settings` → calls `PinLauncher.LaunchOrFocus(route: "/settings")` (stub for now: just `Debug.Log("[Pin] Settings clicked")`)
+  - `Settings` → calls `PinLauncher.LaunchOrFocus(route: "/settings")` (stub for now: just `McpLogger.Info("[Pin] Settings clicked")`)
   - `Copy MCP Server URL` → `EditorGUIUtility.systemCopyBuffer = $"http://{host}:{port}"`, then `EditorWindow.focusedWindow?.ShowNotification(new GUIContent("MCP Server URL copied"))`
-- `PinOverlay` adds a `ContextualMenuManipulator` or detects `MouseDownEvent` with right-button on its root `VisualElement` and calls `PinContextMenu.Show`
+- The pin's `VisualElement` (built in 2.2) gets a `ContextualMenuManipulator` or a `MouseDownEvent` listener that fires on right-click and calls `PinContextMenu.Show(evt.mousePosition)`
 
 **Validation:**
 
@@ -525,15 +537,15 @@ Refs: 07-editor-status-pin-tasks.md (task 4.1)
 - New file `Editor/Pin/PinBinaryManager.cs`
 - Static methods:
   - `IsInstalled(string version)` → `File.Exists(PinPaths.BinaryPath(version))`
-  - `GetCurrentVersion()` → `PackageInfo.FindForAssembly(typeof(PinOverlay).Assembly).version`
+  - `GetCurrentVersion()` → `PackageInfo.FindForAssembly(typeof(PinToolbarElement).Assembly).version`
 - `PinPolling.Tick()` updates: when TCP probe fails, check `PinBinaryManager.IsInstalled(GetCurrentVersion())`:
-  - exists → `NotRunning` (red, "click to launch")
-  - missing → `NotInstalled` (gray, "click to install")
+  - exists → `EPinStatus.NOT_RUNNING` (red, "click to launch")
+  - missing → `EPinStatus.NOT_INSTALLED` (gray, "click to install")
 - `PinContextMenu` "About" updates: shows real app version (or "not installed") via `PinBinaryManager.IsInstalled`
 
 **Validation:**
 
-1. Pin currently shows gray (no binary anywhere). Manually create a fake file at `<InstallRoot>/bin/<version>/mcp-game-deck-app.exe` (just `echo "test" > path`). Pin should turn red within ~2 s (status `NotRunning`).
+1. Pin currently shows gray (no binary anywhere). Manually create a fake file at `<InstallRoot>/bin/<version>/mcp-game-deck-app.exe` (just `echo "test" > path`). Pin should turn red within ~2 s (status `NOT_RUNNING`).
 2. Delete the fake file → pin returns to gray.
 3. About dialog reflects "not installed" / "v0.1.0 installed" correctly.
 

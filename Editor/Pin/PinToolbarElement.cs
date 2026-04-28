@@ -24,7 +24,6 @@ namespace GameDeck.Editor.Pin
 
         #region FIELDS
 
-        private static readonly EPinStatus _testStatus = EPinStatus.CONNECTED;
         private static readonly bool _testUpdateAvailable = false;
 
         #endregion
@@ -52,7 +51,7 @@ namespace GameDeck.Editor.Pin
         [MainToolbarElement(ELEMENT_PATH, defaultDockPosition = MainToolbarDockPosition.Left)]
         public static MainToolbarElement CreatePin()
         {
-            var icon = PinIcon.BuildComposite(_testStatus, _testUpdateAvailable);
+            var icon = PinIcon.BuildComposite(PinPolling.CurrentStatus, _testUpdateAvailable);
             var content = new MainToolbarContent(icon, TOOLTIP);
             return new MainToolbarButton(content, OnPinClicked);
         }
