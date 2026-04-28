@@ -1,3 +1,14 @@
+> ⚠️ **ADR-001 applies.** See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`.
+> **Status post-ADR:** `delivered — engine target updated.` This spec was executed as written and shipped April 2026 (see `01-external-app-tasks.md` for per-task status). Under ADR-001 the **target** of the Node supervisor changed: instead of spawning the custom Agent SDK Server (`Server~/dist/index.js`), Tauri now spawns Claude Code via `@anthropic-ai/claude-agent-sdk`. The supervisor pattern, the diagram's three-process layout, the React shell, and the TCP path to Unity all stand. Specific deltas:
+>
+> 1. Diagram's third box — "NODE AGENT SDK SERVER (existing Server~/) — child process of Tauri" — read as "@anthropic-ai/claude-agent-sdk (Node) supervising a `claude` subprocess." The TCP path to Unity (port 8090) stays exactly as drawn.
+> 2. Section "Tauri ⇔ Node Agent SDK protocol" — the custom JSON-RPC 2.0 dialect described there is replaced by the Agent SDK's own message protocol. Tauri owns supervision and stdio framing; the wire format becomes the SDK's.
+> 3. Definition of done item 5 ("Send Message in Chat tab successfully round-trips: types → Tauri command → Node SDK stub → echo back → renders") was met with the echo stub. Under ADR-001 the equivalent target is "types → Tauri command → Agent SDK → Claude Code → streamed response."
+> 4. Definition of done item 9 ("Feature 02 orchestrator can plug into the Node SDK side without re-architecting Tauri") is **dropped** — Feature 02 was superseded by ADR-001.
+> 5. "What this feature does NOT include" still applies; just substitute "the orchestrator agent logic itself (Feature 02)" with "the Claude Code subprocess wiring under ADR-001."
+>
+> The MSI 2.93 MB / NSIS 1.94 MB / exe 8.99 MB measurements stay valid. The production runtime caveats (Node SDK path resolution via `env!("CARGO_MANIFEST_DIR")`, `UNITY_PROJECT_PATH` env var) stay valid — they remain Feature 07's responsibility.
+
 # Feature 01 — External App (Tauri) — Spec
 
 > **Status:** `agreed` — design decisions locked April 2026.

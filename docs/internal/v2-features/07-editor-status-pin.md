@@ -1,3 +1,6 @@
+> ⚠️ **ADR-001 applies.** See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`.
+> **Status post-ADR:** `unchanged` — Editor side, independent of the chat engine. The 7 locked decisions all stand. The dependency on Feature 02 was removed (Feature 02 was superseded by ADR-001); cleanup behavior is unchanged.
+
 # Feature 07 — Editor Status Pin
 
 ## Status
@@ -48,7 +51,7 @@ Add a small status pin to the Unity Editor toolbar (top of the editor). The pin 
 - Notification badges (e.g. "3 messages" if app gets a message while user was in Unity) — v2.1
 - Customizable pin position (top-right vs top-left) — v2.1
 - Multiple pins for multiple Unity projects with different states
-- Migration of `Server~/src/index.ts` from WebSocket to stdio+JSON-RPC transport — Feature 02 owns that. Feature 07 leaves the old WebSocket-based server in place; Feature 02 replaces it.
+- Migration of `Server~/src/index.ts` from WebSocket to stdio+JSON-RPC transport — under ADR-001, `index.ts` is removed (not migrated) along with the rest of the custom Agent SDK Server. Feature 07 leaves it on disk untouched; the v2.0 cleanup pass (post-ADR) deletes it.
 - **Automatic port-collision recovery** — pin does not auto-pick a free port. User changes manually in Project Settings (see decision #4). Auto-fallback could land in v2.x if it becomes a real pain point.
 - **Final product icon** — Feature 07 ships with a placeholder icon. The real MCP Game Deck logo (and the matching Tauri app icon) is designed in Feature 09 (Claude Design hand-off) and dropped in afterwards.
 - **"Force re-download app" menu item** — useful for debugging corrupt downloads, but rare for end users. Could be added in v2.x if support tickets reveal need.
@@ -59,7 +62,7 @@ Add a small status pin to the Unity Editor toolbar (top of the editor). The pin 
 ## Dependencies
 
 - **Feature 01 (External app)** — pin's whole purpose is to launch / monitor it. Done as of April 2026.
-- **Feature 02 (Orchestrator)** — replaces the Server~/index.ts WebSocket transport with stdio+JSON-RPC. Feature 07 deletes the old chat UI but leaves index.ts alive so Feature 02 can refactor it cleanly.
+- **Feature 02 (Orchestrator)** — ~~replaces the Server~/index.ts WebSocket transport with stdio+JSON-RPC~~ **superseded by ADR-001.** The custom Agent SDK Server is removed entirely; Claude Code orchestrates natively. Feature 07 still deletes `Editor/ChatUI/` per its own cleanup scope; `Server~/src/index.ts` and siblings are removed in the v2.0 cleanup pass that follows ADR-001 (not by Feature 07).
 - **Feature 09 (Claude Design hand-off)** — produces the final product icon used by both the pin and the Tauri app. Feature 07 ships with a placeholder; Feature 09 swaps it.
 - The current chat window UI Toolkit panel **is removed** as part of this feature. Pin replaces it.
 

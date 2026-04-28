@@ -1,3 +1,6 @@
+> ⚠️ **ADR-001 applies.** See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`.
+> **Status post-ADR:** `historical — all tasks delivered April 2026.` This file is preserved as execution history; do not re-execute. The target of Group 3 ("Node Agent SDK supervision") shifted under ADR-001 — Tauri now spawns Claude Code via the Agent SDK instead of `Server~/dist/index.js`. See ADR-001 for the post-delivery cleanup that follows.
+
 # Feature 01 — External App (Tauri) — Tasks
 
 > **Companion:** `01-external-app-spec.md` for design rationale.

@@ -39,9 +39,6 @@ namespace GameDeck.Editor.Settings
         [Tooltip("Port for the MCP Server (C# HTTP server that Unity tools listen on)")]
         public int _mcpPort = 8090;
 
-        [Tooltip("Port for the Agent SDK WebSocket server (Chat UI connects here)")]
-        public int _agentPort = 9100;
-
         [Tooltip("Hostname the MCP server binds to")]
         public string _host = "localhost";
 

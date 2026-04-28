@@ -1,3 +1,6 @@
+> ⚠️ **ADR-001 applies.** See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`.
+> **Status post-ADR:** `mostly superseded — small surface remaining.` The bug being fixed lived in the custom server's permission resolver. Under ADR-001 the custom server is removed; the bug goes with it. Claude Code's permission system (`default` / `acceptEdits` / `plan` / `bypassPermissions` / `auto`) covers all five test cases listed in the spec. What remains is much smaller: surface Claude Code's mode in the Tauri React UI and validate end-to-end that the five behaviors work. Original ~2-2.5 weeks estimate drops to ~2-3 days. **Read the ADR before executing this feature.**
+
 # Feature 05 — Permission System Fix
 
 ## Status

@@ -107,8 +107,6 @@ namespace GameDeck.Editor.Settings
 
             int newMcpPort = Mathf.Clamp(EditorGUILayout.IntField(new GUIContent("MCP Server Port", "Port for the C# HTTP server that exposes Unity tools (default: 8090)"), s._mcpPort), PORT_MIN, PORT_MAX);
 
-            int newAgentPort = Mathf.Clamp(EditorGUILayout.IntField(new GUIContent("Agent Server Port", "Port for the Node.js WebSocket server the Chat UI connects to (default: 9100)"), s._agentPort), PORT_MIN, PORT_MAX);
-
             string newHost = EditorGUILayout.TextField(new GUIContent("Host", "Hostname the MCP server binds to (default: localhost)"), s._host);
 
             if (string.IsNullOrWhiteSpace(newHost))
@@ -124,13 +122,12 @@ namespace GameDeck.Editor.Settings
 
             EditorGUI.indentLevel--;
 
-            bool portChanged = newMcpPort != s._mcpPort || newAgentPort != s._agentPort;
+            bool portChanged = newMcpPort != s._mcpPort;
             bool changed = portChanged || newHost != s._host || newTimeout != s._requestTimeoutSeconds || newAutoStart != s._autoStart || newModel != s._defaultModel;
 
             if (changed)
             {
                 s._mcpPort = newMcpPort;
-                s._agentPort = newAgentPort;
                 s._host = newHost;
                 s._requestTimeoutSeconds = newTimeout;
                 s._autoStart = newAutoStart;

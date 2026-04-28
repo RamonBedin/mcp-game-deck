@@ -1,3 +1,6 @@
+> ⚠️ **ADR-001 applies.** See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`.
+> **Status post-ADR:** `delivered — engine target updated.` The Tauri scaffold (React + Vite + Tailwind + Zustand + Router + Rust supervisor + TCP client + JSON-RPC framing + chat round-trip) shipped April 2026 (MSI 2.93 MB). The Node child process target has shifted under ADR-001: Tauri now spawns Claude Code via `@anthropic-ai/claude-agent-sdk` instead of a custom Agent SDK Server (`Server~/dist/index.js`). The supervisor pattern, the TCP path to Unity, and the React shell stay; only the Node-side payload changes. Mentions of "Node Agent SDK Server" below should be read as "Claude Agent SDK + Claude Code subprocess" — the third process is still there, the brand changed.
+
 # Feature 01 — External App (Tauri)
 
 ## Status
@@ -46,7 +49,7 @@ The app lives inside the Unity package at `App~/`. Users install one package and
 ## Dependencies
 
 - **Feature 07 (Editor pin)** — provides the "Open Chat" entry point. Pin can ship before app, but app needs pin to be useful from inside Unity.
-- **Feature 02 (Orchestrator agent)** — the new chat UX is built on top of single-chat-with-subagents. App without orchestrator would be a worse version of today's chat. Build them together.
+- ~~**Feature 02 (Orchestrator agent)** — the new chat UX is built on top of single-chat-with-subagents. App without orchestrator would be a worse version of today's chat. Build them together.~~ **Superseded by ADR-001.** Feature 02 was canceled; orchestration is owned by Claude Code natively. The 10 agents in `Agents~/` are surfaced to Claude Code via `--add-dir`.
 
 ## Cost estimate
 
