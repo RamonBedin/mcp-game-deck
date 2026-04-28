@@ -25,7 +25,7 @@
 | 2.5 | Tooltip per state | S | ✅ | 2026-04-28 | PinTooltip.GetText returns per-state text including BUSY reason (compiling / play mode / importing assets); applied via MainToolbarContent on every CreatePin re-execute. |
 | 2.6 | Update badge wiring | XS | ✅ | 2026-04-28 | PinToolbarElement.CreatePin reads MCPGameDeck.UpdateAvailable / LATEST_VERSION EditorPrefs; PinIcon renders blue badge top-right; tooltip appends "Update available: vX.Y.Z" line. |
 | 3.1 | Convert pin to MainToolbarDropdown + menu (Open Chat + Settings + Copy URL) | M | ✅ | 2026-04-28 | MainToolbarDropdown with click-to-open menu (research showed MainToolbarButton has no public way to hook right-click). PinContextMenu.cs renamed → PinDropdownMenu.cs. Open Chat + Settings stubbed (real launch in 4.5); Copy URL live. |
-| 3.2 | Dropdown items: Show install folder + About | S | ⏳ | | |
+| 3.2 | Dropdown items: Show install folder + About | S | ✅ | 2026-04-28 | Show install folder uses EditorUtility.RevealInFinder + creates empty folder if missing (currently TempPinInstall stub at project root — real path lands in 4.1). About shows package version + "not installed" stub + GitHub link. |
 | 4.1 | Cross-platform install path helpers | S | ⏳ | | |
 | 4.2 | Binary discovery (does `<path>/<version>/exe` exist?) | S | ⏳ | | |
 | 4.3 | Binary download + SHA256 verification | M | ⏳ | | |

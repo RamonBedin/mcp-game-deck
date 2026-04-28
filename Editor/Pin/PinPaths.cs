@@ -1,5 +1,8 @@
 #nullable enable
 
+using System.IO;
+using UnityEngine;
+
 namespace GameDeck.Editor.Pin
 {
     /// <summary>
@@ -13,6 +16,19 @@ namespace GameDeck.Editor.Pin
     /// </remarks>
     public static class PinPaths
     {
+        #region PROPERTIES
+
+        /// <summary>
+        /// Root folder where the pin will install the Tauri app binary. Stub points
+        /// at <c>{ProjectRoot}/TempPinInstall</c> until task 4.1 wires the real
+        /// per-OS path (<c>%APPDATA%/MCPGameDeck</c> on Windows,
+        /// <c>~/Library/Application Support/MCPGameDeck</c> on macOS,
+        /// <c>~/.local/share/MCPGameDeck</c> on Linux).
+        /// </summary>
+        public static string InstallRoot => Path.Combine(Application.dataPath, "..", "TempPinInstall");
+
+        #endregion
+
         #region PUBLIC METHODS
 
         /// <summary>
