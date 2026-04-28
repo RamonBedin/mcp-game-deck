@@ -37,7 +37,7 @@ namespace GameDeck.Editor.Settings
             return new SettingsProvider(SETTINGS_PROVIDER_PATH, SettingsScope.Project)
             {
                 guiHandler = DrawSettingsGUI,
-                keywords = new[] { "AI", "MCP", "Port", "Claude", "Agent", "Host", "Timeout", "Model" }
+                keywords = new[] { "AI", "MCP", "Port", "Claude", "Agent", "Host", "Timeout" }
             };
         }
 
@@ -84,20 +84,6 @@ namespace GameDeck.Editor.Settings
         {
             var s = GameDeckSettings.Instance;
 
-            if (Utils.UpdateChecker.IsUpdateAvailable)
-            {
-                EditorGUILayout.HelpBox(
-                    $"Update available: v{Utils.UpdateChecker.LatestVersion} (current: v{Utils.UpdateChecker.CurrentVersion})",
-                    MessageType.Warning);
-
-                if (GUILayout.Button("View Release on GitHub"))
-                {
-                    Application.OpenURL(Utils.UpdateChecker.ReleaseUrl);
-                }
-
-                EditorGUILayout.Space(SPACE_SECTION_HEADER);
-            }
-
             var prevLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 180f;
 
@@ -116,27 +102,21 @@ namespace GameDeck.Editor.Settings
 
             int newTimeout = Mathf.Clamp(EditorGUILayout.IntField(new GUIContent("Request Timeout (seconds)", "Max time to wait for a tool invocation on the Unity main thread (default: 30)"), s._requestTimeoutSeconds), TIMEOUT_MIN_SECONDS, TIMEOUT_MAX_SECONDS);
 
-            bool newAutoStart = EditorGUILayout.Toggle(new GUIContent("Auto Start Servers", "Automatically start servers when the Chat window opens"), s._autoStart);
-
-            string newModel = EditorGUILayout.TextField(new GUIContent("Default Model", "Claude model ID for new conversations (default: claude-sonnet-4-6)"), s._defaultModel);
-
             EditorGUI.indentLevel--;
 
             bool portChanged = newMcpPort != s._mcpPort;
-            bool changed = portChanged || newHost != s._host || newTimeout != s._requestTimeoutSeconds || newAutoStart != s._autoStart || newModel != s._defaultModel;
+            bool changed = portChanged || newHost != s._host || newTimeout != s._requestTimeoutSeconds;
 
             if (changed)
             {
                 s._mcpPort = newMcpPort;
                 s._host = newHost;
                 s._requestTimeoutSeconds = newTimeout;
-                s._autoStart = newAutoStart;
-                s._defaultModel = newModel;
                 s.Save();
 
                 if (portChanged)
                 {
-                    EditorUtility.DisplayDialog("Restart Required", "Port changes require restarting the MCP Game Deck servers.\n" + "Close and re-open the Chat window to apply.", "OK");
+                    EditorUtility.DisplayDialog("Restart Required", "Port changes require restarting Unity to rebind the MCP Server.", "OK");
                 }
             }
 

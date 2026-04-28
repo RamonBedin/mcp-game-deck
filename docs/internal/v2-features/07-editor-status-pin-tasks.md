@@ -24,8 +24,8 @@
 | 2.4 | Bind-failure detection (red) | M | ✅ | 2026-04-28 | logMessageReceivedThreaded watches for EADDRINUSE / "address already in use" + cached port; volatile flag observed on main thread; 30s recency window cleared by successful probe or timeout. |
 | 2.5 | Tooltip per state | S | ✅ | 2026-04-28 | PinTooltip.GetText returns per-state text including BUSY reason (compiling / play mode / importing assets); applied via MainToolbarContent on every CreatePin re-execute. |
 | 2.6 | Update badge wiring | XS | ✅ | 2026-04-28 | PinToolbarElement.CreatePin reads MCPGameDeck.UpdateAvailable / LATEST_VERSION EditorPrefs; PinIcon renders blue badge top-right; tooltip appends "Update available: vX.Y.Z" line. |
-| 3.1 | Right-click context menu — Settings + Copy URL | S | ⏳ | | |
-| 3.2 | Right-click — Show install folder + About | S | ⏳ | | |
+| 3.1 | Convert pin to MainToolbarDropdown + menu (Open Chat + Settings + Copy URL) | M | ✅ | 2026-04-28 | MainToolbarDropdown with click-to-open menu (research showed MainToolbarButton has no public way to hook right-click). PinContextMenu.cs renamed → PinDropdownMenu.cs. Open Chat + Settings stubbed (real launch in 4.5); Copy URL live. |
+| 3.2 | Dropdown items: Show install folder + About | S | ⏳ | | |
 | 4.1 | Cross-platform install path helpers | S | ⏳ | | |
 | 4.2 | Binary discovery (does `<path>/<version>/exe` exist?) | S | ⏳ | | |
 | 4.3 | Binary download + SHA256 verification | M | ⏳ | | |
@@ -35,9 +35,9 @@
 | 5.2 | Tauri: add CLI plugin + `--route=` parsing in main.tsx | M | ⏳ | | |
 | 5.3 | Tauri: UpdateBanner component + env var read | M | ⏳ | | |
 | 6.1 | End-to-end smoke test (fresh state, all paths) | M | ⏳ | | |
-| 7.1 | Cleanup: delete Editor/ChatUI/ folder | S | ⏳ | | |
-| 7.2 | Cleanup: strip UpdateChecker log + Settings banner | S | ⏳ | | |
-| 7.3 | Cleanup: audit GameDeckSettings for dead fields | S | ⏳ | | |
+| 7.1 | Cleanup: delete Editor/ChatUI/ folder | S | ✅ | 2026-04-28 | Pulled forward to unblock 3.1 (ChatUI was holding stale references after ADR-001 cleanup). Folder + all .cs/.uxml/.uss/.meta gone. Unity compiles clean. |
+| 7.2 | Cleanup: strip UpdateChecker log + Settings banner | S | ✅ | 2026-04-28 | Pulled forward with 7.1. UpdateChecker no longer logs (only writes EditorPrefs); GameDeckSettingsProvider drops update banner block. Pin badge + Tauri banner are the only update surfaces. |
+| 7.3 | Cleanup: audit GameDeckSettings for dead fields | S | ✅ | 2026-04-28 | Pulled forward with 7.1. Removed _agentPort and _defaultModel; kept _host/_mcpPort/_requestTimeoutSeconds. SettingsProvider trimmed to match. |
 | 7.4 | Final smoke test post-cleanup | S | ⏳ | | |
 
 23 tasks total. Cleanup intentionally last — see spec section "Cleanup phase".
@@ -410,54 +410,97 @@ Refs: 07-editor-status-pin-tasks.md (task 2.6)
 
 ---
 
-## Group 3 — Right-click menu
+## Group 3 — Pin dropdown menu
 
-> Goal: right-click pin shows the 4 menu items, each works. Settings still won't actually launch (Group 4) but copies a placeholder URL.
+> Goal: clicking the pin opens a dropdown with `Open Chat` (primary) + `Settings` + `Copy MCP Server URL`. `Show install folder` and `About` get added in 3.2. `Open Chat` and `Settings` only log for now — the real launch flow is Group 4.
+>
+> **Why dropdown instead of right-click context menu:** when the original tasks 3.1/3.2 were drafted, the spec assumed `MainToolbarButton.RegisterCallback<MouseDownEvent>` would let us intercept right-clicks. Research into the Unity 6 main toolbar API showed this is impossible: `MainToolbarButton` is a descriptor (not a `VisualElement`) and the internal `MainToolbarElement.CreateElement()` cannot be subclassed publicly. `MainToolbarDropdown` (the only fully-supported alternative) opens a menu on click — so left-click can no longer also launch directly. "Open Chat" becomes the primary item in the menu instead. See spec section "Pin dropdown menu" for the full reasoning.
 
-### Task 3.1 — Menu scaffold + Settings + Copy URL
+### Task 3.1 — Convert pin to MainToolbarDropdown + menu (Open Chat + Settings + Copy URL)
 
-**Size:** S
-**Refs:** spec "Right-click menu", design decision #6
+**Size:** M
+**Refs:** spec "Pin dropdown menu", design decision #6 (revised)
+
+**Context:** the existing `PinToolbarElement.cs` returns a `MainToolbarButton` and tries to call `button.RegisterCallback<MouseDownEvent>(...)` to handle right-clicks. That line does not compile (`MainToolbarButton` has no `RegisterCallback`). This task replaces the entire approach: pin becomes a `MainToolbarDropdown`, and a dropdown menu surfaces all actions including the primary one.
 
 **Output:**
 
-- New file `Editor/Pin/PinContextMenu.cs`
-- Static method `Show(Vector2 mousePos)` that builds a `GenericMenu` with:
-  - `Settings` → calls `PinLauncher.LaunchOrFocus(route: "/settings")` (stub for now: just `McpLogger.Info("[Pin] Settings clicked")`)
-  - `Copy MCP Server URL` → `EditorGUIUtility.systemCopyBuffer = $"http://{host}:{port}"`, then `EditorWindow.focusedWindow?.ShowNotification(new GUIContent("MCP Server URL copied"))`
-- The pin's `VisualElement` (built in 2.2) gets a `ContextualMenuManipulator` or a `MouseDownEvent` listener that fires on right-click and calls `PinContextMenu.Show(evt.mousePosition)`
+- **Rename** `Editor/Pin/PinContextMenu.cs` → `Editor/Pin/PinDropdownMenu.cs` (rename file + class + update `.meta` GUID is fine, just delete and recreate if simpler).
+- **`PinDropdownMenu.cs`** rewritten:
+  - Static class. `internal` access modifier (only `PinToolbarElement` calls it).
+  - Public method `Show(Rect anchorRect)` (note: takes a `Rect`, not `Vector2` — anchored under the dropdown button).
+  - Builds a `GenericMenu` with items in this order:
+    - `Open Chat` → stub: `McpLogger.Info("[Pin] Open Chat clicked");` (real launch in task 4.5)
+    - separator
+    - `Settings` → stub: `McpLogger.Info("[Pin] Settings clicked");` (real launch in task 4.5)
+    - `Copy MCP Server URL` → `EditorGUIUtility.systemCopyBuffer = $"http://{host}:{port}"` + `EditorWindow.focusedWindow?.ShowNotification(...)` (already implemented)
+  - `menu.DropDown(anchorRect)` to anchor the menu under the dropdown button.
+- **`PinToolbarElement.cs`** rewritten:
+  - `CreatePin()` now returns a `MainToolbarDropdown` instead of `MainToolbarButton`.
+  - Construct via `new MainToolbarDropdown(content, OnDropdownClicked)`.
+  - `OnDropdownClicked(Rect anchor)` calls `PinDropdownMenu.Show(anchor)`.
+  - **Delete** the broken `OnPinClicked()` stub and the `OnMouseDown` event handler entirely.
+  - **Delete** the `using UnityEngine.UIElements;` and `RegisterCallback` line (the cause of the compile error).
+  - Existing icon / tooltip / status logic is unchanged — `MainToolbarDropdown` accepts a `MainToolbarContent(icon, tooltip)` exactly the same way `MainToolbarButton` did.
+
+**Why `MainToolbarDropdown` is correct:**
+
+Unity 6's `MainToolbarDropdown(MainToolbarContent content, Action<Rect> onClick)` is the only fully-supported way to attach a click-driven menu to a main toolbar entry. The `Action<Rect>` callback receives the rendered button's screen rect, which `GenericMenu.DropDown(rect)` uses for anchoring.
 
 **Validation:**
 
-1. Right-click pin → menu appears with `Settings`, `Copy MCP Server URL`.
-2. Click `Copy MCP Server URL` → notification appears briefly. Paste in Notepad: `http://127.0.0.1:8090` (or whatever the configured host/port).
-3. Click `Settings` → console logs `[Pin] Settings clicked`. (Real launch in Group 4.)
+1. Compile clean. The `RegisterCallback` error is gone.
+2. Pin renders identically to before (same icon, same tooltip, same status colors).
+3. **Left-click pin** → dropdown opens directly under the pin (not at random screen coordinates).
+4. Dropdown shows three items: `Open Chat`, separator, `Settings`, `Copy MCP Server URL`.
+5. Click `Open Chat` → console logs `[Pin] Open Chat clicked`. Menu closes.
+6. Click `Settings` → console logs `[Pin] Settings clicked`. Menu closes.
+7. Click `Copy MCP Server URL` → notification appears briefly. Paste in Notepad: `http://{host}:{port}` matches `GameDeckSettings`.
+8. Right-click pin → nothing happens (right-click is no longer used; expected and documented).
+9. Restart Unity. Pin still appears, dropdown still works.
+10. Recompile (edit any C# file). Pin survives the reload, status redraw still works.
 
 **Commit:**
 
 ```
-feat(v2): pin right-click menu (Settings + Copy URL)
+refactor(v2): pin uses MainToolbarDropdown instead of right-click intercept
 
-PinContextMenu builds a GenericMenu with two items so far. Settings
-stubbed (logs only); real launch wires up after Group 4. Copy URL
-uses EditorGUIUtility.systemCopyBuffer + a brief HUD notification.
+The original 3.1 design called for MainToolbarButton +
+RegisterCallback<MouseDownEvent> to intercept right-clicks.
+Research into the Unity 6 main toolbar API showed this is
+impossible: MainToolbarButton is a descriptor (not a VisualElement),
+and MainToolbarElement.CreateElement() is internal -- meaning we
+can't hook events on the toolbar entry without reflection (which
+spec decision #5 forbids).
 
-Refs: 07-editor-status-pin-tasks.md (task 3.1)
+Replaces MainToolbarButton + OnPinClicked + OnMouseDown right-click
+intercept with MainToolbarDropdown + OnDropdownClicked. Single click
+on the pin opens a GenericMenu (PinDropdownMenu.Show(Rect))
+containing "Open Chat" (primary action, stubbed for 4.5),
+separator, "Settings" (stubbed), and "Copy MCP Server URL" (live).
+
+Files:
+- Editor/Pin/PinDropdownMenu.cs (renamed from PinContextMenu.cs)
+- Editor/Pin/PinToolbarElement.cs (rewrites CreatePin)
+
+Spec section "Pin dropdown menu" updated to reflect the new design.
+Definition-of-done items 3 and 4 updated.
+
+Refs: 07-editor-status-pin-tasks.md (task 3.1, revised)
 ```
 
 ---
 
-### Task 3.2 — Show install folder + About
+### Task 3.2 — Dropdown items: Show install folder + About
 
 **Size:** S
-**Refs:** spec "Right-click menu" (decision #6 items 3 + 4)
+**Refs:** spec "Pin dropdown menu" (items 4 + 5)
 
 **Output:**
 
-- `PinContextMenu.cs` extended with:
-  - Separator
+- `PinDropdownMenu.cs` extended with two more items appended after `Copy MCP Server URL`:
+  - separator
   - `Show install folder` → `EditorUtility.RevealInFinder(PinPaths.InstallRoot)`. If folder doesn't exist, create it empty first then reveal.
-  - Separator
   - `About` → opens an `EditorWindow` (or `EditorUtility.DisplayDialog` if simpler) with:
     - Package version: `PackageInfo.FindForAssembly(...).version`
     - App version: stub for now (`"not installed"`) — real check after task 4.2
@@ -467,15 +510,15 @@ Refs: 07-editor-status-pin-tasks.md (task 3.1)
 
 **Validation:**
 
-1. Right-click pin → menu has 4 items now.
+1. Click pin → dropdown has 5 items now (Open Chat / Settings / Copy URL / Show folder / About) with two separators.
 2. Click `Show install folder` → file explorer opens at the temp folder (which was created empty).
 3. Click `About` → dialog/window shows package version (real) + "not installed" + GitHub link button.
-4. Click GitHub link → browser opens.
+4. Click GitHub link in About → browser opens.
 
 **Commit:**
 
 ```
-feat(v2): pin right-click menu — Show install folder + About
+feat(v2): pin dropdown menu — Show install folder + About
 
 Show install folder uses EditorUtility.RevealInFinder, creates the
 folder empty if missing. About reads PackageInfo.version + EditorPrefs
@@ -656,15 +699,15 @@ Refs: 07-editor-status-pin-tasks.md (task 4.4)
     4. Set env vars per spec table (`UNITY_PROJECT_PATH`, `UNITY_MCP_HOST`, `UNITY_MCP_PORT`, `MCP_GAME_DECK_*`).
     5. `Process.Start()`. If new instance, fine. If single-instance plugin (Tauri side, task 5.1) catches it, the new process self-exits — also fine.
     6. On launch failure (exception or quick exit code != 0), show `PinDownloadDialog.ShowLaunchFailed(exitCode)`.
-- `PinOverlay` adds a left-click `ClickEvent` handler on its root that calls `PinLauncher.LaunchOrFocus()`.
-- `PinContextMenu`'s "Settings" item calls `PinLauncher.LaunchOrFocus("/settings")`.
+- `PinToolbarElement.cs`: `OnDropdownClicked(Rect)` is now the dropdown handler from task 3.1. Real wiring of `Open Chat` and `Settings` items lives in `PinDropdownMenu.cs` — update both items there to call `PinLauncher.LaunchOrFocus()` (no route) and `PinLauncher.LaunchOrFocus("/settings")` respectively, replacing the `McpLogger.Info` stubs from task 3.1.
+- (No left-click handler needed on the pin element — the dropdown click is handled by `MainToolbarDropdown` itself.)
 
 **Validation:**
 
-1. Pin gray (no binary). Click pin → progress dialog → download → Tauri opens. (Tauri version from F01 will work even without single-instance plugin yet — that's task 5.1.)
+1. Pin gray (no binary). Click pin → dropdown opens → click `Open Chat` → progress dialog → download → Tauri opens. (Tauri version from F01 will work even without single-instance plugin yet — that's task 5.1.)
 2. Tauri shows correct Unity status (connected) — meaning env vars propagated correctly.
-3. Click pin again → second Tauri instance opens (until task 5.1 makes it single-instance). Close both.
-4. Right-click → Settings → Tauri opens (still on Chat tab — `--route=/settings` parsing comes in 5.2).
+3. Click pin again → dropdown → `Open Chat` → second Tauri instance opens (until task 5.1 makes it single-instance). Close both.
+4. Click pin → dropdown → `Settings` → Tauri opens (still on Chat tab — `--route=/settings` parsing comes in 5.2).
 5. Try with Tauri binary at the path but corrupted (e.g. truncated). `Process.Start` should fail or process exit with non-zero immediately → ShowLaunchFailed dialog appears.
 
 **Commit:**

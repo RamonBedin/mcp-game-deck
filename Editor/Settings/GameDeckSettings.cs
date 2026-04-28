@@ -13,7 +13,7 @@ namespace GameDeck.Editor.Settings
     /// <remarks>
     /// This file contains no secrets (auth tokens are stored in <c>Library/GameDeck/</c>
     /// which Unity gitignores by default). If your project requires hiding server
-    /// configuration (host, port, model), add <c>ProjectSettings/GameDeckSettings.json</c>
+    /// configuration (host, port), add <c>ProjectSettings/GameDeckSettings.json</c>
     /// to your <c>.gitignore</c>.
     /// </remarks>
     [Serializable]
@@ -44,12 +44,6 @@ namespace GameDeck.Editor.Settings
 
         [Tooltip("Request timeout in seconds")]
         public int _requestTimeoutSeconds = 30;
-
-        [Tooltip("Auto-start servers when the Chat window opens")]
-        public bool _autoStart = true;
-
-        [Tooltip("Claude model to use")]
-        public string _defaultModel = "claude-sonnet-4-6";
 
         #endregion
 

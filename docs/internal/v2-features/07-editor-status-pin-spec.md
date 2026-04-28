@@ -9,7 +9,7 @@ A small toolbar pin inside the Unity Editor that:
 
 1. Shows live connection status of the MCP Game Deck app (color-coded).
 2. Launches (or focuses) the Tauri app on click, downloading the binary on first run.
-3. Provides a right-click menu for power-user actions (Settings, Copy URL, Show folder, About).
+3. Opens a dropdown menu with the primary action (Open Chat) plus power-user actions (Settings, Copy URL, Show folder, About) when clicked.
 4. Replaces the in-Unity `Editor/ChatUI/` panel — that whole folder is deleted when the pin works end-to-end.
 
 After this feature, MCP Game Deck has a complete user-facing v2.0 workflow: install package → click pin → app downloads/opens → chat works against the live Unity project.
@@ -60,7 +60,7 @@ Editor/Pin/
 ├── PinIcon.cs                  ← Color32 composite renderer: bg icon + status dot + update badge
 ├── PinPolling.cs               ← state machine: status from TCP probe / EditorPrefs / busy flags
 ├── PinTooltip.cs               ← tooltip text per state
-├── PinContextMenu.cs           ← right-click menu (Settings / Copy URL / Show folder / About)
+├── PinDropdownMenu.cs          ← dropdown menu (Open Chat / Settings / Copy URL / Show folder / About)
 ├── PinLauncher.cs              ← spawn Tauri with env vars + --route arg
 ├── PinBinaryManager.cs         ← discover / download / verify the Tauri binary
 ├── PinPaths.cs                 ← cross-platform path helpers (%APPDATA% / ~/.local/...)
@@ -193,7 +193,7 @@ Pin always passes these env vars when calling `Process.Start()`:
 | `MCP_GAME_DECK_LATEST_VERSION` | when above is true | `EditorPrefs.GetString("MCPGameDeck.LatestVersion")` |
 | `MCP_GAME_DECK_RELEASE_URL` | when above is true | `EditorPrefs.GetString("MCPGameDeck.ReleaseUrl")` |
 
-Pin also passes `--route={path}` CLI arg when launched from the right-click "Settings" menu item (`--route=/settings`).
+Pin also passes `--route={path}` CLI arg when launched from the dropdown's "Settings" menu item (`--route=/settings`).
 
 ## Tauri side changes (App~)
 
@@ -248,14 +248,23 @@ const showBanner = import.meta.env.MCP_GAME_DECK_UPDATE_AVAILABLE === "true"
 
 Body: `Update available: v{version}` + button `View release` opening `MCP_GAME_DECK_RELEASE_URL` via `tauri-plugin-shell` (which is already capability-granted). Dismissable per session.
 
-## Right-click menu
+## Pin dropdown menu
 
-4 items. Implemented as `GenericMenu` populated in `PinContextMenu.cs`:
+The pin is implemented as a `MainToolbarDropdown` (not `MainToolbarButton`). Clicking the pin opens a `GenericMenu` populated in `PinDropdownMenu.cs`. This single-click-to-menu UX replaced the originally-planned "left-click launches, right-click menu" design after research into the Unity 6 main toolbar API revealed that `MainToolbarButton` is a descriptor (not a `VisualElement`) and the internal `MainToolbarElement.CreateElement()` cannot be subclassed publicly — making it impossible to register a `RegisterCallback<MouseDownEvent>` or `ContextualMenuManipulator` on the toolbar entry without reflection (which decision #5 explicitly forbids).
 
+Menu items (in order):
+
+- **Open Chat** (primary action) → `PinLauncher.LaunchOrFocus()` (no route override → defaults to `/chat`)
+- separator
 - **Settings** → `PinLauncher.LaunchOrFocus(route: "/settings")`
 - **Copy MCP Server URL** → `EditorGUIUtility.systemCopyBuffer = $"http://{host}:{port}"` + brief HUD
-- **Show install folder** → `EditorUtility.RevealInFinder(PinPaths.InstallFolder)`
+- separator
+- **Show install folder** → `EditorUtility.RevealInFinder(PinPaths.InstallRoot)`
 - **About** → `EditorUtility.DisplayDialog(...)` with package + app version + update status + "View on GitHub" link
+
+The trade-off (one extra click to open the app vs. the originally-planned single-click launch) is accepted because (a) the Unity 6 toolbar API leaves no other option without reflection, (b) all actions become discoverable from one entry point instead of being hidden behind a right-click affordance, (c) it removes the need for users to know about right-click on a small toolbar element.
+
+`MainToolbarDropdown` accepts a `Rect → void` callback that fires when the user clicks the dropdown. The callback receives the screen rect of the button and calls `menu.DropDown(rect)` to anchor the menu correctly under the pin.
 
 ## Cleanup phase (last group of tasks)
 
@@ -274,8 +283,8 @@ The feature is "done" when ALL of these hold:
 
 1. Pin appears in Unity's toolbar overlay (default position, draggable).
 2. Pin shows correct color for each state (verified manually by triggering each state).
-3. Right-click menu shows the 4 items, each working as specified.
-4. Click on pin (left) launches the Tauri app, downloading the binary on first run if absent.
+3. Clicking the pin opens a dropdown showing 5 items (Open Chat, Settings, Copy MCP Server URL, Show install folder, About), each working as specified.
+4. Selecting "Open Chat" launches the Tauri app, downloading the binary on first run if absent.
 5. Re-clicking the pin while app is running focuses the existing window (does not spawn a second instance).
 6. Closing Unity and reopening with the same project: pin reconnects automatically; existing Tauri (if running) shows `disconnected` then `connected` again.
 7. SHA256 verification of downloaded binary works (intentional corruption triggers re-download dialog).
