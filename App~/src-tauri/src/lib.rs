@@ -1,14 +1,35 @@
+//! Tauri application entry point.
+//!
+//! Wires up shared state (`NodeSupervisor`, `UnityClient`), spawns background
+//! workers during `setup`, intercepts the window close event for a graceful
+//! shutdown, and registers every Tauri command exposed to the frontend.
+
+// region: Module declarations
+
 pub mod commands;
 pub mod events;
 pub mod node_supervisor;
 pub mod types;
 pub mod unity_client;
 
+// endregion
+
 use tauri::{Manager, WindowEvent};
 
 use node_supervisor::NodeSupervisor;
 use unity_client::UnityClient;
 
+// region: Application bootstrap
+
+/// Builds and runs the Tauri application.
+///
+/// Registers `NodeSupervisor` and `UnityClient` as managed state, spawns the
+/// Node SDK child process and the Unity client worker during setup, intercepts
+/// `CloseRequested` for graceful shutdown, and binds every IPC command exposed
+/// to the React frontend.
+///
+/// Blocks until the application exits. Panics if the Tauri runtime fails to
+/// start (e.g. invalid `tauri.conf.json`).
 pub fn run() {
     tauri::Builder::default()
         .manage(NodeSupervisor::new())
@@ -16,7 +37,6 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
-            // Node SDK supervisor — spawn child + JSON-RPC framing.
             let app_for_node = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 let supervisor = app_for_node.state::<NodeSupervisor>();
@@ -72,3 +92,5 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+// endregion

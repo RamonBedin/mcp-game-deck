@@ -1,9 +1,25 @@
+/**
+ * Chat route — message list + composer.
+ *
+ * Subscribes to `message-received` for assistant replies, auto-scrolls to
+ * the bottom on every new message, and submits user input on Enter
+ * (Shift+Enter inserts a newline).
+ */
+
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { onMessageReceived } from "../ipc/events";
 import type { MessageRole } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
+// #region Helpers
+
+/**
+ * Maps a message role to its label color class.
+ *
+ * @param role - Speaker role of the message.
+ * @returns The Tailwind text-color class for the role's label.
+ */
 const roleColor = (role: MessageRole): string => {
   switch (role) {
     case "user":
@@ -15,6 +31,13 @@ const roleColor = (role: MessageRole): string => {
   }
 };
 
+// #endregion
+
+/**
+ * Chat route component.
+ *
+ * @returns The chat view: message list above, composer below.
+ */
 export default function ChatRoute() {
   const messages = useConversationStore((s) => s.messages);
   const sendMessage = useConversationStore((s) => s.sendMessage);
@@ -23,9 +46,10 @@ export default function ChatRoute() {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // #region Effects
+
   // Subscribe once: assistant messages from the Node SDK arrive via the
   // `message-received` event (dispatched in jsonrpc.rs from the Node-side
-  // `message/received` notification). 5.2 will make these actually fire.
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -56,24 +80,46 @@ export default function ChatRoute() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length]);
 
+  // #endregion
+
+  // #region Handlers
+
+  /** Sends the current input (no-op for empty / whitespace-only text). */
   const submit = () => {
-    if (!input.trim()) return;
+    if (!input.trim())
+    {
+      return;
+    }
+
     void sendMessage(input);
     setInput("");
   };
 
+  /**
+   * Form submit handler — prevents the page reload and forwards to `submit`.
+   *
+   * @param e - Form submit event.
+   */
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     submit();
   };
 
+  /**
+   * Textarea keydown handler — Enter sends, Shift+Enter inserts a newline.
+   *
+   * @param e - Textarea keydown event.
+   */
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends, Shift+Enter inserts a newline.
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) 
+    {
       e.preventDefault();
       submit();
     }
   };
+
+  // #endregion
 
   return (
     <div className="flex h-full flex-col">

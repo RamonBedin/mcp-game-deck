@@ -1,3 +1,12 @@
+/**
+ * React entry point.
+ *
+ * Mounts the root `App` layout into `#root` under React.StrictMode and
+ * configures client-side routing via `MemoryRouter` (avoids touching the
+ * URL bar inside the Tauri webview). The `/chat` route is the initial
+ * destination; the index route redirects to it.
+ */
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";

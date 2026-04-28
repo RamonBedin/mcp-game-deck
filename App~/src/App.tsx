@@ -1,9 +1,21 @@
+/**
+ * Root layout component.
+ *
+ * Hosts the persistent left-rail navigation and the routed `<Outlet />`,
+ * and owns three cross-cutting effects that need to live above any single
+ * route: the connection-status poller, the Node SDK status fast-path
+ * subscription, and the Node SDK log → console forwarder.
+ */
+
 import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getNodeSdkStatus, getUnityStatus } from "./ipc/commands";
 import { onNodeLog, onNodeSdkStatusChanged } from "./ipc/events";
 import { useConnectionStore } from "./stores/connectionStore";
 
+// #region Constants
+
+/** Items rendered in the left-rail navigation, in display order. */
 const NAV_ITEMS = [
   { to: "/chat", label: "Chat" },
   { to: "/plans", label: "Plans" },
@@ -11,12 +23,25 @@ const NAV_ITEMS = [
   { to: "/settings", label: "Settings" },
 ] as const;
 
+/** Polling cadence for the connection-status backstop (events are the fast path). */
 const CONNECTION_POLL_INTERVAL_MS = 2000;
 
+// #endregion
+
+/**
+ * Root layout. Renders the navigation rail and the active route, and runs
+ * the cross-cutting effects described above.
+ *
+ * @returns The root layout element.
+ */
 export default function App() {
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
   const setNodeSdkStatus = useConnectionStore((s) => s.setNodeSdkStatus);
 
+  // #region Effects
+
+  // Connection-status poll. Runs every CONNECTION_POLL_INTERVAL_MS as a
+  // backstop for the event-driven fast path below.
   useEffect(() => {
     let cancelled = false;
 
@@ -96,6 +121,8 @@ export default function App() {
       unlisten?.();
     };
   }, []);
+
+  // #endregion
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-900 text-slate-100">

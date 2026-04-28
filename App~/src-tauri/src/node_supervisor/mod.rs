@@ -26,9 +26,13 @@ use jsonrpc::{StatusArc, transition_node_status};
 
 use crate::types::NodeSdkStatus;
 
-/// Tauri managed state. Two locks:
+// region: State types
+
+/// Tauri managed state for the Node Agent SDK supervisor.
+///
+/// Two locks:
 /// - `state` (async Mutex): serializes spawn/shutdown, holds child + connection.
-/// - `status` (sync Mutex): brief read/write of the current NodeSdkStatus.
+/// - `status` (sync Mutex): brief read/write of the current `NodeSdkStatus`.
 ///   Sync because Tauri's `get_node_sdk_status` command stays sync — and we
 ///   never hold this lock across an await.
 #[derive(Clone)]
@@ -37,39 +41,66 @@ pub struct NodeSupervisor {
     status: StatusArc,
 }
 
+/// Pairs the OS-level `Child` handle with the JSON-RPC `Connection` that
+/// owns its stdio. Both are reset together on spawn and shutdown.
 struct State {
     child: Option<Child>,
     connection: Option<Connection>,
 }
 
+// endregion
+
+// region: NodeSupervisor implementation
+
 impl NodeSupervisor {
+    /// Builds a fresh supervisor in the `Crashed` (nothing-running) state.
+    ///
+    /// # Returns
+    ///
+    /// A new `NodeSupervisor`. No child is spawned until `spawn` is called.
     pub fn new() -> Self {
         Self {
             state: Arc::new(Mutex::new(State {
                 child: None,
                 connection: None,
             })),
-            // Initial state: nothing running. UI shows "crashed" briefly
-            // until setup() calls spawn().
             status: Arc::new(StdMutex::new(NodeSdkStatus::Crashed)),
         }
     }
 
-    /// Returns the current NodeSdkStatus. Sync (microsecond-cheap).
+    /// Returns a snapshot of the current SDK status (microsecond-cheap).
+    ///
+    /// # Returns
+    ///
+    /// The latest `NodeSdkStatus` published by spawn / health-check / reader.
     pub fn current_status(&self) -> NodeSdkStatus {
         *self.status.lock().unwrap()
     }
 
     /// Spawns the Node SDK child, wires up JSON-RPC framing, and stores both
-    /// handles. Returns the child PID. Idempotent — kills any prior child.
-    /// Also serves as the implementation of `restart_node_sdk`.
+    /// handles. Idempotent — kills any prior child. Also serves as the
+    /// implementation of `restart_node_sdk`.
     ///
     /// Status flow:
-    ///   (any) → Starting → spawn child → Running (if ping OK) | Crashed (else)
+    ///   `(any) → Starting → spawn child → Running (if ping OK) | Crashed (else)`
     ///
     /// The `Starting → Running` transition happens off this future, in a
-    /// background health-check task. spawn() returns as soon as the child
+    /// background health-check task. `spawn` returns as soon as the child
     /// exists; the UI sees "starting" until ping completes.
+    ///
+    /// # Arguments
+    ///
+    /// * `app` - Application handle used to emit `node-sdk-status-changed`
+    ///   events on every status transition.
+    ///
+    /// # Returns
+    ///
+    /// The OS process id of the freshly spawned child (`0` if unknown).
+    ///
+    /// # Errors
+    ///
+    /// Returns `std::io::Error` when the child fails to spawn or its stdio
+    /// pipes are missing.
     pub async fn spawn(&self, app: AppHandle) -> std::io::Result<u32> {
         let mut s = self.state.lock().await;
 
@@ -106,10 +137,7 @@ impl NodeSupervisor {
         let connection = Connection::new(stdin, stdout, app.clone(), self.status.clone());
         s.child = Some(child);
         s.connection = Some(connection);
-        drop(s); // release lock before spawning the health-check task.
-
-        // Health check: ping in background. Status transitions to Running
-        // (or Crashed if the child died before responding).
+        drop(s);
         let supervisor = self.clone();
         let app_for_check = app;
         tokio::spawn(async move {
@@ -135,15 +163,15 @@ impl NodeSupervisor {
         Ok(pid)
     }
 
-    /// Kills the running child (if any) and tears down the Connection.
-    /// Idempotent. Sets status to Crashed silently — the reader's EOF
+    /// Kills the running child (if any) and tears down the `Connection`.
+    ///
+    /// Idempotent. Sets status to `Crashed` silently — the reader's EOF
     /// transition then becomes a no-op (no event during intentional close).
     ///
     /// Note: on Windows `child.kill()` only terminates the immediate child,
     /// not grandchildren. The stub doesn't spawn subprocesses; Feature 02
     /// will need a process-tree kill once it spawns the Claude Agent SDK CLI.
     pub async fn shutdown(&self) {
-        // Mark Crashed in the local atomic — no event emitted (we're closing).
         *self.status.lock().unwrap() = NodeSdkStatus::Crashed;
         let mut s = self.state.lock().await;
         s.connection = None;
@@ -153,14 +181,27 @@ impl NodeSupervisor {
         }
     }
 
-    /// Sends a JSON-RPC request and awaits the response.
+    /// Sends a JSON-RPC request to the child and awaits its response.
+    ///
+    /// # Arguments
+    ///
+    /// * `method` - JSON-RPC method name.
+    /// * `params` - Optional `params` object (sent as-is; pass `None` to omit).
+    ///
+    /// # Returns
+    ///
+    /// The unwrapped JSON-RPC `result` value on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns `RequestError::ChildDead` when no child is running,
+    /// `RequestError::Timeout` after 30s without a response, or
+    /// `RequestError::Rpc` / `RequestError::Serde` for protocol-level failures.
     pub async fn request(
         &self,
         method: &str,
         params: Option<Value>,
     ) -> Result<Value, RequestError> {
-        // Clone the Connection out of the lock briefly, then drop the lock
-        // before awaiting the (potentially 30s) response.
         let conn = self.state.lock().await.connection.clone();
         match conn {
             Some(c) => c.request(method, params).await,
@@ -168,7 +209,16 @@ impl NodeSupervisor {
         }
     }
 
-    /// Convenience: round-trip `ping`, return the `pong` boolean.
+    /// Round-trips a `ping` request and unwraps the `pong` boolean.
+    ///
+    /// # Returns
+    ///
+    /// The value of the `pong` field in the response, or `false` if the
+    /// field is missing or not a boolean.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `request` returns (see `request` for details).
     pub async fn ping(&self) -> Result<bool, RequestError> {
         let result = self.request("ping", None).await?;
         Ok(result
@@ -183,3 +233,5 @@ impl Default for NodeSupervisor {
         Self::new()
     }
 }
+
+// endregion

@@ -1,6 +1,17 @@
+/**
+ * Zustand store for the active conversation.
+ *
+ * Owns the message list, current session id, and permission mode. Exposes
+ * an optimistic `sendMessage` that appends the user message locally before
+ * forwarding the text to the Node SDK; assistant replies arrive later via
+ * the `message-received` event (subscribed in `ChatRoute`).
+ */
+
 import { create } from "zustand";
 import { sendMessage as sendMessageCommand } from "../ipc/commands";
 import type { Message, PermissionMode } from "../ipc/types";
+
+// #region State shape
 
 interface ConversationState {
   messages: Message[];
@@ -10,16 +21,29 @@ interface ConversationState {
   clearMessages: () => void;
   setPermissionMode: (mode: PermissionMode) => void;
   setCurrentSessionId: (sessionId: string | null) => void;
-  /// Optimistically appends the user message, then forwards the text to the
-  /// Node SDK via the `send_message` Tauri command. Assistant replies arrive
-  /// later via the `message-received` event (subscribed in ChatRoute).
-  /// Errors are appended as a `system`-role message so they surface in the UI.
   sendMessage: (text: string) => Promise<void>;
 }
 
+// #endregion
+
+// #region Helpers
+
+/**
+ * Builds a per-session local message id with millisecond precision plus a
+ * short random suffix to avoid collisions when two messages land in the
+ * same millisecond.
+ *
+ * @param prefix - Short tag distinguishing user vs error messages.
+ * @returns A new local id string.
+ */
 const makeLocalId = (prefix: string): string =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+// #endregion
+
+// #region Store
+
+/** Hook for the conversation store. */
 export const useConversationStore = create<ConversationState>((set) => ({
   messages: [],
   currentSessionId: null,
@@ -54,3 +78,5 @@ export const useConversationStore = create<ConversationState>((set) => ({
     }
   },
 }));
+
+// #endregion

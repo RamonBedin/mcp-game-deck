@@ -1,3 +1,11 @@
+/**
+ * Settings route — read-only summary plus dev-only diagnostic actions.
+ *
+ * Surfaces the live Unity / Node SDK status, the active theme, a "Restart
+ * Node SDK" button, and (in dev builds only) buttons to emit a test
+ * status event, ping the Node SDK, and call a Unity MCP tool.
+ */
+
 import { useEffect, useState } from "react";
 import {
   devCallUnityTool,
@@ -10,6 +18,14 @@ import type { ConnectionStatus, NodeSdkStatus } from "../ipc/types";
 import { useConnectionStore } from "../stores/connectionStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
+// #region Helpers
+
+/**
+ * Maps a Unity connection status to its display text-color class.
+ *
+ * @param status - Current Unity connection state.
+ * @returns The Tailwind text-color class for that state.
+ */
 const unityStatusClass = (status: ConnectionStatus): string => {
   switch (status) {
     case "connected":
@@ -21,6 +37,12 @@ const unityStatusClass = (status: ConnectionStatus): string => {
   }
 };
 
+/**
+ * Maps a Node SDK status to its display text-color class.
+ *
+ * @param status - Current Node SDK process state.
+ * @returns The Tailwind text-color class for that state.
+ */
 const nodeSdkStatusClass = (status: NodeSdkStatus): string => {
   switch (status) {
     case "running":
@@ -32,11 +54,20 @@ const nodeSdkStatusClass = (status: NodeSdkStatus): string => {
   }
 };
 
+// #endregion
+
+/**
+ * Settings route component.
+ *
+ * @returns The settings view with status summary and (dev-only) diagnostics.
+ */
 export default function SettingsRoute() {
   const theme = useSettingsStore((state) => state.settings.theme);
   const unityStatus = useConnectionStore((s) => s.unityStatus);
   const nodeSdkStatus = useConnectionStore((s) => s.nodeSdkStatus);
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
+
+  // #region Local state
 
   const [pingResult, setPingResult] = useState<string | null>(null);
   const [pinging, setPinging] = useState(false);
@@ -45,12 +76,22 @@ export default function SettingsRoute() {
   const [unityToolResult, setUnityToolResult] = useState<string | null>(null);
   const [callingUnityTool, setCallingUnityTool] = useState(false);
 
+  // #endregion
+
+  // #region Effects
+
+  // Fast-path subscription to Unity status. App.tsx polls every 2s; this
+  // catches transitions within milliseconds.
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 
     onUnityStatusChanged((payload) => {
-      if (cancelled) return;
+      if (cancelled)
+      {
+        return;
+      }
+
       setUnityStatus(payload.status);
     })
       .then((u) => {
@@ -70,6 +111,11 @@ export default function SettingsRoute() {
     };
   }, [setUnityStatus]);
 
+  // #endregion
+
+  // #region Handlers
+
+  /** Pings the Node SDK and renders the result with elapsed milliseconds. */
   const handlePing = async () => {
     setPinging(true);
     setPingResult("…");
@@ -85,6 +131,7 @@ export default function SettingsRoute() {
     }
   };
 
+  /** Restarts the Node SDK child via the matching Tauri command. */
   const handleRestart = async () => {
     setRestarting(true);
     setRestartResult("restarting…");
@@ -98,6 +145,10 @@ export default function SettingsRoute() {
     }
   };
 
+  /**
+   * Calls a Unity MCP tool (`console-get-logs`) and renders a truncated
+   * preview of the JSON result.
+   */
   const handleCallUnityTool = async () => {
     setCallingUnityTool(true);
     setUnityToolResult("…");
@@ -114,6 +165,8 @@ export default function SettingsRoute() {
       setCallingUnityTool(false);
     }
   };
+
+  // #endregion
 
   return (
     <section>

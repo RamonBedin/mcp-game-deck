@@ -1,13 +1,4 @@
 //! TCP client for Unity's MCP server (HTTP/1.1 transport).
-//!
-//! Group 4 scope:
-//! - 4.1: connect to 127.0.0.1:8090, heartbeat every 5s, reconnect with
-//!   backoff [1s, 2s, 5s, 10s, 30s capped], emit `unity-status-changed`
-//!   events on transitions.
-//! - 4.2 (this task): POST `/` MCP RPC helper + `dev_call_unity_tool` —
-//!   forwards `tools/call` requests with Bearer auth from
-//!   `<unity_project>/Library/GameDeck/auth-token`. Project path comes from
-//!   the `UNITY_PROJECT_PATH` env var until Feature 07's pin sets it.
 
 pub mod connection;
 pub mod protocol;
@@ -25,43 +16,26 @@ use tauri::AppHandle;
 use crate::events::emit_unity_status_changed;
 use crate::types::{ConnectionStatus, UnityStatusChangedPayload};
 
+// region: Constants
+
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 8090;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const ENV_UNITY_PROJECT_PATH: &str = "UNITY_PROJECT_PATH";
 const AUTH_TOKEN_RELATIVE_PATH: &str = "Library/GameDeck/auth-token";
 
-/// Tauri managed state for the Unity TCP client.
-///
-/// Holds the live `ConnectionStatus` behind a sync Mutex (microsecond locks,
-/// never held across await — same pattern as `NodeSupervisor::status`).
-/// Cloneable so the run loop spawned in `start()` can own its own handle.
-#[derive(Clone)]
-pub struct UnityClient {
-    status: Arc<StdMutex<ConnectionStatus>>,
-    addr: SocketAddr,
-    /// Cached MCP auth token. Lazily loaded from disk on first
-    /// `call_tool` — no token is needed for the GET heartbeat.
-    auth_token: Arc<StdMutex<Option<String>>>,
-    /// JSON-RPC request id source. Each tool call uses a fresh id (HTTP
-    /// makes correlation trivial since request and response share the same
-    /// connection — but unique ids still help when reading server logs).
-    next_id: Arc<AtomicU64>,
-}
+// endregion
 
+// region: Errors
+
+/// Failure modes for `UnityClient::call_tool`.
 #[derive(Debug)]
 pub enum ToolCallError {
-    /// Could not load the Bearer token (env var unset, file missing, etc).
     AuthMissing(String),
-    /// TCP / HTTP transport failure.
     Transport(std::io::Error),
-    /// Server replied with a non-200 status code.
     HttpStatus(u16, String),
-    /// Response body was not valid JSON.
     Json(String),
-    /// JSON-RPC `error` object.
     McpError(Value),
-    /// Response was valid JSON but had neither `result` nor `error`.
     Malformed(String),
 }
 
@@ -83,7 +57,29 @@ impl std::fmt::Display for ToolCallError {
 
 impl std::error::Error for ToolCallError {}
 
+// endregion
+
+// region: Client
+
+/// Tauri managed state for the Unity TCP client.
+///
+/// Holds the live `ConnectionStatus` behind a sync Mutex (microsecond locks,
+/// never held across await — same pattern as `NodeSupervisor::status`).
+/// Cloneable so the run loop spawned in `start()` can own its own handle.
+#[derive(Clone)]
+pub struct UnityClient {
+    status: Arc<StdMutex<ConnectionStatus>>,
+    addr: SocketAddr,
+    auth_token: Arc<StdMutex<Option<String>>>,
+    next_id: Arc<AtomicU64>,
+}
+
 impl UnityClient {
+    /// Builds a fresh client wired to `127.0.0.1:8090` in the disconnected state.
+    ///
+    /// # Returns
+    ///
+    /// A new `UnityClient`. No tasks are spawned until `start` is called.
     pub fn new() -> Self {
         let addr: SocketAddr = format!("{DEFAULT_HOST}:{DEFAULT_PORT}")
             .parse()
@@ -96,13 +92,24 @@ impl UnityClient {
         }
     }
 
+    /// Returns a snapshot of the current connection status.
+    ///
+    /// # Returns
+    ///
+    /// The latest `ConnectionStatus` observed by the run loop.
     pub fn current_status(&self) -> ConnectionStatus {
         *self.status.lock().unwrap()
     }
 
-    /// Spawns the background connection task. Idempotent only at the
-    /// caller's discretion — calling twice would start two tasks. Setup
-    /// should call this exactly once.
+    /// Spawns the background connection task.
+    ///
+    /// Idempotent only at the caller's discretion — calling twice would
+    /// start two tasks. Setup should call this exactly once.
+    ///
+    /// # Arguments
+    ///
+    /// * `app` - Tauri application handle, cloned into the spawned task so
+    ///   it can emit `unity-status-changed` events.
     pub fn start(&self, app: AppHandle) {
         let client = self.clone();
         tauri::async_runtime::spawn(async move {
@@ -110,7 +117,14 @@ impl UnityClient {
         });
     }
 
-    /// Connection management loop. Runs until the app exits.
+    /// Connection management loop.
+    ///
+    /// Heartbeats while connected, then falls back to the backoff schedule
+    /// until reconnection succeeds. Runs until the app exits.
+    ///
+    /// # Arguments
+    ///
+    /// * `app` - Application handle used to emit status transition events.
     async fn run(&self, app: AppHandle) {
         let mut backoff_idx: usize = 0;
 
@@ -136,6 +150,13 @@ impl UnityClient {
         }
     }
 
+    /// Updates `status` and emits `unity-status-changed` only when the new
+    /// state differs from the current one (deduplicates noisy transitions).
+    ///
+    /// # Arguments
+    ///
+    /// * `app` - Application handle used to emit the event.
+    /// * `new_status` - Status to transition into.
     fn transition(&self, app: &AppHandle, new_status: ConnectionStatus) {
         let changed = {
             let mut guard = self.status.lock().unwrap();
@@ -163,9 +184,24 @@ impl UnityClient {
         }
     }
 
-    /// Forwards `tools/call` to Unity's MCP server. Constructs the JSON-RPC
-    /// envelope, sends it via authenticated POST, and unwraps the
-    /// `result` / `error` fields from the response.
+    /// Forwards `tools/call` to Unity's MCP server.
+    ///
+    /// Constructs the JSON-RPC envelope, sends it via authenticated POST,
+    /// and unwraps the `result` / `error` fields from the response.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - MCP tool name to invoke.
+    /// * `arguments` - JSON arguments object passed under `params.arguments`.
+    ///
+    /// # Returns
+    ///
+    /// The unwrapped JSON-RPC `result` value on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ToolCallError` for missing auth, transport failures, non-200
+    /// responses, malformed JSON, or JSON-RPC error replies.
     pub async fn call_tool(
         &self,
         name: &str,
@@ -206,8 +242,18 @@ impl UnityClient {
     }
 
     /// Returns the cached auth token, loading it from disk on first access.
+    ///
     /// Cache lives for the app's lifetime — restart Tauri after switching
     /// Unity projects.
+    ///
+    /// # Returns
+    ///
+    /// The bearer token as a `String`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ToolCallError::AuthMissing` when the env var is unset, the
+    /// token file does not exist, or the file is empty.
     fn get_auth_token(&self) -> Result<String, ToolCallError> {
         {
             let cache = self.auth_token.lock().unwrap();
@@ -227,6 +273,23 @@ impl Default for UnityClient {
     }
 }
 
+// endregion
+
+// region: Auth helpers
+
+/// Loads the MCP bearer token from `<unity_project>/Library/GameDeck/auth-token`.
+///
+/// The Unity project root is discovered via the `UNITY_PROJECT_PATH` env var.
+/// Trims whitespace and rejects empty files.
+///
+/// # Returns
+///
+/// The trimmed bearer token as a `String`.
+///
+/// # Errors
+///
+/// Returns `ToolCallError::AuthMissing` when the env var is unset, the file
+/// cannot be read, or the file's trimmed content is empty.
 fn load_auth_token() -> Result<String, ToolCallError> {
     let project_path = std::env::var(ENV_UNITY_PROJECT_PATH).map_err(|_| {
         ToolCallError::AuthMissing(format!(
@@ -254,3 +317,5 @@ fn load_auth_token() -> Result<String, ToolCallError> {
     }
     Ok(token)
 }
+
+// endregion

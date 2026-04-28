@@ -1,3 +1,14 @@
+/**
+ * Plans route placeholder.
+ *
+ * Real CRUD UI for plans lands in Feature 06.
+ */
+
+/**
+ * Plans route component.
+ *
+ * @returns A placeholder section noting that the real UI is pending.
+ */
 export default function PlansRoute() {
   return (
     <section>

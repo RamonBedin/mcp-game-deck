@@ -1,11 +1,13 @@
-// Canonical contract types shared between Rust (Tauri) and TS (React).
-// Mirrors src/ipc/types.ts. Edit both sides together when changing.
+//! Canonical contract types shared between Rust (Tauri) and TS (React).
+//!
+//! Mirrors `src/ipc/types.ts`. Edit both sides together when changing.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-// --- Connection ----------------------------------------------------------
+// region: Connection
 
+/// State of the Unity Editor connection from the Tauri host's perspective.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionStatus {
@@ -14,8 +16,11 @@ pub enum ConnectionStatus {
     Disconnected,
 }
 
-// --- Permissions ---------------------------------------------------------
+// endregion
 
+// region: Permissions
+
+/// Permission policy applied to tool calls issued by the agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PermissionMode {
@@ -24,8 +29,11 @@ pub enum PermissionMode {
     Plan,
 }
 
-// --- Messages ------------------------------------------------------------
+// endregion
 
+// region: Messages
+
+/// Speaker role for a single chat message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageRole {
@@ -34,8 +42,10 @@ pub enum MessageRole {
     System,
 }
 
+/// Stable identifier for a message within a conversation.
 pub type MessageId = String;
 
+/// A single chat message exchanged with the agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
@@ -47,8 +57,11 @@ pub struct Message {
     pub agent: Option<String>,
 }
 
-// --- Plans ---------------------------------------------------------------
+// endregion
 
+// region: Plans
+
+/// Lightweight metadata for a plan file (used in list views).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanMeta {
@@ -56,9 +69,12 @@ pub struct PlanMeta {
     pub last_modified: i64,
 }
 
-// Frontmatter schema is not pinned yet — Feature 06 will tighten it.
+/// Free-form frontmatter map for plan documents.
+///
+/// Schema is not pinned yet — Feature 06 will tighten it.
 pub type PlanFrontmatter = Map<String, Value>;
 
+/// Full contents of a plan, including its parsed frontmatter and body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Plan {
@@ -68,8 +84,11 @@ pub struct Plan {
     pub frontmatter: PlanFrontmatter,
 }
 
-// --- Rules ---------------------------------------------------------------
+// endregion
 
+// region: Rules
+
+/// Lightweight metadata for a rule file (used in list views).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleMeta {
@@ -77,6 +96,7 @@ pub struct RuleMeta {
     pub enabled: bool,
 }
 
+/// Full contents of a rule, including its activation flag and body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
@@ -85,8 +105,11 @@ pub struct Rule {
     pub content: String,
 }
 
-// --- Settings ------------------------------------------------------------
+// endregion
 
+// region: Settings
+
+/// User-selected color theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
@@ -94,6 +117,7 @@ pub enum Theme {
     Light,
 }
 
+/// Persistent application settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -101,6 +125,7 @@ pub struct AppSettings {
     pub unity_project_path: Option<String>,
 }
 
+/// Partial settings update — every field is optional and `None` means "leave unchanged".
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettingsPatch {
@@ -110,10 +135,13 @@ pub struct AppSettingsPatch {
     pub unity_project_path: Option<String>,
 }
 
-// --- Events --------------------------------------------------------------
+// endregion
+
+// region: Events
 // Payloads emitted by Rust → React via Tauri events. Names mirror the
 // emitter helpers in events.rs and the TS payload types in src/ipc/types.ts.
 
+/// Payload for `unity-status-changed`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnityStatusChangedPayload {
@@ -122,7 +150,9 @@ pub struct UnityStatusChangedPayload {
     pub reason: Option<String>,
 }
 
-// Distinct from ConnectionStatus — Node SDK has its own state machine.
+/// Lifecycle state of the bundled Node.js Agent SDK process.
+///
+/// Distinct from `ConnectionStatus` — the Node SDK has its own state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeSdkStatus {
@@ -131,6 +161,7 @@ pub enum NodeSdkStatus {
     Crashed,
 }
 
+/// Payload for `node-sdk-status-changed`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeSdkStatusChangedPayload {
@@ -139,6 +170,7 @@ pub struct NodeSdkStatusChangedPayload {
     pub pid: Option<u32>,
 }
 
+/// Payload for `message-stream-chunk` — incremental token delivery for an in-flight message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageStreamChunkPayload {
@@ -146,12 +178,14 @@ pub struct MessageStreamChunkPayload {
     pub chunk: String,
 }
 
+/// Payload for `message-stream-complete` — emitted once when streaming finishes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageStreamCompletePayload {
     pub message_id: MessageId,
 }
 
+/// Shape of the answer the agent expects from the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AskUserType {
@@ -160,6 +194,7 @@ pub enum AskUserType {
     FreeText,
 }
 
+/// Payload for `ask-user-requested`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AskUserRequestedPayload {
@@ -172,6 +207,7 @@ pub struct AskUserRequestedPayload {
     pub kind: AskUserType,
 }
 
+/// Payload for `permission-requested`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionRequestedPayload {
@@ -180,10 +216,14 @@ pub struct PermissionRequestedPayload {
     pub params: Value,
 }
 
-// --- Errors --------------------------------------------------------------
+// endregion
 
-// Tagged enum — JSON shape: { "kind": "<snake_case>", "message": "..." }
-// matches TS `{ kind: AppErrorKind, message: string }`.
+// region: Errors
+
+/// Tagged error type sent to the frontend.
+///
+/// The wire format is `{ "kind": "<snake_case>", "message": "..." }`,
+/// matching the TS `{ kind: AppErrorKind, message: string }` shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "message", rename_all = "snake_case")]
 pub enum AppError {
@@ -210,3 +250,5 @@ impl std::fmt::Display for AppError {
 }
 
 impl std::error::Error for AppError {}
+
+// endregion

@@ -18,23 +18,42 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-const HTTP_GET_REQUEST: &[u8] =
-    b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+// region: Constants
 
-// Caps the response read for a POST. The C# server's MAX_REQUEST_BODY_SIZE is
-// 16 MiB — responses are typically far smaller, but tool payloads (e.g. log
-// dumps) can grow. 4 MiB is a comfortable safety margin for dev.
+/// Pre-encoded heartbeat request — fixed string keeps the hot path allocation-free.
+const HTTP_GET_REQUEST: &[u8] = b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+
+/// Caps the response read for a POST. The C# server's `MAX_REQUEST_BODY_SIZE`
+/// is 16 MiB — responses are typically far smaller, but tool payloads (e.g.
+/// log dumps) can grow. 4 MiB is a comfortable safety margin for dev.
 const MAX_POST_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
+// endregion
+
+// region: HTTP helpers
+
 /// Sends an HTTP GET to `/` and returns the parsed status code.
-/// Wrapped in a connect+request timeout so a hung server can't stall caller.
+///
+/// Wrapped in a connect+request timeout so a hung server can't stall the caller.
+///
+/// # Arguments
+///
+/// * `addr` - Target server address.
+/// * `t` - Combined connect + request timeout.
+///
+/// # Returns
+///
+/// The HTTP status code parsed from the response's status line.
+///
+/// # Errors
+///
+/// Returns `std::io::Error` for connection failures, empty/malformed
+/// responses, or timeouts (`ErrorKind::TimedOut`).
 pub async fn http_get_status(addr: SocketAddr, t: Duration) -> std::io::Result<u16> {
     let attempt = async {
         let mut stream = TcpStream::connect(addr).await?;
         stream.write_all(HTTP_GET_REQUEST).await?;
 
-        // The status line fits comfortably in 64 bytes:
-        // "HTTP/1.1 200 OK\r\n..."
         let mut buf = [0u8; 64];
         let n = stream.read(&mut buf).await?;
         if n == 0 {
@@ -45,7 +64,6 @@ pub async fn http_get_status(addr: SocketAddr, t: Duration) -> std::io::Result<u
         }
 
         let prefix = std::str::from_utf8(&buf[..n]).unwrap_or("");
-        // Status line: HTTP/<version> <code> <reason>
         let code = prefix
             .split_whitespace()
             .nth(1)
@@ -69,9 +87,29 @@ pub async fn http_get_status(addr: SocketAddr, t: Duration) -> std::io::Result<u
     }
 }
 
-/// Sends an HTTP POST with Bearer auth + JSON body, returns
-/// `(status_code, response_body)`. Reads until the server closes the
-/// connection (we send `Connection: close`).
+/// Sends an HTTP POST with Bearer auth + JSON body.
+///
+/// Reads until the server closes the connection (we send `Connection: close`)
+/// and caps the response at `MAX_POST_RESPONSE_BYTES` to avoid unbounded
+/// allocations.
+///
+/// # Arguments
+///
+/// * `addr` - Target server address.
+/// * `body` - JSON-encoded request body. The byte length is used verbatim
+///   for `Content-Length`, so the string must be the exact bytes to send.
+/// * `auth_token` - Bearer token written into the `Authorization` header.
+/// * `t` - Combined connect + request timeout.
+///
+/// # Returns
+///
+/// A tuple of `(status_code, response_body)` parsed from the response.
+///
+/// # Errors
+///
+/// Returns `std::io::Error` for transport failures, malformed responses
+/// (missing CRLFCRLF, unparseable status line, non-UTF-8 bytes), payloads
+/// exceeding `MAX_POST_RESPONSE_BYTES`, or timeouts (`ErrorKind::TimedOut`).
 pub async fn http_post_json(
     addr: SocketAddr,
     body: &str,
@@ -95,7 +133,6 @@ pub async fn http_post_json(
         stream.write_all(request.as_bytes()).await?;
         stream.flush().await?;
 
-        // Read until EOF — server closes after responding (we sent Connection: close).
         let mut buf = Vec::with_capacity(8192);
         let mut chunk = [0u8; 8192];
         loop {
@@ -153,3 +190,5 @@ pub async fn http_post_json(
         )),
     }
 }
+
+// endregion

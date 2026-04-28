@@ -1,11 +1,17 @@
 //! JSON-RPC 2.0 message types for stdio framing with the Node Agent SDK.
-//! Spec: docs/internal/v2-features/01-external-app-spec.md
 //!       § "Tauri ↔ Node Agent SDK protocol"
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+// region: Constants
+
+/// JSON-RPC version literal — pinned to 2.0 on every outgoing request.
 const JSONRPC_VERSION: &str = "2.0";
+
+// endregion
+
+// region: Outgoing
 
 /// Outgoing request from Tauri → Node SDK.
 #[derive(Debug, Serialize)]
@@ -18,6 +24,17 @@ pub struct Request {
 }
 
 impl Request {
+    /// Builds a JSON-RPC request with the version literal pre-filled.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Monotonic request id supplied by the caller.
+    /// * `method` - JSON-RPC method name (any `Into<String>`).
+    /// * `params` - Optional `params` value.
+    ///
+    /// # Returns
+    ///
+    /// A new `Request` ready to be serialized and written to the wire.
     pub fn new(id: u64, method: impl Into<String>, params: Option<Value>) -> Self {
         Self {
             jsonrpc: JSONRPC_VERSION,
@@ -27,6 +44,10 @@ impl Request {
         }
     }
 }
+
+// endregion
+
+// region: Incoming
 
 /// JSON-RPC 2.0 error object.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,3 +80,5 @@ pub struct Incoming {
     #[serde(default)]
     pub error: Option<RpcError>,
 }
+
+// endregion

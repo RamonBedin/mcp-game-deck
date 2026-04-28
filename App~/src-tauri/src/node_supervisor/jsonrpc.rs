@@ -34,25 +34,51 @@ use crate::types::{Message, NodeSdkStatus, NodeSdkStatusChangedPayload};
 
 use super::protocol::{Incoming, Request, RpcError};
 
+// region: Constants
+
+/// Per-request timeout. Late responses are dropped after this elapses.
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+
+/// Buffer capacity of the writer's mpsc queue. Backpressures `request`
+/// callers when the child can't keep up with stdin writes.
 const WRITER_QUEUE_CAPACITY: usize = 64;
+
+/// Tauri event name for forwarded `log` notifications from the Node SDK.
 const EVT_NODE_LOG: &str = "node-log";
+
+/// Tauri event name for the catch-all notification envelope.
 const EVT_NODE_NOTIFICATION: &str = "node-notification";
 
+// endregion
+
+// region: Type aliases
+
+/// Maps in-flight request ids to the oneshot that will deliver their reply.
+/// Async mutex because both `request` (insert/remove) and the reader loop
+/// (remove on response) need it across awaits.
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, RpcError>>>>>;
+
+/// Shared handle to the supervisor's `NodeSdkStatus`. Sync mutex — locks
+/// must never be held across an `await` point.
 pub type StatusArc = Arc<StdMutex<NodeSdkStatus>>;
 
-#[derive(Clone)]
-pub struct Connection {
-    next_id: Arc<AtomicU64>,
-    pending: PendingMap,
-    writer_tx: mpsc::Sender<String>,
-}
+// endregion
 
-/// Atomically swap the Node SDK status and emit `node-sdk-status-changed`
-/// iff the value actually changed. Idempotent: no event if already the
-/// target status. Used by both the supervisor (Starting/Running) and the
-/// reader_loop (Crashed on EOF), so identical state machines either path.
+// region: Status transition
+
+/// Atomically swaps the Node SDK status and emits `node-sdk-status-changed`
+/// iff the value actually changed.
+///
+/// Idempotent: no event if already at the target status. Used by both the
+/// supervisor (Starting/Running) and the reader loop (Crashed on EOF), so
+/// both paths see identical state-machine semantics.
+///
+/// # Arguments
+///
+/// * `app` - Application handle used to emit the status event.
+/// * `status_arc` - Shared status cell to update.
+/// * `new_status` - Target status.
+/// * `pid` - Optional OS process id, included in the event payload.
 pub(super) fn transition_node_status(
     app: &AppHandle,
     status_arc: &StatusArc,
@@ -79,15 +105,16 @@ pub(super) fn transition_node_status(
     }
 }
 
+// endregion
+
+// region: Errors
+
+/// Failure modes for `Connection::request`.
 #[derive(Debug)]
 pub enum RequestError {
-    /// Child process is not running (never spawned, exited, or stdin closed).
     ChildDead,
-    /// No response within REQUEST_TIMEOUT_SECS.
     Timeout,
-    /// Node SDK returned a JSON-RPC `error` object.
     Rpc(RpcError),
-    /// Failed to serialize the outgoing request.
     Serde(String),
 }
 
@@ -106,7 +133,37 @@ impl std::fmt::Display for RequestError {
 
 impl std::error::Error for RequestError {}
 
+// endregion
+
+// region: Connection
+
+/// JSON-RPC framing layer wired to a child process's stdio.
+///
+/// Owns the request id source, the pending-response table, and the writer
+/// queue. Cloning is cheap and shares the same underlying tasks — drop the
+/// last clone to tear the connection down.
+#[derive(Clone)]
+pub struct Connection {
+    next_id: Arc<AtomicU64>,
+    pending: PendingMap,
+    writer_tx: mpsc::Sender<String>,
+}
+
 impl Connection {
+    /// Builds a new connection and spawns its reader + writer tasks.
+    ///
+    /// # Arguments
+    ///
+    /// * `stdin` - Child stdin pipe; consumed by the writer task.
+    /// * `stdout` - Child stdout pipe; consumed by the reader task.
+    /// * `app` - Application handle used to forward notifications and emit
+    ///   status changes on EOF.
+    /// * `status` - Shared status cell, transitioned to `Crashed` on EOF.
+    ///
+    /// # Returns
+    ///
+    /// A `Connection` value. The two background tasks are already running
+    /// when this returns.
     pub fn new(
         stdin: ChildStdin,
         stdout: ChildStdout,
@@ -126,6 +183,21 @@ impl Connection {
         }
     }
 
+    /// Sends a JSON-RPC request and awaits the matching response.
+    ///
+    /// # Arguments
+    ///
+    /// * `method` - JSON-RPC method name.
+    /// * `params` - Optional `params` value (omitted from the wire when `None`).
+    ///
+    /// # Returns
+    ///
+    /// The unwrapped `result` value on success.
+    ///
+    /// # Errors
+    ///
+    /// See `RequestError` for the full taxonomy. A timed-out or dead-child
+    /// request always cleans up its pending entry before returning.
     pub async fn request(
         &self,
         method: &str,
@@ -134,8 +206,6 @@ impl Connection {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
 
-        // Insert the pending entry FIRST so a fast response can never race
-        // ahead of registration.
         self.pending.lock().await.insert(id, tx);
 
         let req = Request::new(id, method, params);
@@ -143,7 +213,6 @@ impl Connection {
             serde_json::to_string(&req).map_err(|e| RequestError::Serde(e.to_string()))?;
 
         if self.writer_tx.send(json_str).await.is_err() {
-            // Writer task is gone — the child is dead or stdin failed.
             self.pending.lock().await.remove(&id);
             return Err(RequestError::ChildDead);
         }
@@ -151,12 +220,8 @@ impl Connection {
         match timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS), rx).await {
             Ok(Ok(Ok(value))) => Ok(value),
             Ok(Ok(Err(rpc_err))) => Err(RequestError::Rpc(rpc_err)),
-            // oneshot sender dropped without sending — only happens if drain_pending
-            // didn't fire, which is a bug. Treat as ChildDead defensively.
             Ok(Err(_)) => Err(RequestError::ChildDead),
             Err(_) => {
-                // Timed out — remove our pending entry so a late response is
-                // logged-and-dropped, not delivered to a stale receiver.
                 self.pending.lock().await.remove(&id);
                 Err(RequestError::Timeout)
             }
@@ -164,6 +229,19 @@ impl Connection {
     }
 }
 
+// endregion
+
+// region: Background tasks
+
+/// Drains the writer queue, writing newline-delimited JSON to child stdin.
+///
+/// Exits on the first write/flush failure or when the channel is closed
+/// (last `Connection` clone dropped).
+///
+/// # Arguments
+///
+/// * `stdin` - Child stdin pipe (owned).
+/// * `rx` - Receiver end of the writer queue.
 async fn writer_loop(mut stdin: ChildStdin, mut rx: mpsc::Receiver<String>) {
     while let Some(line) = rx.recv().await {
         let payload = format!("{line}\n");
@@ -179,6 +257,18 @@ async fn writer_loop(mut stdin: ChildStdin, mut rx: mpsc::Receiver<String>) {
     // Channel closed (Connection dropped) or write failure → exit task.
 }
 
+/// Reads newline-delimited JSON from child stdout, dispatching responses
+/// and notifications until EOF or read error.
+///
+/// On EOF/error the reader drains every pending request with `ChildDead`
+/// and transitions status to `Crashed`.
+///
+/// # Arguments
+///
+/// * `stdout` - Child stdout pipe (owned).
+/// * `pending` - Pending-response table; drained on exit.
+/// * `app` - Application handle used to emit notifications and status events.
+/// * `status` - Shared status cell, transitioned to `Crashed` on exit.
 async fn reader_loop(
     stdout: ChildStdout,
     pending: PendingMap,
@@ -198,8 +288,6 @@ async fn reader_loop(
             Ok(None) => {
                 eprintln!("[jsonrpc] child stdout closed (EOF)");
                 drain_pending(&pending).await;
-                // If shutdown() already set Crashed, transition is a no-op
-                // (no spurious event during intentional teardown).
                 transition_node_status(&app, &status, NodeSdkStatus::Crashed, None);
                 break;
             }
@@ -213,6 +301,16 @@ async fn reader_loop(
     }
 }
 
+/// Parses a single incoming line and routes it to the right handler.
+///
+/// Lines with `id` are treated as responses; lines with `method` and no
+/// `id` as notifications. Malformed JSON is logged and skipped.
+///
+/// # Arguments
+///
+/// * `line` - Trimmed input line (caller has stripped whitespace).
+/// * `pending` - Pending-response table.
+/// * `app` - Application handle used to emit notifications.
 async fn handle_incoming_line(line: &str, pending: &PendingMap, app: &AppHandle) {
     let msg: Incoming = match serde_json::from_str(line) {
         Ok(m) => m,
@@ -248,6 +346,14 @@ async fn handle_incoming_line(line: &str, pending: &PendingMap, app: &AppHandle)
     }
 }
 
+/// Rejects every pending request with `ChildDead` and clears the table.
+///
+/// Called when the reader exits (EOF/error) so request callers don't hang
+/// waiting on a child that will never reply.
+///
+/// # Arguments
+///
+/// * `pending` - Pending-response table to drain.
 async fn drain_pending(pending: &PendingMap) {
     let entries: Vec<_> = {
         let mut map = pending.lock().await;
@@ -262,6 +368,17 @@ async fn drain_pending(pending: &PendingMap) {
     }
 }
 
+/// Routes a JSON-RPC notification to the appropriate Tauri event.
+///
+/// Known methods are mapped to typed events (`log` → `node-log`,
+/// `message/received` → `message-received`); unknown methods fall back to
+/// the generic `node-notification` envelope.
+///
+/// # Arguments
+///
+/// * `method` - JSON-RPC method name from the notification.
+/// * `params` - Notification payload (`null` when missing).
+/// * `app` - Application handle used to emit the event.
 fn dispatch_notification(method: &str, params: Option<Value>, app: &AppHandle) {
     let payload = params.unwrap_or(Value::Null);
     match method {
@@ -281,9 +398,6 @@ fn dispatch_notification(method: &str, params: Option<Value>, app: &AppHandle) {
             }
         },
         _ => {
-            // Generic envelope for unrouted notifications. Feature 02 will
-            // replace this with typed dispatches to ask-user-requested,
-            // permission-requested, etc.
             let _ = app.emit(
                 EVT_NODE_NOTIFICATION,
                 json!({ "method": method, "params": payload }),
@@ -291,3 +405,5 @@ fn dispatch_notification(method: &str, params: Option<Value>, app: &AppHandle) {
         }
     }
 }
+
+// endregion
