@@ -7,6 +7,7 @@ using GameDeck.Editor.Settings;
 using GameDeck.MCP.Utils;
 using UnityEditor;
 using UnityEditor.Toolbars;
+using UnityEngine;
 
 namespace GameDeck.Editor.Pin
 {
@@ -33,6 +34,10 @@ namespace GameDeck.Editor.Pin
     /// compiling / entering play mode / importing AND a successful probe occurred
     /// within <c>CONNECTED_RECENCY_WINDOW_SECONDS</c>; otherwise
     /// <see cref="EPinStatus.CONNECTED"/> when the last probe succeeded; otherwise
+    /// <see cref="EPinStatus.BIND_FAILURE"/> when the C# MCP server failed to bind
+    /// the configured port (detected via a <see cref="Application.logMessageReceivedThreaded"/>
+    /// listener that watches for <c>EADDRINUSE</c> / <c>address already in use</c>
+    /// messages mentioning the configured port); otherwise
     /// <see cref="EPinStatus.NOT_RUNNING"/> if the binary is on disk; otherwise
     /// <see cref="EPinStatus.NOT_INSTALLED"/>. Transitions trigger
     /// <see cref="MainToolbar.Refresh"/> on the pin element so the icon recolors —
@@ -46,6 +51,9 @@ namespace GameDeck.Editor.Pin
         private const double TCP_PROBE_INTERVAL_SECONDS = 1.0;
         private const int TCP_TIMEOUT_MS = 200;
         private const double CONNECTED_RECENCY_WINDOW_SECONDS = 10.0;
+        private const double BIND_FAILURE_RECENCY_WINDOW_SECONDS = 30.0;
+        private const string BIND_FAILURE_TOKEN_EADDRINUSE = "EADDRINUSE";
+        private const string BIND_FAILURE_TOKEN_ADDRESS_IN_USE = "address already in use";
 
         #endregion
 
@@ -56,6 +64,9 @@ namespace GameDeck.Editor.Pin
         private static bool _probeInFlight;
         private static bool _lastProbeConnected;
         private static double _lastSuccessfulProbeAt = double.MinValue;
+        private static double _lastBindFailureAt = double.MinValue;
+        private static volatile bool _bindFailureFlag;
+        private static volatile int _cachedPort;
 
         #endregion
 
@@ -73,6 +84,13 @@ namespace GameDeck.Editor.Pin
         /// </summary>
         public static long TickCount { get; private set; }
 
+        /// <summary>
+        /// <c>true</c> when a bind-failure log line mentioning the configured port has
+        /// been observed within the last <see cref="BIND_FAILURE_RECENCY_WINDOW_SECONDS"/>.
+        /// Cleared either by 30 s of silence or by the next successful TCP probe.
+        /// </summary>
+        public static bool BindFailureDetected => (EditorApplication.timeSinceStartup - _lastBindFailureAt) < BIND_FAILURE_RECENCY_WINDOW_SECONDS;
+
         #endregion
 
         #region INITIALIZATION METHODS
@@ -82,8 +100,11 @@ namespace GameDeck.Editor.Pin
         {
             EditorApplication.update -= HandleTick;
             EditorApplication.update += HandleTick;
+            Application.logMessageReceivedThreaded -= HandleLogMessage;
+            Application.logMessageReceivedThreaded += HandleLogMessage;
             _nextTickAt = EditorApplication.timeSinceStartup + TICK_INTERVAL_SECONDS;
             _nextProbeAt = EditorApplication.timeSinceStartup;
+            _cachedPort = GameDeckSettings.Instance._mcpPort;
         }
 
         #endregion
@@ -105,6 +126,17 @@ namespace GameDeck.Editor.Pin
 
             _nextTickAt = EditorApplication.timeSinceStartup + TICK_INTERVAL_SECONDS;
             TickCount++;
+
+            // Refresh the cached port so the threaded log handler picks up settings changes.
+            _cachedPort = GameDeckSettings.Instance._mcpPort;
+
+            // Observe the bind-failure flag set from the (possibly worker-thread) log handler
+            // and stamp the timestamp here on the main thread so EditorApplication APIs are safe.
+            if (_bindFailureFlag)
+            {
+                _bindFailureFlag = false;
+                _lastBindFailureAt = EditorApplication.timeSinceStartup;
+            }
 
             if (!_probeInFlight && EditorApplication.timeSinceStartup >= _nextProbeAt)
             {
@@ -162,6 +194,9 @@ namespace GameDeck.Editor.Pin
                 if (connected)
                 {
                     _lastSuccessfulProbeAt = EditorApplication.timeSinceStartup;
+                    // A successful probe means the port is reachable from this Unity instance,
+                    // so any prior bind-failure log line is no longer relevant — clear the window.
+                    _lastBindFailureAt = double.MinValue;
                 }
 
                 EvaluateAndApplyState();
@@ -237,7 +272,7 @@ namespace GameDeck.Editor.Pin
             var recentlyConnected = sinceLastSuccess < CONNECTED_RECENCY_WINDOW_SECONDS;
 
             EPinStatus newStatus;
-            
+
             if (busy && recentlyConnected)
             {
                 newStatus = EPinStatus.BUSY;
@@ -245,6 +280,10 @@ namespace GameDeck.Editor.Pin
             else if (_lastProbeConnected)
             {
                 newStatus = EPinStatus.CONNECTED;
+            }
+            else if (BindFailureDetected)
+            {
+                newStatus = EPinStatus.BIND_FAILURE;
             }
             else
             {
@@ -258,6 +297,52 @@ namespace GameDeck.Editor.Pin
 
             CurrentStatus = newStatus;
             TryRefreshToolbar();
+        }
+
+        /// <summary>
+        /// Threaded log listener that watches for the C# MCP server's port-bind failures.
+        /// Sets <see cref="_bindFailureFlag"/> when an error log mentions either
+        /// <c>EADDRINUSE</c> or <c>address already in use</c> AND the cached configured
+        /// port. The main thread observes the flag inside <see cref="HandleTick"/> and
+        /// stamps a timestamp into <see cref="_lastBindFailureAt"/>.
+        /// </summary>
+        /// <remarks>
+        /// Called on whatever thread emitted the log — must NOT touch Unity APIs that
+        /// assume the main thread (e.g. <see cref="EditorApplication.timeSinceStartup"/>).
+        /// </remarks>
+        /// <param name="condition">The log message body to scan for bind-failure tokens.</param>
+        /// <param name="stackTrace">Stack trace associated with the log entry; unused.</param>
+        /// <param name="type">Severity of the log entry; only errors and exceptions are inspected.</param>
+        private static void HandleLogMessage(string condition, string stackTrace, LogType type)
+        {
+            if (type != LogType.Error && type != LogType.Exception)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(condition))
+            {
+                return;
+            }
+
+            if (condition.IndexOf(BIND_FAILURE_TOKEN_EADDRINUSE, StringComparison.OrdinalIgnoreCase) < 0 && condition.IndexOf(BIND_FAILURE_TOKEN_ADDRESS_IN_USE, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return;
+            }
+
+            var port = _cachedPort;
+
+            if (port == 0)
+            {
+                return;
+            }
+
+            if (condition.IndexOf(port.ToString(), StringComparison.Ordinal) < 0)
+            {
+                return;
+            }
+
+            _bindFailureFlag = true;
         }
 
         /// <summary>
