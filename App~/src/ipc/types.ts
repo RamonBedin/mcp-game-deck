@@ -154,6 +154,14 @@ export interface NodeLogPayload {
   text: string;
 }
 
+/**
+ * Payload for `route-requested` — single-instance callback asking the running
+ * window to navigate after a re-launch carrying a `--route=/path` CLI arg.
+ */
+export interface RouteRequestedPayload {
+  route: string;
+}
+
 // #endregion
 
 // #region Errors

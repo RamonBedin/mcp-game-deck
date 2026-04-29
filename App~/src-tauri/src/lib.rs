@@ -14,10 +14,43 @@ pub mod unity_client;
 
 // endregion
 
-use tauri::{Manager, WindowEvent};
+use tauri::{AppHandle, Manager, WindowEvent};
 
 use node_supervisor::NodeSupervisor;
 use unity_client::UnityClient;
+
+// region: Single-instance handler
+
+/// Argument prefix that re-launches use to request a route change in the
+/// already-running window — see [`handle_single_instance`].
+const ROUTE_ARG_PREFIX: &str = "--route=";
+
+/// Single-instance callback fired when a second invocation is detected by the
+/// plugin while the primary window is still alive.
+///
+/// Focuses + unminimizes the existing window and, when the new invocation
+/// carries a `--route=/path` CLI argument, emits the `route-requested` event
+/// so the React side can navigate the running window.
+fn handle_single_instance(app: &AppHandle, args: Vec<String>, _cwd: String) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+
+    let route = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix(ROUTE_ARG_PREFIX).map(|s| s.to_string()));
+
+    if let Some(route) = route {
+        if let Err(e) =
+            events::emit_route_requested(app, types::RouteRequestedPayload { route })
+        {
+            eprintln!("[single-instance] failed to emit route-requested: {e}");
+        }
+    }
+}
+
+// endregion
 
 // region: Application bootstrap
 
@@ -32,6 +65,7 @@ use unity_client::UnityClient;
 /// start (e.g. invalid `tauri.conf.json`).
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(handle_single_instance))
         .manage(NodeSupervisor::new())
         .manage(UnityClient::new())
         .setup(|app| {

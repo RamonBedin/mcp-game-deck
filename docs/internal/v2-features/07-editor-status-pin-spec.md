@@ -197,25 +197,17 @@ Pin also passes `--route={path}` CLI arg when launched from the dropdown's "Sett
 
 ## Tauri side changes (App~)
 
-### Single-instance with project-scoped ID
+### Single-instance (app-global)
 
-`App~/src-tauri/src/lib.rs` initializes `tauri-plugin-single-instance` with an instance ID computed at runtime from `UNITY_PROJECT_PATH`:
+`App~/src-tauri/src/lib.rs` registers `tauri-plugin-single-instance` with default behavior — the lock space is keyed off `tauri.conf.json`'s `identifier` (`com.mcpgamedeck.app`), so a single Tauri window exists machine-wide regardless of which Unity project spawned it.
 
-```rust
-fn compute_instance_id() -> String {
-    let path = std::env::var("UNITY_PROJECT_PATH").unwrap_or_default();
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(path.as_bytes());
-    let hash = hex::encode(hasher.finalize());
-    format!("com.mcpgamedeck.app.{}", &hash[..12])
-}
-```
-
-When a second instance tries to launch with the same ID, the plugin's callback fires on the running instance:
+When a second invocation happens (any pin click while the window is alive), the plugin's callback fires on the running instance:
 
 - Receives the new `args` (which may include `--route=/settings`)
 - Calls `window.set_focus()` + `window.unminimize()`
-- If `--route=` present, sends a Tauri event `route-requested` that the React side handles by navigating
+- If `--route=` present, emits a Tauri `route-requested` event that the React side handles by navigating
+
+**Known limitation — per-project isolation deferred:** the original design called for an instance ID derived from `SHA-256(UNITY_PROJECT_PATH)` so each Unity project owned its own Tauri window. The official `tauri-plugin-single-instance` v2 (in `tauri-apps/plugins-workspace`) reads the lock-space identifier directly from `app.config().identifier` and exposes no API to inject a runtime-computed ID. Implementing per-project isolation requires either forking the plugin or rolling a custom named-pipe / Unix-socket lock — both out of scope for v2.0. Workflow assumption today: users run a single Unity project at a time. With two Unity projects open simultaneously, the second pin click focuses the first project's Tauri window; the Unity connection still points at the first project (env vars are read once at Tauri startup). Per-project isolation is on the v2.1+ backlog.
 
 ### CLI route argument
 

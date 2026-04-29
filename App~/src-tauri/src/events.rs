@@ -8,7 +8,8 @@ use tauri::{AppHandle, Emitter};
 
 use crate::types::{
     AskUserRequestedPayload, Message, MessageStreamChunkPayload, MessageStreamCompletePayload,
-    NodeSdkStatusChangedPayload, PermissionRequestedPayload, UnityStatusChangedPayload,
+    NodeSdkStatusChangedPayload, PermissionRequestedPayload, RouteRequestedPayload,
+    UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -33,6 +34,9 @@ pub const EVT_ASK_USER_REQUESTED: &str = "ask-user-requested";
 
 /// Event name for `PermissionRequestedPayload`.
 pub const EVT_PERMISSION_REQUESTED: &str = "permission-requested";
+
+/// Event name for `RouteRequestedPayload`.
+pub const EVT_ROUTE_REQUESTED: &str = "route-requested";
 
 // endregion
 
@@ -158,6 +162,26 @@ pub fn emit_permission_requested(
     payload: PermissionRequestedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_PERMISSION_REQUESTED, payload)
+}
+
+/// Asks the running window to navigate to the route carried by a re-launch.
+///
+/// Emitted from the single-instance callback when a second invocation arrives
+/// with a `--route=/path` CLI argument.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - The route the running window should navigate to.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_route_requested(
+    app: &AppHandle,
+    payload: RouteRequestedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_ROUTE_REQUESTED, payload)
 }
 
 // endregion

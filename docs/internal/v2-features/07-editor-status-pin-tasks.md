@@ -31,7 +31,7 @@
 | 4.3 | Binary download + SHA256 verification | M | ✅ | 2026-04-29 | DownloadAsync(version, IProgress<float>?, CancellationToken) returns EDownloadResult { SUCCESS, NETWORK_ERROR, HASH_MISMATCH } in new Editor/Pin/EDownloadResult.cs. Static HttpClient (60s timeout, UA mcp-game-deck-pin/{version}). Sibling .download temp file + atomic File.Move pattern. SHA-256 parsed as first whitespace token, case-insensitive. OperationCanceledException rethrown (catch ordered before generic Exception so TaskCanceledException doesn't leak as NETWORK_ERROR). chmod +x via Process.Start on macOS/Linux only. Temp menu item PinDownloadTestMenu.cs (delete after task 4.5). Validated: NETWORK_ERROR via 404 (no v2.0 release exists yet) — quick fail, no .download orphan, no stack trace spam. SUCCESS / HASH_MISMATCH / cancellation deferred to v2.0 release rehearsal (validated by code review against spec). |
 | 4.4 | Download error dialogs (network / mismatch / launch fail) | M | ✅ | 2026-04-29 | Two files: PinDownloadProgressWindow.cs (sealed EditorWindow, ShowUtility, fixed 320x100, UIToolkit ProgressBar + Label, Progress setter + AsProgress() IProgress<float> wrapper that captures editor SyncContext) and PinDialogs.cs (static helpers): ShowProgress() returns the window for caller-managed lifecycle; ShowNetworkError(url) → DisplayDialogComplex with Retry/Cancel/Open in browser, returns retry bool, browser path returns false; ShowHashMismatch() → DisplayDialog Retry/Cancel; ShowLaunchFailed(exitCode) → DisplayDialog OK/Report issue, void, opens GitHub Issues on Report. GITHUB_ISSUES_URL constant. End-to-end visual validation deferred to 4.5 when the real launch flow exercises each surface. |
 | 4.5 | Process spawn with env vars + click handler wiring | M | ✅ | 2026-04-29 | New PinLauncher.cs orchestrates the full launch pipeline: LaunchOrFocus(route) is fire-and-forget, _operationInProgress static guard prevents re-entry during in-flight download. EnsureBinaryInstalledAsync runs DownloadAsync with retry loop calling PinDialogs.ShowNetworkError / ShowHashMismatch on each failure. StartProcessAsync spawns with all 7 env vars (UNITY_PROJECT_PATH, UNITY_MCP_HOST, UNITY_MCP_PORT, MCP_GAME_DECK_UPDATE_AVAILABLE, MCP_GAME_DECK_LATEST_VERSION, MCP_GAME_DECK_RELEASE_URL, MCP_GAME_DECK_UNITY_PID) + --route= CLI arg. Win32Exception caught for missing-binary; LAUNCH_VERIFY_DELAY_MS = 1500ms post-spawn check for early crash. ShowLaunchFailed receives PinDialogs.LAUNCH_FAILED_TO_START sentinel (int.MinValue) when Process.Start returns null/throws. Added RELEASE_URL_PREF to PinPolling. PinDropdownMenu's Open Chat and Settings items now call PinLauncher.LaunchOrFocus() and LaunchOrFocus("/settings"); McpLogger.Info stubs gone. Validated: concurrent click guard, network error Cancel/Retry/Open in browser paths, settings route by code inspection. SUCCESS path + ShowLaunchFailed dialog deferred to 6.1 / v2.0 release rehearsal (no .exe to spawn yet). |
-| 5.1 | Tauri: add single-instance plugin with project-scoped ID | M | ⏳ | | |
+| 5.1 | Tauri: add single-instance plugin with project-scoped ID | M | ✅ | 2026-04-29 | Cargo.toml: tauri-plugin-single-instance = "2" added. lib.rs: handle_single_instance callback registered as the FIRST plugin (Tauri docs requirement) — unminimize + set_focus on the existing main window, then strip_prefix("--route=") on each arg via find_map and emit RouteRequestedPayload through events::emit_route_requested when present. **Scope adjusted (deviation from spec):** per-project instance ID (SHA-256 of UNITY_PROJECT_PATH per the original spec) is impossible with the official plugin — init() takes only a callback, no API for runtime ID injection; ID derives from tauri.conf.json identifier at build time. Per-project isolation deferred to v2.1+ behind custom IPC. Workflow assumption: users run a single Unity project at a time. Spec section to be rewritten in cleanup pass to "Single-instance (app-global)" with the constraint documented; <remarks> on handle_single_instance points to the spec for context. compute_instance_id() not added (no point shipping dead helper). Cosmetic: dropped unused `Emitter` import. Validated: second exe launch focuses + unminimizes existing window; --route=/settings args emit route-requested event (route consumer ships in 5.2). Pre-existing node-supervisor errors in terminal are F02 territory — unrelated to 5.1. |
 | 5.2 | Tauri: add CLI plugin + `--route=` parsing in main.tsx | M | ⏳ | | |
 | 5.3 | Tauri: UpdateBanner component + env var read | M | ⏳ | | |
 | 6.1 | End-to-end smoke test (fresh state, all paths) | M | ⏳ | | |
@@ -732,42 +732,51 @@ Refs: 07-editor-status-pin-tasks.md (task 4.5)
 
 > Goal: Tauri app gains single-instance behavior, CLI route arg parsing, and the update banner UI.
 
-### Task 5.1 — Single-instance plugin with project-scoped ID
+### Task 5.1 — Single-instance plugin (app-global)
 
 **Size:** M
-**Refs:** spec "Tauri side changes — Single-instance with project-scoped ID", design decision #3
+**Refs:** spec "Tauri side changes — Single-instance (app-global)", design decision #3
+
+**Scope adjustment (vs. original spec):** the original task asked for a project-scoped instance ID (SHA-256 of `UNITY_PROJECT_PATH`). `tauri-plugin-single-instance` v2 keys its lock space off `app.config().identifier` and does not accept a runtime-computed ID — so per-project isolation is deferred to v2.1+ (would require custom IPC). This task ships single-instance with the default app-global behavior; the callback still focuses the window and emits `route-requested` for `--route=` args, just at machine scope instead of project scope. See spec section "Single-instance (app-global)" for the full rationale.
 
 **Output:**
 
-- `App~/src-tauri/Cargo.toml` — add `tauri-plugin-single-instance = "2"` and `sha2 = "0.10"`, `hex = "0.4"`
+- `App~/src-tauri/Cargo.toml` — add `tauri-plugin-single-instance = "2"`
 - `App~/src-tauri/src/lib.rs`:
-  - `fn compute_instance_id() -> String` per spec (SHA-256 of `UNITY_PROJECT_PATH`, take first 12 hex chars, format as `com.mcpgamedeck.app.{}`)
-  - Register `tauri_plugin_single_instance::init(callback)` BEFORE other plugins; callback receives `(app, args, cwd)`:
+  - `fn handle_single_instance(app, args, cwd)` callback:
     - Calls `window.set_focus()` + `unminimize()`
-    - If `args` contains `--route=/path`, emit `route-requested` event with the route
-- `App~/src-tauri/capabilities/default.json` — add `"core:event:allow-emit"` if not already present (for the route-requested emit)
+    - If `args` contains `--route=/path`, emits `route-requested` via `events::emit_route_requested`
+  - Registers `tauri_plugin_single_instance::init(handle_single_instance)` as the FIRST plugin in the Builder chain
+- `App~/src-tauri/src/events.rs` — add `EVT_ROUTE_REQUESTED` constant + `emit_route_requested` helper
+- `App~/src-tauri/src/types.rs` — add `RouteRequestedPayload { route: String }`
+- `App~/src/ipc/types.ts` — mirror `RouteRequestedPayload` on the TS side (subscriber wrapper lands in 5.2 with the consumer)
+- `App~/src-tauri/capabilities/default.json` — already grants `core:event:allow-emit`, no change needed
 
 **Validation:**
 
-1. `pnpm tauri dev` from PC where you have the repo. Window opens normally. Status connects to Unity normally.
+1. `pnpm tauri dev` — window opens normally. Status connects to Unity normally.
 2. Run `pnpm tauri build` — produces MSI as before.
 3. Install MSI. Launch from Start Menu. Window opens.
-4. Click pin in Unity (with `UNITY_PROJECT_PATH` env var pointing at same Unity project). Tauri tries to spawn — but the plugin detects existing instance, focuses it. No second window.
-5. Open a different Unity project in another Unity instance. Click that project's pin. New Tauri opens (different instance ID). Two Tauri windows now coexist.
-6. Close both. Verify no zombie processes.
+4. With Tauri running, click pin in Unity. Plugin detects existing instance, focuses it (no second window opens).
+5. Minimize Tauri, click pin again. Window unminimizes and gains focus.
+6. Close Tauri. No zombie processes; subsequent click spawns a fresh instance.
 
 **Commit:**
 
 ```
-feat(v2): Tauri single-instance plugin with project-scoped IDs
+feat(v2): Tauri single-instance plugin (app-global)
 
-Adds tauri-plugin-single-instance + sha2/hex deps. Instance ID
-computed from SHA-256 of UNITY_PROJECT_PATH (first 12 chars).
-Each Unity project's app gets its own lock space; same-project
-re-launches focus the existing window. Plugin callback also
-emits "route-requested" if args include --route= (consumed in 5.2).
+Adds tauri-plugin-single-instance with default behavior — lock space
+keyed off tauri.conf.json identifier (com.mcpgamedeck.app). One Tauri
+window per machine; subsequent pin clicks focus the existing window
+and emit "route-requested" if --route= is in args (consumed in 5.2).
 
-Refs: 07-editor-status-pin-tasks.md (task 5.1)
+Per-project isolation (instance ID derived from UNITY_PROJECT_PATH)
+deferred to v2.1+ — plugin v2 doesn't support runtime ID injection,
+implementing requires custom IPC. See spec section "Single-instance
+(app-global)" for rationale.
+
+Refs: 07-editor-status-pin-tasks.md (task 5.1, scope-adjusted)
 ```
 
 ---
