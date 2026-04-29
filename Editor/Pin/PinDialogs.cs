@@ -37,6 +37,9 @@ namespace GameDeck.Editor.Pin
         private const string MESSAGE_NETWORK_FORMAT = "MCP Game Deck couldn't download the app binary.\n\n" + "URL: {0}\n\n" + "Check your network connection and retry, or open the URL in your browser to download manually.";
         private const string MESSAGE_HASH = "The downloaded file failed its SHA-256 integrity check.\n\n" + "The corrupt download has been deleted. Retry to download a fresh copy.";
         private const string MESSAGE_LAUNCH_FORMAT = "The MCP Game Deck app exited unexpectedly with code {0}.\n\n" + "If this persists, please file an issue.";
+        private const string MESSAGE_LAUNCH_FAILED_TO_START = "The MCP Game Deck app could not start.\n\n" + "If this persists, please file an issue.";
+
+        public const int LAUNCH_FAILED_TO_START = int.MinValue;
 
         #endregion
 
@@ -103,20 +106,19 @@ namespace GameDeck.Editor.Pin
         }
 
         /// <summary>
-        /// Shows a modal dialog reporting that the app process exited unexpectedly.
-        /// The "Report issue" button opens the GitHub issue tracker; the dialog
+        /// Shows a modal dialog reporting that the app process exited unexpectedly,
+        /// or — when <paramref name="exitCode"/> equals
+        /// <see cref="LAUNCH_FAILED_TO_START"/> — that it could not be launched at
+        /// all. The "Report issue" button opens the GitHub issue tracker; the dialog
         /// otherwise dismisses without further action.
         /// </summary>
         /// <param name="exitCode">Exit code reported by
-        /// <see cref="System.Diagnostics.Process"/>.</param>
+        /// <see cref="System.Diagnostics.Process"/>, or
+        /// <see cref="LAUNCH_FAILED_TO_START"/> when the process never started.</param>
         public static void ShowLaunchFailed(int exitCode)
         {
-            var message = string.Format(MESSAGE_LAUNCH_FORMAT, exitCode);
-            var reportIssue = !EditorUtility.DisplayDialog(
-                DIALOG_TITLE_LAUNCH,
-                message,
-                BUTTON_OK,
-                BUTTON_REPORT_ISSUE);
+            var message = exitCode == LAUNCH_FAILED_TO_START ? MESSAGE_LAUNCH_FAILED_TO_START : string.Format(MESSAGE_LAUNCH_FORMAT, exitCode);
+            var reportIssue = !EditorUtility.DisplayDialog(DIALOG_TITLE_LAUNCH, message, BUTTON_OK, BUTTON_REPORT_ISSUE);
 
             if (reportIssue)
             {

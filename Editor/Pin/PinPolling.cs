@@ -56,6 +56,7 @@ namespace GameDeck.Editor.Pin
         private const string BIND_FAILURE_TOKEN_ADDRESS_IN_USE = "address already in use";
         public const string UPDATE_AVAILABLE_PREF = "MCPGameDeck.UpdateAvailable";
         public const string LATEST_VERSION_PREF = "MCPGameDeck.LatestVersion";
+        public const string RELEASE_URL_PREF = "MCPGameDeck.ReleaseUrl";
 
         #endregion
 

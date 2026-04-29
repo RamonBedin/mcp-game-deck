@@ -2,7 +2,6 @@
 
 using System.IO;
 using GameDeck.Editor.Settings;
-using GameDeck.MCP.Utils;
 using UnityEditor;
 using UnityEngine;
 
@@ -37,21 +36,21 @@ namespace GameDeck.Editor.Pin
         #region PRIVATE METHODS
 
         /// <summary>
-        /// Stub handler for the <c>Open Chat</c> item. Real launch lands in task 4.5
-        /// once <c>PinLauncher.LaunchOrFocus</c> exists.
+        /// Launches (or focuses, post task 5.1) the Tauri app on the default
+        /// <c>/chat</c> route via <see cref="PinLauncher.LaunchOrFocus"/>.
         /// </summary>
         private static void OnOpenChatClicked()
         {
-            McpLogger.Info("[Pin] Open Chat clicked");
+            PinLauncher.LaunchOrFocus();
         }
 
         /// <summary>
-        /// Stub handler for the <c>Settings</c> item. Real launch lands in task 4.5
-        /// once <c>PinLauncher.LaunchOrFocus</c> exists.
+        /// Launches (or focuses, post task 5.1) the Tauri app pointed at the in-app
+        /// settings route via <see cref="PinLauncher.LaunchOrFocus"/>.
         /// </summary>
         private static void OnSettingsClicked()
         {
-            McpLogger.Info("[Pin] Settings clicked");
+            PinLauncher.LaunchOrFocus("/settings");
         }
 
         /// <summary>

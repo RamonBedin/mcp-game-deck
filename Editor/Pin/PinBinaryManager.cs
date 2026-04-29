@@ -34,12 +34,12 @@ namespace GameDeck.Editor.Pin
         #region CONSTANTS
 
         private const string DOWNLOAD_URL_FORMAT = "https://github.com/RamonBedin/mcp-game-deck/releases/download/v{0}/mcp-game-deck-app-{0}.exe";
-        private const string SHA256_URL_FORMAT = "https://github.com/RamonBedin/mcp-game-deck/releases/download/v{0}/mcp-game-deck-app-{0}.exe.sha256";
         private const int DOWNLOAD_TIMEOUT_SECONDS = 60;
         private const int COPY_BUFFER_SIZE = 81920;
         private const int CHMOD_TIMEOUT_MS = 5000;
         private const int SHA256_HEX_LENGTH = 64;
         private const string TEMP_DOWNLOAD_SUFFIX = ".download";
+        private const string SHA256_EXTENSION = ".sha256";
         private const string USER_AGENT_PREFIX = "mcp-game-deck-pin";
         private const string USER_AGENT_DEV_VERSION = "dev";
 
@@ -276,6 +276,26 @@ namespace GameDeck.Editor.Pin
         }
 
         /// <summary>
+        /// Builds the convention-based GitHub Release download URL for the binary
+        /// asset of the given <paramref name="version"/>.
+        /// </summary>
+        /// <param name="version">Package version (e.g. <c>"1.1.0"</c>). Must be
+        /// non-empty.</param>
+        /// <returns>Absolute HTTPS URL of the form
+        /// <c>https://github.com/.../v{version}/mcp-game-deck-app-{version}.exe</c>.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="version"/>
+        /// is null, empty, or whitespace.</exception>
+        public static string GetDownloadUrl(string version)
+        {
+            if (string.IsNullOrWhiteSpace(version))
+            {
+                throw new ArgumentException("Version must be a non-empty string.", nameof(version));
+            }
+
+            return string.Format(DOWNLOAD_URL_FORMAT, version);
+        }
+
+        /// <summary>
         /// Downloads the Tauri app binary for <paramref name="version"/> from the
         /// convention-based GitHub Release URL, verifies its SHA-256 against the
         /// sibling <c>.sha256</c> file, and promotes it into
@@ -300,13 +320,8 @@ namespace GameDeck.Editor.Pin
         /// <paramref name="ct"/> is canceled before the operation completes.</exception>
         public static async Task<EDownloadResult> DownloadAsync(string version, IProgress<float>? progress = null, CancellationToken ct = default)
         {
-            if (string.IsNullOrWhiteSpace(version))
-            {
-                throw new ArgumentException("Version must be a non-empty string.", nameof(version));
-            }
-
-            var binaryUrl = string.Format(DOWNLOAD_URL_FORMAT, version);
-            var sha256Url = string.Format(SHA256_URL_FORMAT, version);
+            var binaryUrl = GetDownloadUrl(version);
+            var sha256Url = binaryUrl + SHA256_EXTENSION;
             var binFolder = PinPaths.BinFolder(version);
             var finalPath = PinPaths.BinaryPath(version);
             var tempPath = finalPath + TEMP_DOWNLOAD_SUFFIX;
