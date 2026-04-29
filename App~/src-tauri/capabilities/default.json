@@ -10,6 +10,7 @@
     "core:event:allow-unlisten",
     "core:event:allow-emit",
     "core:event:allow-emit-to",
-    "core:window:default"
+    "core:window:default",
+    "cli:default"
   ]
 }

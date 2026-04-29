@@ -66,6 +66,7 @@ fn handle_single_instance(app: &AppHandle, args: Vec<String>, _cwd: String) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(handle_single_instance))
+        .plugin(tauri_plugin_cli::init())
         .manage(NodeSupervisor::new())
         .manage(UnityClient::new())
         .setup(|app| {

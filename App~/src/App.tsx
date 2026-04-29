@@ -8,9 +8,9 @@
  */
 
 import { useEffect } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { getNodeSdkStatus, getUnityStatus } from "./ipc/commands";
-import { onNodeLog, onNodeSdkStatusChanged } from "./ipc/events";
+import { onNodeLog, onNodeSdkStatusChanged, onRouteRequested } from "./ipc/events";
 import { useConnectionStore } from "./stores/connectionStore";
 
 // #region Constants
@@ -37,6 +37,7 @@ const CONNECTION_POLL_INTERVAL_MS = 2000;
 export default function App() {
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
   const setNodeSdkStatus = useConnectionStore((s) => s.setNodeSdkStatus);
+  const navigate = useNavigate();
 
   // #region Effects
 
@@ -121,6 +122,31 @@ export default function App() {
       unlisten?.();
     };
   }, []);
+
+  // Navigate the running window when a re-launched instance carries a
+  // --route= CLI argument; the single-instance callback (Rust side) emits
+  // the `route-requested` event and we consume it here.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    onRouteRequested((payload) => {
+      if (cancelled) return;
+      navigate(payload.route);
+    })
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      })
+      .catch((err) => {
+        console.error("[app] failed to subscribe to route-requested:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [navigate]);
 
   // #endregion
 
