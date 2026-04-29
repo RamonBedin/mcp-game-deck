@@ -58,67 +58,6 @@ namespace GameDeck.Editor.Pin
 
         #endregion
 
-        #region PUBLIC METHODS
-
-        /// <summary>
-        /// Returns the per-version subfolder under <see cref="InstallRoot"/> that
-        /// holds the binary and its <c>.sha256</c> sidecar.
-        /// </summary>
-        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
-        /// <returns>Absolute path of the form <c>&lt;InstallRoot&gt;/bin/&lt;version&gt;</c>.</returns>
-        public static string BinFolder(string version)
-        {
-            return Path.Combine(InstallRoot, BIN_SUBFOLDER, version);
-        }
-
-        /// <summary>
-        /// Returns the absolute path the Tauri app binary should be installed at
-        /// for the given <paramref name="version"/>.
-        /// </summary>
-        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
-        /// <returns>Absolute path including the <c>.exe</c> extension on Windows
-        /// and no extension on macOS/Linux.</returns>
-        /// <exception cref="PlatformNotSupportedException">Thrown when
-        /// <see cref="Application.platform"/> is not one of <c>WindowsEditor</c>,
-        /// <c>OSXEditor</c>, or <c>LinuxEditor</c>.</exception>
-        public static string BinaryPath(string version)
-        {
-            return Path.Combine(BinFolder(version), GetBinaryFileName());
-        }
-
-        /// <summary>
-        /// Returns the absolute path of the SHA-256 sidecar file for the binary
-        /// at the given <paramref name="version"/>.
-        /// </summary>
-        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
-        /// <returns><see cref="BinaryPath(string)"/> with a <c>.sha256</c> suffix.</returns>
-        /// <exception cref="PlatformNotSupportedException">Thrown when
-        /// <see cref="Application.platform"/> is not one of <c>WindowsEditor</c>,
-        /// <c>OSXEditor</c>, or <c>LinuxEditor</c>.</exception>
-        public static string Sha256Path(string version)
-        {
-            return BinaryPath(version) + SHA256_EXTENSION;
-        }
-
-        /// <summary>
-        /// Returns the resolved filesystem path of the installed app binary for the
-        /// current package version, or <c>null</c> when no binary is present.
-        /// </summary>
-        /// <returns>Absolute path to the binary, or <c>null</c> if not installed.</returns>
-        /// <remarks>
-        /// Stub kept for the existing <c>PinPolling</c> caller (NOT_RUNNING vs
-        /// NOT_INSTALLED branch). Real per-version path resolution is now available
-        /// via <see cref="BinaryPath(string)"/>; this helper is removed in task 4.2
-        /// once <c>PinBinaryManager.IsInstalled</c> assumes the caller in
-        /// <c>PinPolling</c>.
-        /// </remarks>
-        public static string? GetBinaryPath()
-        {
-            return null;
-        }
-
-        #endregion
-
         #region PRIVATE METHODS
 
         /// <summary>
@@ -175,19 +114,59 @@ namespace GameDeck.Editor.Pin
         /// <c>WindowsEditor</c>, <c>OSXEditor</c>, or <c>LinuxEditor</c>.</exception>
         private static string GetBinaryFileName()
         {
-            switch (Application.platform)
+            return Application.platform switch
             {
-                case RuntimePlatform.WindowsEditor:
-                    return BINARY_BASE_NAME + WINDOWS_BINARY_EXTENSION;
-                case RuntimePlatform.OSXEditor:
-                case RuntimePlatform.LinuxEditor:
-                    return BINARY_BASE_NAME;
-                default:
-                    throw new PlatformNotSupportedException(
-                        string.Format(UNSUPPORTED_PLATFORM_MESSAGE_FORMAT, Application.platform));
-            }
+                RuntimePlatform.WindowsEditor => BINARY_BASE_NAME + WINDOWS_BINARY_EXTENSION,
+                RuntimePlatform.OSXEditor or RuntimePlatform.LinuxEditor => BINARY_BASE_NAME,
+                _ => throw new PlatformNotSupportedException(string.Format(UNSUPPORTED_PLATFORM_MESSAGE_FORMAT, Application.platform)),
+            };
         }
 
         #endregion
+
+        #region PUBLIC METHODS
+
+        /// <summary>
+        /// Returns the per-version subfolder under <see cref="InstallRoot"/> that
+        /// holds the binary and its <c>.sha256</c> sidecar.
+        /// </summary>
+        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
+        /// <returns>Absolute path of the form <c>&lt;InstallRoot&gt;/bin/&lt;version&gt;</c>.</returns>
+        public static string BinFolder(string version)
+        {
+            return Path.Combine(InstallRoot, BIN_SUBFOLDER, version);
+        }
+
+        /// <summary>
+        /// Returns the absolute path the Tauri app binary should be installed at
+        /// for the given <paramref name="version"/>.
+        /// </summary>
+        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
+        /// <returns>Absolute path including the <c>.exe</c> extension on Windows
+        /// and no extension on macOS/Linux.</returns>
+        /// <exception cref="PlatformNotSupportedException">Thrown when
+        /// <see cref="Application.platform"/> is not one of <c>WindowsEditor</c>,
+        /// <c>OSXEditor</c>, or <c>LinuxEditor</c>.</exception>
+        public static string BinaryPath(string version)
+        {
+            return Path.Combine(BinFolder(version), GetBinaryFileName());
+        }
+
+        /// <summary>
+        /// Returns the absolute path of the SHA-256 sidecar file for the binary
+        /// at the given <paramref name="version"/>.
+        /// </summary>
+        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
+        /// <returns><see cref="BinaryPath(string)"/> with a <c>.sha256</c> suffix.</returns>
+        /// <exception cref="PlatformNotSupportedException">Thrown when
+        /// <see cref="Application.platform"/> is not one of <c>WindowsEditor</c>,
+        /// <c>OSXEditor</c>, or <c>LinuxEditor</c>.</exception>
+        public static string Sha256Path(string version)
+        {
+            return BinaryPath(version) + SHA256_EXTENSION;
+        }
+
+        #endregion
+
     }
 }

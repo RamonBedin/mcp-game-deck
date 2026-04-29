@@ -4,7 +4,6 @@ using System.IO;
 using GameDeck.Editor.Settings;
 using GameDeck.MCP.Utils;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
 
 namespace GameDeck.Editor.Pin
@@ -93,31 +92,23 @@ namespace GameDeck.Editor.Pin
         /// <summary>
         /// Shows a modal dialog with package/app version + update status. The dialog's
         /// "View on GitHub" button (mapped to <see cref="EditorUtility.DisplayDialog(string, string, string, string)"/>'s
-        /// cancel slot) opens the project's repo URL when clicked. App version is a
-        /// stub until task 4.2 wires <c>PinBinaryManager.IsInstalled</c>.
+        /// cancel slot) opens the project's repo URL when clicked. App version reflects
+        /// whether <see cref="PinBinaryManager.IsInstalled(string)"/> sees a binary on
+        /// disk for the current package version.
         /// </summary>
         private static void OnAboutClicked()
         {
-            var packageVersion = GetPackageVersion();
+            var currentVersion = PinBinaryManager.GetCurrentVersion();
+            var packageVersionDisplay = currentVersion ?? ABOUT_PACKAGE_VERSION_UNKNOWN;
+            var appVersionDisplay = currentVersion != null && PinBinaryManager.IsInstalled(currentVersion) ? $"v{currentVersion}" : ABOUT_APP_VERSION_STUB;
             var updateLine = PinPolling.UpdateAvailable ? $"Update available: v{PinPolling.UpdateVersion}" : ABOUT_UP_TO_DATE;
-            var message = $"Package version: v{packageVersion}\n" + $"App version: {ABOUT_APP_VERSION_STUB}\n" + $"{updateLine}";
+            var message = $"Package version: v{packageVersionDisplay}\n" + $"App version: {appVersionDisplay}\n" + $"{updateLine}";
             bool okClicked = EditorUtility.DisplayDialog(ABOUT_DIALOG_TITLE, message, ABOUT_DIALOG_OK, ABOUT_DIALOG_GITHUB);
 
             if (!okClicked)
             {
                 Application.OpenURL(GITHUB_URL);
             }
-        }
-
-        /// <summary>
-        /// Reads the current package version from the assembly's <see cref="PackageInfo"/>.
-        /// </summary>
-        /// <returns>Package version string (e.g. <c>"0.1.0"</c>) or
-        /// <see cref="ABOUT_PACKAGE_VERSION_UNKNOWN"/> when metadata cannot be resolved.</returns>
-        private static string GetPackageVersion()
-        {
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(PinDropdownMenu).Assembly);
-            return packageInfo?.version ?? ABOUT_PACKAGE_VERSION_UNKNOWN;
         }
 
         #endregion

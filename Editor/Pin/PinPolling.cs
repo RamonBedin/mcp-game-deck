@@ -304,7 +304,9 @@ namespace GameDeck.Editor.Pin
             }
             else
             {
-                newStatus = PinPaths.GetBinaryPath() != null ? EPinStatus.NOT_RUNNING : EPinStatus.NOT_INSTALLED;
+                var currentVersion = PinBinaryManager.GetCurrentVersion();
+                var binaryInstalled = currentVersion != null && PinBinaryManager.IsInstalled(currentVersion);
+                newStatus = binaryInstalled ? EPinStatus.NOT_RUNNING : EPinStatus.NOT_INSTALLED;
             }
 
             CurrentStatus = newStatus;
