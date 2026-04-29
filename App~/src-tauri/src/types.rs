@@ -216,6 +216,14 @@ pub struct PermissionRequestedPayload {
     pub params: Value,
 }
 
+/// Payload for `route-requested` — single-instance callback asking the running
+/// window to navigate after a re-launch carrying a `--route=/path` CLI arg.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteRequestedPayload {
+    pub route: String,
+}
+
 // endregion
 
 // region: Errors

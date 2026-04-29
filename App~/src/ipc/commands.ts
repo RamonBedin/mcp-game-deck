@@ -230,6 +230,21 @@ export const updateSettings = (patch: AppSettingsPatch): Promise<void> =>
 
 // #endregion
 
+// #region Environment
+
+/**
+ * Reads a single environment variable from the Tauri host process.
+ *
+ * @param name - Environment variable name (e.g. `"MCP_GAME_DECK_UPDATE_AVAILABLE"`).
+ * @returns The variable's value, or `null` when unset or not valid UTF-8.
+ *   An explicitly empty value comes back as `""` — treat empty strings as
+ *   absent at the call site.
+ */
+export const getEnvVar = (name: string): Promise<string | null> =>
+  invoke("get_env_var", { name });
+
+// #endregion
+
 // #region Dev-only
 // Gated by `import.meta.env.DEV` at the call site (see SettingsRoute).
 // In release builds the underlying command returns an error; the wrapper

@@ -1,3 +1,6 @@
+> ⚠️ **ADR-001 applies.** See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`.
+> **Status post-ADR:** `needs revision (small) — defer to execution time.` Storage location (`ProjectSettings/GameDeck/plans/*.md`) and Plans tab UI both stay. The "re-execute" mechanism shifts: instead of invoking a custom orchestrator, the plan content is fed into Claude Code via a slash command (e.g. `/plan-execute <name>`). `/save-plan` ships as a skill in `Skills~/`, mirroring the `create-command` pattern. **Read the ADR before executing this feature.**
+
 # Feature 06 — Plans CRUD
 
 ## Status

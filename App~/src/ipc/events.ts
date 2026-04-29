@@ -16,6 +16,7 @@ import type {
   NodeLogPayload,
   NodeSdkStatusChangedPayload,
   PermissionRequestedPayload,
+  RouteRequestedPayload,
   UnityStatusChangedPayload,
 } from "./types";
 
@@ -73,5 +74,12 @@ export const onPermissionRequested =
 
 /** Group 3 stub diagnostic — Node SDK heartbeat / log lines forwarded to the DevTools console. */
 export const onNodeLog = wrap<NodeLogPayload>("node-log");
+
+// #endregion
+
+// #region Routing
+
+/** Subscribes to `route-requested` (single-instance callback → navigate). */
+export const onRouteRequested = wrap<RouteRequestedPayload>("route-requested");
 
 // #endregion

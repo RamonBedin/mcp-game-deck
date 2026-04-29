@@ -1,3 +1,6 @@
+> ⚠️ **ADR-001 applies.** See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`.
+> **Status post-ADR:** `needs revision (medium) — defer to execution time.` Storage location (`ProjectSettings/GameDeck/rules/*.md`) and Rules tab UI both stay. The mechanism for loading enabled rules into the agent's system prompt shifts: instead of a custom server reading rules and injecting them into its own system prompt, Tauri injects rule content into Claude Code via `--append-system-prompt` (CLI flag) or by writing them as a project-level `CLAUDE.md` overlay that Claude Code reads naturally. The `applies-to` field's per-subagent filtering needs rethinking under Claude Code's subagent model. **Read the ADR before executing this feature.**
+
 # Feature 08 — Rules Page
 
 ## Status

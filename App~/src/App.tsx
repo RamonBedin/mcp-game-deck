@@ -8,9 +8,10 @@
  */
 
 import { useEffect } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import UpdateBanner from "./components/UpdateBanner";
 import { getNodeSdkStatus, getUnityStatus } from "./ipc/commands";
-import { onNodeLog, onNodeSdkStatusChanged } from "./ipc/events";
+import { onNodeLog, onNodeSdkStatusChanged, onRouteRequested } from "./ipc/events";
 import { useConnectionStore } from "./stores/connectionStore";
 
 // #region Constants
@@ -37,6 +38,7 @@ const CONNECTION_POLL_INTERVAL_MS = 2000;
 export default function App() {
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
   const setNodeSdkStatus = useConnectionStore((s) => s.setNodeSdkStatus);
+  const navigate = useNavigate();
 
   // #region Effects
 
@@ -122,36 +124,64 @@ export default function App() {
     };
   }, []);
 
+  // Navigate the running window when a re-launched instance carries a
+  // --route= CLI argument; the single-instance callback (Rust side) emits
+  // the `route-requested` event and we consume it here.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    onRouteRequested((payload) => {
+      if (cancelled) return;
+      navigate(payload.route);
+    })
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      })
+      .catch((err) => {
+        console.error("[app] failed to subscribe to route-requested:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [navigate]);
+
   // #endregion
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-900 text-slate-100">
-      <aside className="w-[200px] shrink-0 border-r border-slate-800 bg-slate-950 p-4">
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          MCP Game Deck
-        </h2>
-        <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                [
-                  "rounded px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-slate-800 text-slate-100"
-                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200",
-                ].join(" ")
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-      <main className="flex-1 overflow-y-auto p-8">
-        <Outlet />
-      </main>
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-900 text-slate-100">
+      <UpdateBanner />
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-[200px] shrink-0 border-r border-slate-800 bg-slate-950 p-4">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            MCP Game Deck
+          </h2>
+          <nav className="flex flex-col gap-1">
+            {NAV_ITEMS.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  [
+                    "rounded px-3 py-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-slate-800 text-slate-100"
+                      : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200",
+                  ].join(" ")
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </aside>
+        <main className="flex-1 overflow-y-auto p-8">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

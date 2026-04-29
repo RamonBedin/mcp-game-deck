@@ -1,3 +1,6 @@
+> ⚠️ **ADR-001 applies.** See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`.
+> **Status post-ADR:** `needs revision (medium) — defer to execution time.` Plan mode itself is native to Claude Code (Shift+Tab cycle, `permissionMode: "plan"`). The original contribution of this feature — the `ask_user` tool with three response types — is implemented as an in-process tool via the Agent SDK's `@tool` decorator (or TS equivalent) when Tauri configures the SDK, instead of being added to a custom server. The React question card UI is unchanged work. **Read the ADR before executing this feature.**
+
 # Feature 04 — Interactive Plan Mode
 
 ## Status

@@ -26,6 +26,13 @@
       "csp": null
     }
   },
+  "plugins": {
+    "cli": {
+      "args": [
+        { "name": "route", "takesValue": true }
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
