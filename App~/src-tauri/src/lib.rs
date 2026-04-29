@@ -67,6 +67,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(handle_single_instance))
         .plugin(tauri_plugin_cli::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(NodeSupervisor::new())
         .manage(UnityClient::new())
         .setup(|app| {
@@ -123,6 +124,7 @@ pub fn run() {
             commands::dev::dev_emit_test_event,
             commands::dev::node_ping,
             commands::dev::dev_call_unity_tool,
+            commands::env::get_env_var,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

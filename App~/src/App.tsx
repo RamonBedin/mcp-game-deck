@@ -9,6 +9,7 @@
 
 import { useEffect } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import UpdateBanner from "./components/UpdateBanner";
 import { getNodeSdkStatus, getUnityStatus } from "./ipc/commands";
 import { onNodeLog, onNodeSdkStatusChanged, onRouteRequested } from "./ipc/events";
 import { useConnectionStore } from "./stores/connectionStore";
@@ -151,33 +152,36 @@ export default function App() {
   // #endregion
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-900 text-slate-100">
-      <aside className="w-[200px] shrink-0 border-r border-slate-800 bg-slate-950 p-4">
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          MCP Game Deck
-        </h2>
-        <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                [
-                  "rounded px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-slate-800 text-slate-100"
-                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200",
-                ].join(" ")
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-      <main className="flex-1 overflow-y-auto p-8">
-        <Outlet />
-      </main>
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-900 text-slate-100">
+      <UpdateBanner />
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-[200px] shrink-0 border-r border-slate-800 bg-slate-950 p-4">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            MCP Game Deck
+          </h2>
+          <nav className="flex flex-col gap-1">
+            {NAV_ITEMS.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  [
+                    "rounded px-3 py-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-slate-800 text-slate-100"
+                      : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200",
+                  ].join(" ")
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </aside>
+        <main className="flex-1 overflow-y-auto p-8">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
