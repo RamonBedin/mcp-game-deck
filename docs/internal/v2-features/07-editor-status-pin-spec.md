@@ -21,13 +21,15 @@ After this feature, MCP Game Deck has a complete user-facing v2.0 workflow: inst
 │   UNITY EDITOR          │  + env vars (UNITY_PROJECT_  │   TAURI APP              │
 │                         │    PATH, MCP_GAME_DECK_*)    │                          │
 │  ┌──────────────────┐   │ ──────────────────────────►  │  - Existing from F01     │
-│  │ Toolbar Overlay  │   │                              │  - + single-instance     │
-│  │ (Pin)            │   │                              │    plugin                │
-│  │  - polls TCP     │   │                              │  - + CLI --route= arg    │
-│  │  - reads prefs   │   │                              │  - + update banner       │
-│  │  - right-click   │   │                              │    on env var            │
-│  │    menu          │   │                              │                          │
-│  └──────────────────┘   │                              └──────────────────────────┘
+│  │ Toolbar Pin      │   │                              │  - + single-instance     │
+│  │ (Dropdown)       │   │                              │    plugin (app-global,   │
+│  │  - polls TCP     │   │                              │    not per-project; see  │
+│  │  - reads prefs   │   │                              │    "Single-instance      │
+│  │  - dropdown      │   │                              │    (app-global)" below)  │
+│  │    menu          │   │                              │  - + CLI --route= arg    │
+│  │                  │   │                              │  - + update banner       │
+│  └──────────────────┘   │                              │    on env var            │
+│                         │                              └──────────────────────────┘
 │                         │
 │  ┌──────────────────┐   │
 │  │ UpdateChecker.cs │   │  (existing, stripped of log + banner)

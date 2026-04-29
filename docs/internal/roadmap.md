@@ -37,12 +37,12 @@ The 41 tool audits already exist (`.claude/reports/audits/`). They are not throw
 | # | Feature | Doc | Status |
 |---|---------|-----|--------|
 | 1 | External app (Tauri + React) bundled in package as `App~/` | `01-external-app-spec.md` + `01-external-app-tasks.md` | ✅ done (Apr 2026) — Node-side target updated by ADR-001 |
-| 2 | **Claude Code Supervisor** — spawn `claude` via Agent SDK; replaces echo stub | `02-claude-code-supervisor.md` | ⏳ pending — design `agreed`, ready to spec/decompose |
+| 2 | **Claude Code Supervisor** — spawn `claude` via Agent SDK; replaces echo stub | `02-claude-code-supervisor.md` + `02-claude-code-supervisor-spec.md` + `02-claude-code-supervisor-tasks.md` | 🟡 immediate — trio ready, branch `feature/02-claude-code-supervisor` |
 | 3 | ~~Slash commands customizable by user~~ | — | ❌ removed by ADR-001 (Claude Code reads `.claude/commands/` and `.claude/skills/` natively) |
 | 4 | Interactive plan mode — agent can ask user before finishing plan | `04-interactive-plan-mode.md` | ⏳ pending — needs revision under ADR-001 (medium) |
 | 5 | Permission system fix (auto / plan / ask actually respected) | `05-permission-system-fix.md` | ⏳ pending — mostly superseded by Claude Code's permission system |
 | 6 | Plans CRUD with markdown storage in `ProjectSettings/GameDeck/plans/` | `06-plans-crud.md` | ⏳ pending — needs revision under ADR-001 (small) |
-| 7 | Editor pin status (replaces chat window inside Unity) | `07-editor-status-pin.md` | 🟡 in progress |
+| 7 | Editor pin status (replaces chat window inside Unity) | `07-editor-status-pin.md` + `07-editor-status-pin-spec.md` + `07-editor-status-pin-tasks.md` | ✅ done (Apr 2026) — merged to `develop/v2.0` |
 | 8 | Rules page (user-defined behavior constraints) | `08-rules-page.md` | ⏳ pending — needs revision under ADR-001 (medium) |
 | 9 | Claude Design used to prototype UI | `09-design-handoff.md` | ⏳ pending — unchanged by ADR-001 |
 
@@ -224,10 +224,10 @@ Don't let the roadmap silently drift.
 
 ## What's shipping next
 
-**Just shipped:** Feature 01 (External Tauri app) — merged to `develop/v2.0` April 2026. End-to-end echo round-trip working, MSI 2.93 MB. Under ADR-001, the echo stub is replaced by Claude Code spawned via the Agent SDK (Feature 02 owns that work) — supervisor pattern stays, target binary changes.
+**Just shipped:** Feature 07 (Editor Status Pin) — merged to `develop/v2.0` April 2026. The pin replaces the in-Unity `Editor/ChatUI/` panel with a `MainToolbarDropdown` entry that polls MCP server status (gray/red/yellow/green/badge), launches Tauri via `Process.Start` with the env-var contract, and surfaces a 5-item dropdown menu (Open Chat / Settings / Copy URL / Show install folder / About). Tauri side gained `tauri-plugin-single-instance`, `tauri-plugin-cli`, and `tauri-plugin-opener` plus an `UpdateBanner` component. Single-instance is app-global (per-project isolation deferred to v2.1+ — the official plugin doesn't expose runtime ID injection). Validation of the SUCCESS path (real download → spawn → connected app) deferred to v2.0 release rehearsal alongside several 4.x/5.x items — needs a real GitHub release with `.exe` + `.sha256` assets.
 
-**Immediate:** Feature 07 (Editor pin) on branch `feature/07-editor-status-pin`. The pin replaces the in-Unity ChatWindow with a small toolbar widget that launches the Tauri app and resolves the two production caveats from Feature 01 (Node SDK path resolution and `UNITY_PROJECT_PATH` env var injection). Unaffected by ADR-001.
+**Immediate:** **Feature 02 (Claude Code Supervisor)** on branch `feature/02-claude-code-supervisor`. Replaces the F01 echo stub with a real Claude Code subprocess via `@anthropic-ai/claude-agent-sdk`. The full trio (`02-claude-code-supervisor.md` design root, `-spec.md` executable spec, `-tasks.md` 24 numbered tasks across 7 groups) is ready as of 2026-04-29. Decision #3 was revised after re-checking the subagent MCP bug — Anthropic appears to have fixed it (release notes + updated docs), so specialists ship as agents (their original design) with empirical validation in Group 3. The pre-existing `Cannot find module 'agent-sdk-stub.js'` errors that F07 left in the terminal are F02 territory and disappear once Group 2 lands.
 
-**Next after 07:** **Feature 02 (Claude Code Supervisor)** — swap the Feature 01 echo stub for a real Claude Code subprocess via `@anthropic-ai/claude-agent-sdk`. Includes auth detection, asset surfacing (skills via `--add-dir`, agents copied with `{{KB_PATH}}` resolved), wire protocol migration, attachment migration, supervisor lifecycle. Cleanup of dead code from the custom server happens during this work (delete `Server~/src/index.ts` and siblings, swap the supervisor target in `App~/src-tauri/`). Then Features 04 (interactive plan), 05 (permission surface), 06 (plans), 08 (rules), 09 (design hand-off) in roadmap order — each needing the small revision noted in their headers before execution.
+**Next after 02:** Features 04 (interactive plan mode), 05 (permission surface), 06 (plans CRUD), 08 (rules), 09 (design hand-off) in roadmap order — each needing the small revision noted in their headers before execution. F04/F05 sit on top of F02's Agent SDK plumbing; F06/F08 surface as skills (Claude Code reads them natively).
 
 **Tool consolidation:** paused until v2.0 ships. The Animation review draft and GameObject review (with escalations) sit in `.claude/reports/reviews/` waiting for v2.2.1 to pick them up.

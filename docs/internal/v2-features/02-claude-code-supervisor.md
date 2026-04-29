@@ -4,7 +4,7 @@
 
 ## Status
 
-`agreed` — design follows directly from `ADR-001-claude-code-sdk-as-engine.md`. Ready to generate `02-claude-code-supervisor-spec.md` (executable spec) and `02-claude-code-supervisor-tasks.md` (decomposed tasks for Claude Code) once Ramon approves the locked decisions below.
+`agreed` — design follows directly from `ADR-001-claude-code-sdk-as-engine.md`. **Re-validated 2026-04-29 after F07 merged into v2.0** (see notes inline below where F07 work changed the context). Ready to generate `02-claude-code-supervisor-spec.md` (executable spec) and `02-claude-code-supervisor-tasks.md` (decomposed tasks for Claude Code) once Ramon approves the locked decisions below.
 
 ## Problem
 
@@ -46,7 +46,7 @@ The work breaks into six concerns. Each is small enough to ship independently:
 
 ## Scope OUT (deferred)
 
-- **Subagents from `Agents~/` reaching MCP Game Deck tools** — per ADR-001 §"Validations: status" item 5, this is a known Claude Code bug (Issue #25200 et al.) Provisional decision: ship the 10 specialists as **skills** instead of agents in v2.0; revisit when Anthropic fixes the bug. **Owned by a follow-up feature** (let's call it "Feature 02b — Specialists as skills"); not blocking v2.0
+- **Subagents from `Agents~/` reaching MCP Game Deck tools** — ADR-001 §"Validations: status" item 5 documented this as a known Claude Code bug (Issue #25200 et al.). **As of 2026-04-29 the bug appears fixed** — release notes confirm "Fixed MCP tools not available to subagents" and the official subagent docs now state "Subagents inherit all tools from the main conversation, including MCP tools." Decision #3 below is updated accordingly: agents stay as agents in v2.0, with empirical validation during Group 3 implementation. The previously-planned "Feature 02b — Specialists as skills" follow-up is removed from the roadmap (no longer needed)
 - **Multi-modal beyond images and PDFs** — video, audio attachments. v2.x territory
 - **Session search / cross-session memory UI** — Claude Code provides session resumption; surfacing it in our React UI is enough for v2.0
 - **Custom system prompt overlay from Rules tab** — Feature 08 (Rules Page) owns that; Feature 02 only exposes the `--append-system-prompt` plumbing the Rules tab will use
@@ -59,13 +59,14 @@ The work breaks into six concerns. Each is small enough to ship independently:
 ## Dependencies
 
 - **Feature 01 (External app)** — done. The supervisor pattern, JSON-RPC scaffold, React shell, TCP client all stay; this feature swaps the brain.
+- **Feature 07 (Editor pin)** — **done as of 2026-04-29.** F07 launches the Tauri app via `Process.Start` with the env-var contract that F02 consumes (`UNITY_PROJECT_PATH` becomes the supervisor's `cwd`; `UNITY_MCP_HOST`/`UNITY_MCP_PORT` feed the MCP proxy config). F02 must NOT change the env-var contract — only consume it. Note the existing post-ADR-001 debt visible after merging F07: running `pnpm tauri dev` prints `Cannot find module 'agent-sdk-stub.js'` in the terminal because the Rust supervisor still spawns the deleted stub. **F02 Group 2 fixes this directly** (replacing the stub with the real Agent SDK invocation).
 - **`@anthropic-ai/claude-agent-sdk` license check** — ADR-001 §"Validations: status" item 1 must be answered before public release (not before implementation start)
 - **Claude Code authentication onboarding research** — ADR-001 §"Validations: status" item 6, **resolved**: detect-only, no credential handling in our UI
 - **`{{KB_PATH}}` resolution decision** — ADR-001 §"Validations: status" item 3, **decision-required**: option (d) recommended. Lock it before tasks group 3 (asset surfacing).
-- **Subagent MCP tool bug** — ADR-001 §"Validations: status" item 5, **decision-required**: option (b) recommended (specialists as skills). Lock it before tasks group 3 (asset surfacing).
+- **Subagent MCP tool bug** — ADR-001 §"Validations: status" item 5 originally **resolved KNOWN BUG** with provisional workaround. **Re-checked 2026-04-29:** Anthropic appears to have fixed it (release notes: "Fixed MCP tools not available to subagents"; official subagent docs now state subagents inherit MCP tools). Decision #3 updated accordingly. Empirical validation still required during Group 3 implementation.
 - **Multi-modal attachment local test** — ADR-001 §"Validations: status" item 7, **needs-local-test**: do during tasks group 5.
 
-This feature does NOT depend on Feature 07 (Editor pin) being complete — they can ship in parallel. Pin gives the user an entry point; supervisor gives the entry point a working backend.
+This feature consumes F07's launch contract (env vars) but is otherwise independent — the pin gives the user an entry point; the supervisor gives the entry point a working backend.
 
 ## Locked decisions (initial set; expand as design firms up)
 
@@ -94,14 +95,15 @@ Confirmed by ADR-001 §"Validations: status" item 2. Skills work via `--add-dir`
 
 Skills get `--add-dir <package>/Skills~/`. Same for `ProjectSettings/GameDeck/commands/` if Feature 06 ends up putting commands there.
 
-### Decision #3 — Provisional: 10 specialists ship as skills, not agents
+### Decision #3 — 10 specialists ship as agents (subagent MCP bug appears fixed)
 
-Per ADR-001 §"Validations: status" item 5 (Issue #25200), custom subagents in `.claude/agents/` cannot reliably call MCP tools. Until Anthropic fixes this:
+**Updated 2026-04-29.** Original ADR-001 §"Validations: status" item 5 documented Issue #25200 (custom subagents in `.claude/agents/` couldn't reliably call MCP tools) and recommended converting the 10 specialists into skills as a workaround. **Re-checking the issue and Claude Code release notes on 2026-04-29:**
 
-- **In v2.0 implementation:** the 10 specialists in `Agents~/` are rewritten as skills in `Skills~/`. They lose context isolation but gain MCP tool reliability — the trade we want for v2.0
-- **As a follow-up:** when the bug is fixed, restore them as agents and benefit from context isolation. New ADR addendum at that point
+- Official subagent docs now state: *"Subagents can use any of Claude Code's internal tools. By default, subagents inherit all tools from the main conversation, including MCP tools."*
+- ClaudeLog release notes (April 2026) include: *"Fixed MCP tools not available to subagents."*
+- Other relevant fixes shipped: *"`--print` mode now honors the agent's `tools:` and `disallowedTools:` frontmatter"*; *"Agent frontmatter `mcpServers` are now loaded for main-thread agent sessions via `--agent`."*
 
-This decision is `provisional` because it bites only when the implementation reaches the asset surfacing tasks (group 3 below). If by then Anthropic has fixed Issue #25200, revisit. The recommendation in ADR-001 §"Validations: status" item 5 stands as the default.
+The specialists ship as **agents** (their original design), surfaced via the copy step of Decision #2. They keep context isolation. Group 3 of implementation includes an empirical smoke test — spin up `gamedeck-unity-shader-specialist` via `Task` tool, ask it to call an MCP Game Deck tool, confirm it works. If the smoke test fails despite the documented fix, fall back to the skills-based plan from the original Decision #3 (rewrite the 10 markdown files into `Skills~/` with adjusted YAML frontmatter). Tasks plan accordingly with the skills fallback called out.
 
 ### Decision #4 — `{{KB_PATH}}`: substitute at copy time
 
@@ -178,14 +180,15 @@ Group 1 + 2 are the critical path — once they work, the user can have a real c
 
 ## Definition of done
 
-- User clicks the Editor pin → Tauri app opens → first-run flow detects Claude Code is installed and logged in (or surfaces a clear next step)
-- User types in chat → Claude Code answers using the 10 Unity specialists (as skills, per decision #3) plus the 22 generic skills, plus any user-configured MCPs and Spec-Kit
+- User clicks the Editor pin (F07, already shipped) → Tauri app opens → first-run flow detects Claude Code is installed and logged in (or surfaces a clear next step)
+- User types in chat → Claude Code answers using the 10 Unity specialists (as agents, per decision #3) plus the 22 generic skills, plus any user-configured MCPs and Spec-Kit
 - User asks Claude Code to do something in Unity → tool call roundtrips through `mcp-proxy.js` → C# MCP Server → reply back, no stalls
 - User drags a PNG into the chat → image is sent as attachment → Claude Code analyzes it
 - User toggles permission mode in the React UI → Claude Code respects it
-- User closes the Tauri window → `claude` subprocess and Node child both terminate cleanly within 2s; no zombies
+- User closes the Tauri window (or Unity Editor) → `claude` subprocess and Node child both terminate cleanly within 2s; no zombies
 - User uninstalls the package → Tauri "uninstall agents" menu action removes the `gamedeck-*` files from `<unity-project>/.claude/`
-- Smoke test on Windows 11: open app, run a 3-turn conversation including a tool call and an attachment, close cleanly. Repeat 5 times. No crashes, no auth re-prompts, no orphan processes.
+- The pre-existing `Cannot find module 'agent-sdk-stub.js'` errors that F07 left behind are gone (replaced by real Agent SDK invocation)
+- Smoke test on Windows 11: open app via the F07 pin, run a 3-turn conversation including a tool call and an attachment, close cleanly. Repeat 5 times. No crashes, no auth re-prompts, no orphan processes.
 
 ## After Feature 02
 
@@ -195,7 +198,8 @@ The supervisor is the spine. Once it works:
 - **Feature 05 (Permission System)** is mostly already done — surface and validate
 - **Feature 06 (Plans CRUD)** can ship `/save-plan` and `/plan-execute` as skills in `Skills~/`
 - **Feature 08 (Rules Page)** can inject rules via `--append-system-prompt`
-- **Feature 02b (Specialists as skills) — provisional** writes the 10 specialists as skills, replacing the agents path until Issue #25200 is fixed
+
+(The previously-planned "Feature 02b — Specialists as skills" is removed: with the subagent MCP bug fixed, specialists ship as agents in v2.0 directly. If the empirical smoke test in Group 3 finds the fix incomplete, the rewrite-to-skills plan moves into a normal F02 task instead of a separate feature.)
 
 ## References
 
