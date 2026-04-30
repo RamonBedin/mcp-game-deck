@@ -20,12 +20,6 @@ import { useSettingsStore } from "../stores/settingsStore";
 
 // #region Helpers
 
-/**
- * Maps a Unity connection status to its display text-color class.
- *
- * @param status - Current Unity connection state.
- * @returns The Tailwind text-color class for that state.
- */
 const unityStatusClass = (status: ConnectionStatus): string => {
   switch (status) {
     case "connected":
@@ -37,12 +31,6 @@ const unityStatusClass = (status: ConnectionStatus): string => {
   }
 };
 
-/**
- * Maps a Node SDK status to its display text-color class.
- *
- * @param status - Current Node SDK process state.
- * @returns The Tailwind text-color class for that state.
- */
 const nodeSdkStatusClass = (status: NodeSdkStatus): string => {
   switch (status) {
     case "running":
@@ -95,9 +83,12 @@ export default function SettingsRoute() {
       setUnityStatus(payload.status);
     })
       .then((u) => {
-        if (cancelled) {
+        if (cancelled)
+        {
           u();
-        } else {
+        } 
+        else
+        {
           unlisten = u;
         }
       })
@@ -115,53 +106,62 @@ export default function SettingsRoute() {
 
   // #region Handlers
 
-  /** Pings the Node SDK and renders the result with elapsed milliseconds. */
   const handlePing = async () => {
     setPinging(true);
     setPingResult("…");
     const start = performance.now();
-    try {
+    try
+    {
       const pong = await nodePing();
       const elapsed = Math.round(performance.now() - start);
       setPingResult(`pong=${pong} (${elapsed}ms)`);
-    } catch (err) {
+    } 
+    catch (err) 
+    {
       setPingResult(`error: ${String(err)}`);
-    } finally {
+    } 
+    finally 
+    {
       setPinging(false);
     }
   };
 
-  /** Restarts the Node SDK child via the matching Tauri command. */
   const handleRestart = async () => {
     setRestarting(true);
     setRestartResult("restarting…");
-    try {
+    try
+    {
       await restartNodeSdk();
       setRestartResult("ok — watch status above");
-    } catch (err) {
+    }
+    catch (err)
+    {
       setRestartResult(`error: ${String(err)}`);
-    } finally {
+    }
+    finally
+    {
       setRestarting(false);
     }
   };
 
-  /**
-   * Calls a Unity MCP tool (`console-get-logs`) and renders a truncated
-   * preview of the JSON result.
-   */
   const handleCallUnityTool = async () => {
     setCallingUnityTool(true);
     setUnityToolResult("…");
     const start = performance.now();
-    try {
+    try
+    {
       const result = await devCallUnityTool("console-get-logs", { count: 5 });
       const elapsed = Math.round(performance.now() - start);
       const preview = JSON.stringify(result).slice(0, 240);
       setUnityToolResult(`(${elapsed}ms) ${preview}${preview.length === 240 ? "…" : ""}`);
       console.log("[unity-tool] result:", result);
-    } catch (err) {
+    } 
+    catch (err)
+    {
       setUnityToolResult(`error: ${String(err)}`);
-    } finally {
+    } 
+    finally 
+    {
       setCallingUnityTool(false);
     }
   };

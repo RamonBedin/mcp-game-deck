@@ -12,7 +12,15 @@ import type { ConnectionStatus, NodeSdkStatus } from "../ipc/types";
 
 // #region State shape
 
-interface ConnectionState {
+/**
+ * Shape of the connection-state store consumed across the chat UI.
+ *
+ * Tracks the live status of both the Unity-side MCP server and the Node-side
+ * Agent SDK, and exposes setters so transport layers can push updates as
+ * connections are established, lost, or retried.
+ */
+interface ConnectionState 
+{
   unityStatus: ConnectionStatus;
   nodeSdkStatus: NodeSdkStatus;
   setUnityStatus: (status: ConnectionStatus) => void;
@@ -23,7 +31,6 @@ interface ConnectionState {
 
 // #region Store
 
-/** Hook for the connection-status store. */
 export const useConnectionStore = create<ConnectionState>((set) => ({
   unityStatus: "disconnected",
   nodeSdkStatus: "crashed",

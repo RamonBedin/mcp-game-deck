@@ -22,7 +22,8 @@ export type ConnectionStatus = "connected" | "busy" | "disconnected";
  * missing OR the detection probe failed — the FirstRunPanel treats both
  * cases identically and surfaces the appropriate next step.
  */
-export interface ClaudeInstallStatus {
+export interface ClaudeInstallStatus
+{
   claudeInstalled: boolean;
   claudeAuthenticated: boolean;
   sdkInstalled: boolean;
@@ -47,7 +48,8 @@ export type MessageRole = "user" | "assistant" | "system";
 export type MessageId = string;
 
 /** A single chat message exchanged with the agent. */
-export interface Message {
+export interface Message
+{
   id: MessageId;
   role: MessageRole;
   content: string;
@@ -60,7 +62,8 @@ export interface Message {
 // #region Plans
 
 /** Lightweight metadata for a plan file (used in list views). */
-export interface PlanMeta {
+export interface PlanMeta
+{
   name: string;
   lastModified: number;
 }
@@ -73,7 +76,8 @@ export interface PlanMeta {
 export type PlanFrontmatter = Record<string, unknown>;
 
 /** Full contents of a plan, including its parsed frontmatter and body. */
-export interface Plan extends PlanMeta {
+export interface Plan extends PlanMeta
+{
   content: string;
   frontmatter: PlanFrontmatter;
 }
@@ -83,13 +87,15 @@ export interface Plan extends PlanMeta {
 // #region Rules
 
 /** Lightweight metadata for a rule file (used in list views). */
-export interface RuleMeta {
+export interface RuleMeta
+{
   name: string;
   enabled: boolean;
 }
 
 /** Full contents of a rule, including its activation flag and body. */
-export interface Rule extends RuleMeta {
+export interface Rule extends RuleMeta
+{
   content: string;
 }
 
@@ -101,7 +107,8 @@ export interface Rule extends RuleMeta {
 export type Theme = "dark" | "light";
 
 /** Persistent application settings. */
-export interface AppSettings {
+export interface AppSettings
+{
   theme: Theme;
   unityProjectPath: string | null;
 }
@@ -112,12 +119,10 @@ export type AppSettingsPatch = Partial<AppSettings>;
 // #endregion
 
 // #region Events
-// Payloads emitted by Rust → React via Tauri events. Names mirror the
-// emitter helpers in src-tauri/src/events.rs. Event names themselves are
-// kebab-case strings (see src/ipc/events.ts).
 
 /** Payload for `unity-status-changed`. */
-export interface UnityStatusChangedPayload {
+export interface UnityStatusChangedPayload
+{
   status: ConnectionStatus;
   reason?: string;
 }
@@ -130,19 +135,22 @@ export interface UnityStatusChangedPayload {
 export type NodeSdkStatus = "starting" | "running" | "crashed";
 
 /** Payload for `node-sdk-status-changed`. */
-export interface NodeSdkStatusChangedPayload {
+export interface NodeSdkStatusChangedPayload
+{
   status: NodeSdkStatus;
   pid?: number;
 }
 
 /** Payload for `message-stream-chunk` — incremental token delivery for an in-flight message. */
-export interface MessageStreamChunkPayload {
+export interface MessageStreamChunkPayload
+{
   messageId: MessageId;
   chunk: string;
 }
 
 /** Payload for `message-stream-complete` — emitted once when streaming finishes. */
-export interface MessageStreamCompletePayload {
+export interface MessageStreamCompletePayload
+{
   messageId: MessageId;
 }
 
@@ -150,7 +158,8 @@ export interface MessageStreamCompletePayload {
 export type AskUserType = "single" | "multi" | "free-text";
 
 /** Payload for `ask-user-requested`. */
-export interface AskUserRequestedPayload {
+export interface AskUserRequestedPayload
+{
   questionId: string;
   question: string;
   options?: string[];
@@ -158,7 +167,8 @@ export interface AskUserRequestedPayload {
 }
 
 /** Payload for `permission-requested`. */
-export interface PermissionRequestedPayload {
+export interface PermissionRequestedPayload
+{
   requestId: string;
   tool: string;
   params: unknown;
@@ -168,7 +178,8 @@ export interface PermissionRequestedPayload {
  * Diagnostic — used by the Group 3 stub. The real Node SDK will emit
  * typed events instead (message-received, ask-user-requested, etc).
  */
-export interface NodeLogPayload {
+export interface NodeLogPayload
+{
   level: "info" | "warn" | "error";
   text: string;
 }
@@ -177,8 +188,21 @@ export interface NodeLogPayload {
  * Payload for `route-requested` — single-instance callback asking the running
  * window to navigate after a re-launch carrying a `--route=/path` CLI arg.
  */
-export interface RouteRequestedPayload {
+export interface RouteRequestedPayload
+{
   route: string;
+}
+
+/**
+ * Payload for `sdk-install-progress` — emitted by Rust while
+ * `npm install @anthropic-ai/claude-agent-sdk` runs on first launch
+ * `percent: null` signals indeterminate progress (npm
+ * output couldn't be parsed for a numeric percentage); the
+ * FirstRunPanel falls back to a pulse animation in that case.
+ */
+export interface SdkInstallProgressPayload {
+  percent: number | null;
+  message?: string;
 }
 
 // #endregion
@@ -195,7 +219,8 @@ export type AppErrorKind =
   | "internal";
 
 /** Tagged error type received from Tauri command failures. */
-export interface AppError {
+export interface AppError
+{
   kind: AppErrorKind;
   message: string;
 }

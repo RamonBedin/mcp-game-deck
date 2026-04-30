@@ -13,7 +13,16 @@ import type { Message, PermissionMode } from "../ipc/types";
 
 // #region State shape
 
-interface ConversationState {
+/**
+ * Shape of the conversation-state store that backs the chat panel.
+ *
+ * Owns the full message history for the active session, the current session
+ * identifier, and the user-selected permission mode. Exposes mutators for
+ * appending messages, clearing history, and dispatching new prompts to the
+ * agent.
+ */
+interface ConversationState
+{
   messages: Message[];
   currentSessionId: string | null;
   permissionMode: PermissionMode;
@@ -28,22 +37,12 @@ interface ConversationState {
 
 // #region Helpers
 
-/**
- * Builds a per-session local message id with millisecond precision plus a
- * short random suffix to avoid collisions when two messages land in the
- * same millisecond.
- *
- * @param prefix - Short tag distinguishing user vs error messages.
- * @returns A new local id string.
- */
-const makeLocalId = (prefix: string): string =>
-  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const makeLocalId = (prefix: string): string => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 // #endregion
 
 // #region Store
 
-/** Hook for the conversation store. */
 export const useConversationStore = create<ConversationState>((set) => ({
   messages: [],
   currentSessionId: null,
@@ -55,7 +54,11 @@ export const useConversationStore = create<ConversationState>((set) => ({
   setCurrentSessionId: (sessionId) => set({ currentSessionId: sessionId }),
   sendMessage: async (text) => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+
+    if (!trimmed)
+    {
+      return;
+    }
 
     const userMsg: Message = {
       id: makeLocalId("user"),
@@ -65,9 +68,12 @@ export const useConversationStore = create<ConversationState>((set) => ({
     };
     set((state) => ({ messages: [...state.messages, userMsg] }));
 
-    try {
+    try
+    {
       await sendMessageCommand(trimmed);
-    } catch (err) {
+    }
+    catch (err)
+    {
       const errorMsg: Message = {
         id: makeLocalId("err"),
         role: "system",

@@ -11,7 +11,16 @@ import type { AppSettings, AppSettingsPatch } from "../ipc/types";
 
 // #region State shape
 
-interface SettingsState {
+/**
+ * Shape of the settings-state store backing the settings panel.
+ *
+ * Holds the full <c>AppSettings</c> object currently in effect and exposes
+ * both a wholesale replace and a partial patch mutator so consumers can either
+ * hydrate from disk or apply targeted edits without rebuilding the whole
+ * object.
+ */
+interface SettingsState
+{
   settings: AppSettings;
   setSettings: (settings: AppSettings) => void;
   patchSettings: (patch: AppSettingsPatch) => void;
@@ -21,7 +30,6 @@ interface SettingsState {
 
 // #region Defaults
 
-/** Initial settings used until the first `get_settings` call returns. */
 const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   unityProjectPath: null,
@@ -31,7 +39,6 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 // #region Store
 
-/** Hook for the settings store. */
 export const useSettingsStore = create<SettingsState>((set) => ({
   settings: DEFAULT_SETTINGS,
   setSettings: (settings) => set({ settings }),

@@ -14,12 +14,6 @@ import { useConversationStore } from "../stores/conversationStore";
 
 // #region Helpers
 
-/**
- * Maps a message role to its label color class.
- *
- * @param role - Speaker role of the message.
- * @returns The Tailwind text-color class for the role's label.
- */
 const roleColor = (role: MessageRole): string => {
   switch (role) {
     case "user":
@@ -55,13 +49,20 @@ export default function ChatRoute() {
     let unlisten: (() => void) | null = null;
 
     onMessageReceived((message) => {
-      if (cancelled) return;
+      if (cancelled)
+      {
+        return;
+      }
+
       appendMessage(message);
     })
       .then((u) => {
-        if (cancelled) {
+        if (cancelled)
+        {
           u();
-        } else {
+        } 
+        else
+        {
           unlisten = u;
         }
       })
@@ -84,7 +85,6 @@ export default function ChatRoute() {
 
   // #region Handlers
 
-  /** Sends the current input (no-op for empty / whitespace-only text). */
   const submit = () => {
     if (!input.trim())
     {
@@ -95,23 +95,12 @@ export default function ChatRoute() {
     setInput("");
   };
 
-  /**
-   * Form submit handler — prevents the page reload and forwards to `submit`.
-   *
-   * @param e - Form submit event.
-   */
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     submit();
   };
 
-  /**
-   * Textarea keydown handler — Enter sends, Shift+Enter inserts a newline.
-   *
-   * @param e - Textarea keydown event.
-   */
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sends, Shift+Enter inserts a newline.
     if (e.key === "Enter" && !e.shiftKey) 
     {
       e.preventDefault();
