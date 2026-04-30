@@ -190,6 +190,63 @@ function buildMcpServers()
 }
 
 /**
+ * Builds the `plugins` array passed to `query()` from the env-var
+ * contract `spawn.rs` sets up:
+ *
+ * - `MCP_GAME_DECK_PLUGIN_DIR` — `<package>/Plugin~/`, the bundled
+ *   Claude Code plugin (manifest at `.claude-plugin/plugin.json`,
+ *   skills under `skills/<name>/SKILL.md`, agents under
+ *   `agents/<name>.md`). Set by Rust when present.
+ *
+ * Loaded via the SDK's first-class `plugins` option — the plugin
+ * mechanism is what auto-discovers skills AND agents (both share
+ * the `mcp-game-deck:` namespace from the manifest's `name`).
+ * `additionalDirectories` only grants filesystem read access, not
+ * discovery, so it is reserved for `commands/` (see
+ * {@link buildAdditionalDirectories}).
+ *
+ * Skills appear as `mcp-game-deck:<skill-name>` in the chat;
+ * agents are invoked via `@agent-mcp-game-deck:<agent-name>`.
+ *
+ * @returns {Array<object> | undefined} The `plugins` config for
+ *   `query()`'s options, or `undefined` to omit it when the env var is
+ *   not set (package install is corrupt / dev hot-path skipping it).
+ */
+function buildPlugins()
+{
+  const pluginDir = process.env.MCP_GAME_DECK_PLUGIN_DIR;
+
+  if (!pluginDir || pluginDir.length === 0)
+  {
+    return undefined;
+  }
+
+  return [{ type: "local", path: pluginDir }];
+}
+
+/**
+ * Builds the `additionalDirectories` array passed to `query()` from
+ * the env-var contract `spawn.rs` sets up:
+ *
+ * - `MCP_GAME_DECK_COMMANDS_DIR` — `<unity-project>/ProjectSettings/
+ *   GameDeck/commands/` (opt-in user-authored commands). Set by Rust
+ *   only when the directory exists.
+ *
+ * Used purely for filesystem read access — commands are not Claude Code
+ * skills and don't need plugin-style discovery. The package's own
+ * skills are surfaced via {@link buildPlugins}, not this list.
+ *
+ * @returns {string[]} Absolute paths in load order. Empty when the
+ *   commands env var is not set.
+ */
+function buildAdditionalDirectories()
+{
+  return [
+    process.env.MCP_GAME_DECK_COMMANDS_DIR,
+  ].filter((p) => typeof p === "string" && p.length > 0);
+}
+
+/**
  * Runs one `query()` round-trip for a user input string with
  * `includePartialMessages: true`. The SDK emits one `stream_event`
  * per content delta; we discriminate by event type:
@@ -232,6 +289,8 @@ async function handleInput(text)
         cwd: projectPath,
         includePartialMessages: true,
         mcpServers: buildMcpServers(),
+        plugins: buildPlugins(),
+        additionalDirectories: buildAdditionalDirectories(),
       },
     });
 

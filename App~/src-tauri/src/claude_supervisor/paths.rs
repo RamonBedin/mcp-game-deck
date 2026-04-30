@@ -83,4 +83,16 @@ pub fn mcp_proxy_script() -> PathBuf {
         .join("mcp-proxy.js")
 }
 
+/// Path to the package's `Plugin~/` directory — the bundled Claude
+/// Code plugin shipped with MCP Game Deck. Surfaced to the SDK
+/// via `query()`'s `plugins` option, so all of its skills (under
+/// `Plugin~/skills/<name>/SKILL.md`) and agents (under
+/// `Plugin~/agents/<name>.md`) become auto-discoverable, namespaced
+/// as `mcp-game-deck:<name>`. The plugin manifest at
+/// `Plugin~/.claude-plugin/plugin.json` is what makes this directory
+/// recognised as a plugin by Claude Code.
+pub fn plugin_dir() -> PathBuf {
+    package_root().join("Plugin~")
+}
+
 // endregion

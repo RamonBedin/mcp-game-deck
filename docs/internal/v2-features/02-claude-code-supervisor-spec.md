@@ -14,7 +14,7 @@ When this feature ships:
 1. The user clicks the Editor pin (F07, already shipped) → Tauri opens
 2. First-run flow detects whether `claude` is on PATH and authenticated, and whether `@anthropic-ai/claude-agent-sdk` is installed in the Tauri-managed Node runtime
 3. If anything is missing, the React UI surfaces a clear next step (install Claude Code via official docs, log in via `claude /login`, install SDK on first launch)
-4. Once everything is ready, the supervisor spawns `claude` as a subprocess with: working directory = Unity project root, `Skills~/` surfaced via `--add-dir`, `Agents~/` copied to `<project>/.claude/agents/gamedeck-*.md` with `{{KB_PATH}}` resolved, MCP config pointing at `Server~/dist/mcp-proxy.js`
+4. Once everything is ready, the supervisor spawns `claude` as a subprocess with: working directory = Unity project root, the bundled `Plugin~/` (skills + agents) surfaced via the SDK's `plugins` option, MCP config pointing at `Server~/dist/mcp-proxy.js`
 5. The user types in chat, Claude Code answers using the 10 Unity specialists (as agents) plus the 22 generic skills plus any user-configured MCPs and Spec-Kit, with tool calls roundtripping through `mcp-proxy.js` → C# MCP Server
 6. Attachments (PNG, PDF) are sent as file paths (not base64); permission mode toggles work; sessions persist via Claude Code's own session storage; closing the Tauri window terminates `claude` and Node child cleanly
 
@@ -47,9 +47,9 @@ The pre-existing `Cannot find module 'agent-sdk-stub.js'` errors that F07 left b
            │  mcp__game-deck__<tool>            │  claude subprocess           │
            ◄────────────────────────────────────│  (system PATH, NOT bundled)  │
               via Server~/dist/mcp-proxy.js     │  cwd = UNITY_PROJECT_PATH    │
-                                                │  --add-dir Skills~/          │
-                                                │  reads .claude/agents/       │
-                                                │     gamedeck-*.md (copied)   │
+                                                │  plugins: [<Plugin~/>]       │
+                                                │  (skills + agents bundled    │
+                                                │  via plugin manifest)        │
                                                 └──────────────────────────────┘
 ```
 
@@ -62,8 +62,8 @@ The C# MCP Server (`Editor/MCP/`), the F07 pin, and the launch contract from F07
 | Engine entry | `@anthropic-ai/claude-agent-sdk` (npm, proprietary, Anthropic) | Decision #1. SDK absorbs Windows stdin quirks (ADR-001 validation #4). NOT bundled in MSI — installed on-demand via `npm install` on first launch. |
 | Engine subprocess | `claude` (system PATH, proprietary, Anthropic) | NOT bundled in MSI — user installs via official Anthropic docs. Detected via `where.exe claude` on Windows. |
 | MCP transport (Tauri ↔ Unity) | Existing `Server~/dist/mcp-proxy.js` (TypeScript, proprietary code in this repo) | Unchanged from F01. Spawned by Claude Code per `mcpServers` config in the SDK's `query()` options. |
-| Skills surfacing | `--add-dir <package>/Skills~/` | Decision #2 + ADR-001 validation #2 (skills work via `--add-dir`). |
-| Agents surfacing | Copy `<package>/Agents~/<n>.md` → `<unity-project>/.claude/agents/gamedeck-<n>.md` with `{{KB_PATH}}` resolved | Decision #2 + #4. ADR-001 validation #2 confirmed `--add-dir` does NOT scan for subagents. |
+| Skills + agents surfacing | `plugins: [{type:"local", path: <package>/Plugin~/}]` | Decision #2 (updated 2026-04-30 after F02 task 3.1 empirical pivot). The SDK's `plugins` option auto-discovers both skills (under `Plugin~/skills/`) and agents (under `Plugin~/agents/`) from the bundled plugin manifest. Replaces the original `--add-dir` + copy-step plan: `additionalDirectories` only grants filesystem read access, not skill discovery. |
+| Commands (opt-in user-authored) | `additionalDirectories: ["<unity-project>/ProjectSettings/GameDeck/commands/"]` | Filesystem read access only; commands are a legacy format separate from the discovery-driven plugin mechanism. Skipped silently if directory absent. |
 | Auth | Owned by Claude Code (5 methods supported, ADR-001 validation #6) | MCP Game Deck stores zero credentials. Detect-and-redirect only. |
 | Session storage | Claude Code's own session machinery | Decision #6. Drops F01's planned `.game-deck-sessions.json`. |
 | Permission mode | Surfaced in React UI as a thin wrapper over Claude Code's 5 modes | Decision #5. |
@@ -78,7 +78,6 @@ App~/src-tauri/src/
 │   ├── mod.rs                         ← public surface (spawn, status, shutdown)
 │   ├── install_check.rs               ← detect claude + SDK install + auth
 │   ├── spawn.rs                       ← Agent SDK spawn with all flags + envs
-│   ├── manifest.rs                    ← installed-agents.json read/write
 │   ├── lifecycle.rs                   ← health check, restart, shutdown sequencing
 │   └── windows_hygiene.rs             ← Windows-specific subprocess flags (Decision #7)
 
@@ -140,9 +139,9 @@ naturally when node_supervisor → claude_supervisor swap happens)
 The parent doc (`02-claude-code-supervisor.md`) enumerates **7 decisions**. Summary here for executable context:
 
 1. **Engine: `@anthropic-ai/claude-agent-sdk`, both SDK and `claude` as external dependencies.** Not bundled in MSI (Anthropic Commercial Terms don't grant redistribution).
-2. **Asset surfacing: skills via `--add-dir`, agents via copy-to-`.claude/agents/`.** Confirmed by ADR-001 validation #2.
+2. **Asset surfacing: skills + agents via SDK `plugins` option, no copy step.** Updated 2026-04-30 after task 3.1 empirical pivot. Both skills and agents live inside `<package>/Plugin~/` (a Claude Code plugin directory with `.claude-plugin/plugin.json` manifest), surfaced to the SDK via `plugins: [{type:"local", path}]`. Replaces the original `--add-dir` + copy-step plan.
 3. **10 specialists ship as agents (subagent MCP bug fixed by Anthropic, re-checked 2026-04-29).** Empirical smoke test in Group 3; skills fallback if it fails.
-4. **`{{KB_PATH}}`: substitute at copy time** (option d from ADR-001 validation #3).
+4. **`{{KB_PATH}}`: contextual after plugin pivot.** Original "substitute at copy time" plan obsolete — no copy step. Resolution decided at task 3.2 time when consolidating `Agents~/` into `Plugin~/agents/`.
 5. **Permission mode: thin React wrapper over Claude Code's 5 modes.**
 6. **Sessions: Claude Code's storage, not ours.** Drops `.game-deck-sessions.json` machinery.
 7. **Windows subprocess hygiene: detached process group, UTF-8 encoding, --append-system-prompt for long prompts, normalized paths.**
@@ -201,37 +200,40 @@ When everything checks out, the supervisor spawns the SDK with:
     }
   },
   permissionMode: <user-selected>,                 // default | acceptEdits | plan | bypassPermissions | auto
-  additionalDirectories: [
-    "<package>/Skills~/",
-    "ProjectSettings/GameDeck/commands/"           // skipped if directory absent
+  plugins: [
+    { type: "local", path: "<package>/Plugin~/" }  // skills + agents bundled, namespaced as mcp-game-deck:<n>
   ],
-  // agents come via copy-to-.claude/agents/, not via additionalDirectories
+  additionalDirectories: [
+    "ProjectSettings/GameDeck/commands/"           // skipped if directory absent; filesystem read access only
+  ],
 }
 ```
 
 The SDK then drives `claude` as a subprocess. Tauri Node child supervises the SDK process, framing/forwarding messages to the React UI via Tauri events.
 
-## Asset surfacing — copy step
+## Asset surfacing — plugin layout (no copy step)
 
-Decision #2 + #4 in the parent. On first launch (or on package version bump or `claude` version bump):
+Decision #2 (updated 2026-04-30 after F02 task 3.1 empirical pivot). The package's `Plugin~/` directory is structured as a Claude Code plugin per the official manifest convention:
 
-1. Read `<package>/Agents~/<n>.md` for each of the 10 specialists
-2. Resolve `{{KB_PATH}}` to `<package>/KnowledgeBase~/` (absolute path)
-3. Write the resolved file to `<unity-project>/.claude/agents/gamedeck-<n>.md`
-4. Track in `<unity-project>/Library/GameDeck/installed-agents.json`:
-   ```json
-   {
-     "packageVersion": "1.1.0",
-     "claudeVersion": "2.10.3",
-     "files": [
-       { "name": "gamedeck-unity-shader-specialist.md", "writtenAt": "2026-04-29T15:30:00Z" },
-       ...
-     ]
-   }
-   ```
-5. **Refuse to overwrite** an existing file in `.claude/agents/` whose name does NOT have the `gamedeck-` prefix (= user file). Only files we wrote are managed.
+```
+<package>/Plugin~/
+├── .claude-plugin/
+│   └── plugin.json          # manifest: name="mcp-game-deck", version, license, etc.
+├── skills/
+│   ├── architecture-decision/
+│   │   └── SKILL.md         # namespaced as mcp-game-deck:architecture-decision
+│   ├── code-review/
+│   │   └── SKILL.md
+│   └── ... (22 skills total)
+└── agents/
+    ├── unity-shader-specialist.md   # invoked via @agent-mcp-game-deck:unity-shader-specialist
+    ├── unity-dots-specialist.md
+    └── ... (10 specialists total)
+```
 
-On uninstall (Tauri menu action): read the manifest, delete each `files[i].name`, delete the manifest. User files untouched.
+The supervisor passes the absolute `Plugin~/` path to the SDK via the `plugins` option (see Spawn contract above). The SDK auto-discovers both skills and agents from the manifest. **No copy step into `<unity-project>/.claude/`. No manifest tracking. No uninstall menu** — when the user removes the UPM package, the plugin and all its skills + agents disappear automatically.
+
+`{{KB_PATH}}` substitution is contextual per Decision #4 — only relevant if an agent text references the Knowledge Base via an absolute path. With the plugin layout, agents can use paths relative to the plugin root or rely on env-var-based resolution at runtime, eliminating the copy-time substitution machinery entirely.
 
 ## Wire protocol — Tauri ↔ Node migration
 
@@ -304,8 +306,8 @@ These are NOT blockers for implementation but must be answered before the first 
 
 - User clicks the F07 pin → Tauri opens → if Claude Code or SDK missing/unauthenticated, FirstRunPanel surfaces a clear next step
 - Once everything ready, supervisor spawns the SDK pointing at the user's Unity project; smoke prompt round-trips with text response (NOT echo) within 3s
-- The 10 Unity specialists are reachable via `Task` tool with a `gamedeck-` prefix; smoke test (Group 3 task): invoke `gamedeck-unity-shader-specialist`, ask it to call an MCP Game Deck tool, confirm response includes the tool result. **If smoke test fails despite the documented Anthropic fix, fall back to skills (provisional plan in tasks)**.
-- The 22 generic skills appear in `claude` interactively (`/skills` lists all 22 + any user skills)
+- The 10 Unity specialists are reachable via the `Task` tool with the `mcp-game-deck:` namespace; smoke test (Group 3 task 3.4): invoke `@agent-mcp-game-deck:unity-shader-specialist`, ask it to call an MCP Game Deck tool, confirm response includes the tool result. **If smoke test fails despite the documented Anthropic fix, fall back to skills (provisional plan in tasks)**.
+- The 22 generic skills appear in the chat with `mcp-game-deck:` namespace (validated empirically during task 3.1: prompt "List all available skills" returns the 22 + Claude Code built-ins)
 - User drags a PNG into chat → image is sent as attachment → Claude Code analyzes it
 - User toggles permission mode in the React UI → Claude Code respects it; Shift+Tab inside chat also toggles and the React UI reflects it
 - User closes the Tauri window (or Unity Editor with Tauri open) → both child processes terminate cleanly within 2s; no zombies in Task Manager
@@ -319,7 +321,7 @@ The supervisor is the spine for the rest of v2.0:
 
 - **Feature 04 (Interactive Plan Mode)** can register `ask_user` as an in-process tool via the SDK's `@tool` decorator
 - **Feature 05 (Permission System Fix)** validates and polishes the surface this feature exposes
-- **Feature 06 (Plans CRUD)** can ship `/save-plan` and `/plan-execute` as skills in `Skills~/`
+- **Feature 06 (Plans CRUD)** can ship `/save-plan` and `/plan-execute` as skills in `Plugin~/skills/`
 - **Feature 08 (Rules Page)** can inject rules via `--append-system-prompt`
 
 (The previously-planned "Feature 02b — Specialists as skills" is removed: with the subagent MCP bug fixed by Anthropic, specialists ship as agents directly. If Group 3's smoke test finds the fix incomplete, the rewrite-to-skills work is a normal F02 task, not a separate feature.)

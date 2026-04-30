@@ -98,7 +98,7 @@ The 41 tool audits already exist (`.claude/reports/audits/`). They are not throw
 - Per-provider API key management in Settings (separate fields, separate validation).
 - Tool-call protocol normalization — Claude's tool blocks vs OpenAI's function-calling vs Gemini's function calls all map to a single internal shape.
 - System-prompt handling normalization — providers vary in how they accept system prompts.
-- Subagent definitions in `Agents~/` get an optional `provider` field (default: same as main agent's provider).
+- Subagent definitions in `Plugin~/agents/` get an optional `provider` field (default: same as main agent's provider).
 
 **Risks:**
 

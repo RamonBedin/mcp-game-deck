@@ -28,6 +28,34 @@ fn resolve_mcp_proxy() -> Option<std::path::PathBuf> {
     if path.is_file() { Some(path) } else { None }
 }
 
+/// Resolves `<package>/Plugin~/` if the directory exists. Logs an
+/// `eprintln!` warning when missing (package corruption / odd dev
+/// setup) but does not propagate — `claude` keeps running with
+/// built-in tools only (no package-bundled skills or agents).
+fn resolve_plugin_dir() -> Option<std::path::PathBuf> {
+    let path = paths::plugin_dir();
+    if path.is_dir() {
+        Some(path)
+    } else {
+        eprintln!(
+            "[claude-supervisor] Plugin~/ not found at {}. Package skills and agents disabled; user-level extensions in ~/.claude/ still load.",
+            path.display()
+        );
+        None
+    }
+}
+
+/// Resolves `<unity-project>/ProjectSettings/GameDeck/commands/` if
+/// the directory exists. Silently skipped otherwise — the directory
+/// is opt-in user content and absence is the common case.
+fn resolve_commands_dir(project_path: &str) -> Option<std::path::PathBuf> {
+    let path = std::path::Path::new(project_path)
+        .join("ProjectSettings")
+        .join("GameDeck")
+        .join("commands");
+    if path.is_dir() { Some(path) } else { None }
+}
+
 // endregion
 
 // region: Spawn
@@ -61,6 +89,8 @@ pub fn spawn_node_child(app: &AppHandle, project_path: &str) -> std::io::Result<
     let unity_host = std::env::var("UNITY_MCP_HOST").unwrap_or_default();
     let unity_port = std::env::var("UNITY_MCP_PORT").unwrap_or_default();
     let mcp_proxy = resolve_mcp_proxy();
+    let plugin_dir = resolve_plugin_dir();
+    let commands_dir = resolve_commands_dir(project_path);
 
     if mcp_proxy.is_none() {
         let expected = paths::mcp_proxy_script();
@@ -89,6 +119,15 @@ pub fn spawn_node_child(app: &AppHandle, project_path: &str) -> std::io::Result<
 
     if let Some(path) = mcp_proxy {
         cmd.env("MCP_PROXY_PATH", path.to_string_lossy().as_ref());
+    }
+    if let Some(path) = plugin_dir {
+        cmd.env("MCP_GAME_DECK_PLUGIN_DIR", path.to_string_lossy().as_ref());
+    }
+    if let Some(path) = commands_dir {
+        cmd.env(
+            "MCP_GAME_DECK_COMMANDS_DIR",
+            path.to_string_lossy().as_ref(),
+        );
     }
 
     cmd.spawn()

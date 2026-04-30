@@ -1,0 +1,17 @@
+{
+  "name": "mcp-game-deck",
+  "version": "1.1.0",
+  "description": "Skills bundled with MCP Game Deck for Unity development workflows.",
+  "author": {
+    "name": "Ramon Bedin",
+    "url": "https://github.com/RamonBedin"
+  },
+  "homepage": "https://github.com/RamonBedin/mcp-game-deck",
+  "repository": "https://github.com/RamonBedin/mcp-game-deck",
+  "license": "MIT",
+  "keywords": [
+    "unity",
+    "game-development",
+    "mcp"
+  ]
+}
