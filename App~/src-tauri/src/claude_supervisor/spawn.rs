@@ -5,19 +5,15 @@
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::AppHandle;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
 use crate::claude_supervisor::paths;
-use crate::events::{
-    emit_agent_message, emit_message_received, emit_supervisor_status_changed,
-};
+use crate::events::{emit_agent_message, emit_supervisor_status_changed};
 use crate::types::{
-    AgentMessage, AgentMessagePayload, Message, MessageRole, SupervisorStatus,
-    SupervisorStatusChangedPayload,
+    AgentMessage, AgentMessagePayload, SupervisorStatus, SupervisorStatusChangedPayload,
 };
 
 // region: Spawn
@@ -62,10 +58,15 @@ pub fn spawn_node_child(project_path: &str) -> std::io::Result<Child> {
 // region: stdout reader
 
 /// Reads the child's stdout line-by-line, parses each line as an
-/// `AgentMessagePayload`, and dispatches: status transitions for
-/// `Ready`, `message-received` for `AssistantText` / `Error`, no-op
-/// for `AssistantTurnComplete`. Always re-emits the raw envelope as
-/// `agent-message` for DevTools console debugging.
+/// `AgentMessagePayload`, applies the side-effect for `Ready` (status
+/// transition), and re-emits every envelope as `agent-message` for
+/// the React-side `conversationStore` (`appendDelta` / `completeTurn`
+/// / `appendErrorMessage`) and for DevTools console debugging.
+///
+/// Single-canal post: the React store consumes `text-delta`,
+/// `assistant-turn-complete`, and `error` directly from the
+/// `agent-message` event. `emit_message_received` is no longer
+/// invoked from this path.
 pub async fn read_stdout(
     stdout: ChildStdout,
     app: AppHandle,
@@ -95,31 +96,10 @@ pub async fn read_stdout(
                     },
                 );
             }
-            AgentMessage::AssistantText { text } => {
-                let _ = emit_message_received(
-                    &app,
-                    Message {
-                        id: make_message_id("asst"),
-                        role: MessageRole::Assistant,
-                        content: text.clone(),
-                        timestamp: now_ms(),
-                        agent: None,
-                    },
-                );
-            }
-            AgentMessage::AssistantTurnComplete => {.
-            }
-            AgentMessage::Error { message } => {
-                let _ = emit_message_received(
-                    &app,
-                    Message {
-                        id: make_message_id("err"),
-                        role: MessageRole::System,
-                        content: format!("error: {message}"),
-                        timestamp: now_ms(),
-                        agent: None,
-                    },
-                );
+            AgentMessage::TextDelta { .. }
+            | AgentMessage::AssistantTurnComplete { .. }
+            | AgentMessage::AssistantText { .. }
+            | AgentMessage::Error { .. } => {
             }
         }
 
@@ -140,24 +120,6 @@ pub async fn read_stderr(stderr: ChildStderr) {
     while let Ok(Some(line)) = reader.next_line().await {
         eprintln!("[sdk-entry/stderr] {line}");
     }
-}
-
-// endregion
-
-// region: Helpers
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
-
-fn make_message_id(prefix: &str) -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    format!("{prefix}-{}-{n}", now_ms())
 }
 
 // endregion

@@ -1,14 +1,15 @@
 /**
  * Chat route — message list + composer.
  *
- * Subscribes to `message-received` for assistant replies, auto-scrolls to
- * the bottom on every new message, and submits user input on Enter
- * (Shift+Enter inserts a newline).
+ * Subscribes to `agent-message` for streamed assistant replies (text
+ * deltas, turn-complete markers, errors), auto-scrolls to the bottom
+ * on every new message, and submits user input on Enter (Shift+Enter
+ * inserts a newline).
  */
 
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
-import { onMessageReceived } from "../ipc/events";
+import { onAgentMessage } from "../ipc/events";
 import type { MessageRole } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
@@ -35,46 +36,64 @@ const roleColor = (role: MessageRole): string => {
 export default function ChatRoute() {
   const messages = useConversationStore((s) => s.messages);
   const sendMessage = useConversationStore((s) => s.sendMessage);
-  const appendMessage = useConversationStore((s) => s.appendMessage);
+  const appendDelta = useConversationStore((s) => s.appendDelta);
+  const completeTurn = useConversationStore((s) => s.completeTurn);
+  const appendErrorMessage = useConversationStore((s) => s.appendErrorMessage);
 
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // #region Effects
 
-  // Subscribe once: assistant messages from the Node SDK arrive via the
-  // `message-received` event (dispatched in jsonrpc.rs from the Node-side
+  // Subscribe once: agent messages from the Claude Code supervisor
+  // arrive via `agent-message` (dispatched in spawn.rs::read_stdout
+  // after parsing each sdk-entry.js stdout line).
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 
-    onMessageReceived((message) => {
+    onAgentMessage((payload) => {
       if (cancelled)
       {
         return;
       }
 
-      appendMessage(message);
+      const m = payload.message;
+      switch (m.type)
+      {
+        case "text-delta":
+          appendDelta(m.turnId, m.text);
+          break;
+        case "assistant-turn-complete":
+          completeTurn(m.turnId);
+          break;
+        case "error":
+          appendErrorMessage(m.message);
+          break;
+        case "ready":
+        case "assistant-text":
+          break;
+      }
     })
       .then((u) => {
         if (cancelled)
         {
           u();
-        } 
+        }
         else
         {
           unlisten = u;
         }
       })
       .catch((err) => {
-        console.error("[chat] failed to subscribe to message-received:", err);
+        console.error("[chat] failed to subscribe to agent-message:", err);
       });
 
     return () => {
       cancelled = true;
       unlisten?.();
     };
-  }, [appendMessage]);
+  }, [appendDelta, completeTurn, appendErrorMessage]);
 
   // Auto-anchor the scroll to the bottom on every new message.
   useEffect(() => {

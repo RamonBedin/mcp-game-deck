@@ -220,12 +220,18 @@ export interface SdkInstallFailedPayload
 
 /**
  * Tagged message envelope emitted by `sdk-entry.js` and re-emitted
- * to React via the `agent-message` Tauri event. Shape grows in
+ * to React via the `agent-message` Tauri event.
+ *
+ * added `text-delta` for streaming and gave
+ * `assistant-turn-complete` a `turnId`. `assistant-text` is kept as
+ * a legacy variant with no producer in 2.3+ — preserved so the wire
+ * shape stays additive across feature cycles.
  */
 export type AgentMessage =
   | { type: "ready" }
   | { type: "assistant-text"; text: string }
-  | { type: "assistant-turn-complete" }
+  | { type: "text-delta"; turnId: string; text: string }
+  | { type: "assistant-turn-complete"; turnId: string }
   | { type: "error"; message: string };
 
 /** Wire payload for `agent-message`. */

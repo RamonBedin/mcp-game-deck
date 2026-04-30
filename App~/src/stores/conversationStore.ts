@@ -1,10 +1,12 @@
 /**
  * Zustand store for the active conversation.
  *
- * Owns the message list, current session id, and permission mode. Exposes
- * an optimistic `sendMessage` that appends the user message locally before
- * forwarding the text to the Node SDK; assistant replies arrive later via
- * the `message-received` event (subscribed in `ChatRoute`).
+ * Owns the message list, current session id, and permission mode.
+ * Exposes an optimistic `sendMessage` that appends the user message
+ * locally before forwarding the text to the supervisor; assistant
+ * replies arrive as streamed `text-delta` events (consumed by
+ * `ChatRoute`'s `onAgentMessage` listener and dispatched here via
+ * `appendDelta` / `completeTurn`).
  */
 
 import { create } from "zustand";
@@ -16,17 +18,19 @@ import type { Message, PermissionMode } from "../ipc/types";
 /**
  * Shape of the conversation-state store that backs the chat panel.
  *
- * Owns the full message history for the active session, the current session
- * identifier, and the user-selected permission mode. Exposes mutators for
- * appending messages, clearing history, and dispatching new prompts to the
- * agent.
+ * Owns the full message history for the active session, the current
+ * session identifier, and the user-selected permission mode. Mutators
+ * are streaming-shaped: deltas append to a turn-keyed assistant
+ * message, completion is a marker, and errors land as system entries.
  */
 interface ConversationState
 {
   messages: Message[];
   currentSessionId: string | null;
   permissionMode: PermissionMode;
-  appendMessage: (message: Message) => void;
+  appendDelta: (turnId: string, text: string) => void;
+  completeTurn: (turnId: string) => void;
+  appendErrorMessage: (text: string) => void;
   clearMessages: () => void;
   setPermissionMode: (mode: PermissionMode) => void;
   setCurrentSessionId: (sessionId: string | null) => void;
@@ -44,7 +48,7 @@ const formatError = (err: unknown): string => {
   {
     return err.message;
   }
-  
+
   if (typeof err === "string")
   {
     return err;
@@ -67,8 +71,42 @@ export const useConversationStore = create<ConversationState>((set) => ({
   messages: [],
   currentSessionId: null,
   permissionMode: "ask",
-  appendMessage: (message) =>
-    set((state) => ({ messages: [...state.messages, message] })),
+  appendDelta: (turnId, text) =>
+    set((state) => {
+      const idx = state.messages.findIndex((m) => m.id === turnId);
+
+      if (idx >= 0)
+      {
+        const next = [...state.messages];
+        next[idx] = {
+          ...next[idx],
+          content: next[idx].content + text,
+        };
+        return { messages: next };
+      }
+
+      const newMsg: Message = {
+        id: turnId,
+        role: "assistant",
+        content: text,
+        timestamp: Date.now(),
+      };
+      return { messages: [...state.messages, newMsg] };
+    }),
+  completeTurn: (_turnId) => {
+  },
+  appendErrorMessage: (text) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: makeLocalId("err"),
+          role: "system",
+          content: `error: ${text}`,
+          timestamp: Date.now(),
+        },
+      ],
+    })),
   clearMessages: () => set({ messages: [] }),
   setPermissionMode: (mode) => set({ permissionMode: mode }),
   setCurrentSessionId: (sessionId) => set({ currentSessionId: sessionId }),

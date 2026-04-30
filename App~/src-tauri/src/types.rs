@@ -246,14 +246,27 @@ pub struct RouteRequestedPayload {
 }
 
 /// Tagged message envelope sent by `sdk-entry.js` over stdout, then
-/// re-emitted to React via the `agent-message` Tauri event. Shape
+/// re-emitted to React via the `agent-message` Tauri event.
+///
+/// added `TextDelta` for streaming and gave
+/// `AssistantTurnComplete` a `turn_id`. `AssistantText` is kept as a
+/// legacy variant with no producer in 2.3+ — preserved so the wire
+/// shape stays additive across feature cycles.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "kebab-case")]
+#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum AgentMessage {
     Ready,
     AssistantText { text: String },
-    AssistantTurnComplete,
-    Error { message: String },
+    TextDelta {
+        turn_id: String,
+        text: String,
+    },
+    AssistantTurnComplete {
+        turn_id: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// Wire payload for `agent-message` — wraps an `AgentMessage` in a

@@ -34,25 +34,30 @@ function emit(message)
 }
 
 /**
- * Emits an `assistant-text` envelope carrying a chunk of model-generated text.
+ * Emits a `text-delta` envelope carrying one streamed chunk of model-
+ * generated text within an in-flight turn. The `turnId` ties the
+ * delta to the assistant message accumulating it on the host side.
  *
- * @param {string} text - The assistant text to forward to the host.
+ * @param {string} turnId - Stable id for the current turn.
+ * @param {string} text - The text chunk to append.
  * @returns {void}
  */
-function emitText(text)
+function emitTextDelta(turnId, text)
 {
-  emit({ type: "assistant-text", text });
+  emit({ type: "text-delta", turnId, text });
 }
 
 /**
- * Emits an `assistant-turn-complete` envelope to signal that the current
- * `query()` round-trip has finished.
+ * Emits an `assistant-turn-complete` envelope to signal that the
+ * current `query()` round-trip has finished. Carries the same
+ * `turnId` as the deltas it closes.
  *
+ * @param {string} turnId - Stable id for the turn that just ended.
  * @returns {void}
  */
-function emitTurnComplete()
+function emitTurnComplete(turnId)
 {
-  emit({ type: "assistant-turn-complete" });
+  emit({ type: "assistant-turn-complete", turnId });
 }
 
 /**
@@ -108,48 +113,74 @@ debug("boot", JSON.stringify({
 // region: input → query() round-trip
 
 /**
- * Runs one `query()` round-trip for a user input string. Aggregates assistant
- * text into a single `assistant-text` emission (2.2 monolithic shape) and
- * always concludes with an `assistant-turn-complete` envelope. Task 2.3
- * replaces this with streaming text deltas.
+ * Generates a stable id for a single `handleInput` call. Used to
+ * tie every `text-delta` to the assistant message it builds, and
+ * to mark that turn complete.
  *
- * Errors raised by the SDK are caught and surfaced as `error` envelopes so the
- * host can recover without the entry process crashing.
+ * @returns {string} Unique turn id of the form `asst-<ms>-<rand>`.
+ */
+function makeTurnId()
+{
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `asst-${Date.now()}-${rand}`;
+}
+
+/**
+ * Runs one `query()` round-trip for a user input string with
+ * `includePartialMessages: true`. The SDK emits one `stream_event`
+ * per content delta; we forward each `content_block_delta` /
+ * `text_delta` payload as a `text-delta` envelope. Long pauses
+ * between deltas are expected and intentional — the loop waits
+ * indefinitely until a `result` message arrives or the SDK stream
+ * closes (see Anthropic SDK GitHub issue #44). The turn is closed
+ * with `assistant-turn-complete` when `result` arrives.
+ *
+ * Tool-use deltas (content_block_start with type `tool_use`) and
+ * other non-text events are intentionally ignored here — task 2.4
+ * wires those.
+ *
+ * Multi-block turns (Claude splitting the response into separate
+ * `content_block`s) accumulate into the same turn — every delta
+ * carries the same `turnId`, so the host appends them in order
+ * without resetting between blocks.
  *
  * @param {string} text - The user-authored prompt to forward to the SDK.
- * @returns {Promise<void>} Resolves once the round-trip has completed and all
- *   envelopes have been emitted.
+ * @returns {Promise<void>} Resolves once the round-trip has finished
+ *   and all envelopes have been emitted.
  */
 async function handleInput(text)
 {
-  let buffer = "";
+  const turnId = makeTurnId();
   try
   {
     const q = query({
       prompt: text,
-      options: { cwd: projectPath },
+      options: {
+        cwd: projectPath,
+        includePartialMessages: true,
+      },
     });
 
-    for await (const sdkMessage of q)
+    for await (const msg of q)
     {
-      if (sdkMessage?.type === "assistant" && Array.isArray(sdkMessage.message?.content)) 
+      if (msg?.type === "stream_event")
       {
-        const textChunk = sdkMessage.message.content
-          .filter(
-            (block) =>
-              block?.type === "text" && typeof block.text === "string",
-          )
-          .map((block) => block.text)
-          .join("");
-        buffer += textChunk;
+        const ev = msg.event;
+        if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta"
+        )
+        {
+          const delta = ev.delta.text;
+          if (typeof delta === "string" && delta.length > 0)
+          {
+            emitTextDelta(turnId, delta);
+          }
+        }
+      }
+      else if (msg?.type === "result")
+      {
+        emitTurnComplete(turnId);
       }
     }
-
-    if (buffer.length > 0)
-    {
-      emitText(buffer);
-    }
-    emitTurnComplete();
   }
   catch (err)
   {
