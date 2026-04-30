@@ -9,7 +9,8 @@ use tauri::{AppHandle, Emitter};
 use crate::types::{
     AskUserRequestedPayload, Message, MessageStreamChunkPayload, MessageStreamCompletePayload,
     NodeSdkStatusChangedPayload, PermissionRequestedPayload, RouteRequestedPayload,
-    SdkInstallFailedPayload, SdkInstallProgressPayload, UnityStatusChangedPayload,
+    SdkInstallFailedPayload, SdkInstallProgressPayload, SupervisorStatusChangedPayload,
+    UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -17,8 +18,13 @@ use crate::types::{
 /// Event name for `UnityStatusChangedPayload`.
 pub const EVT_UNITY_STATUS_CHANGED: &str = "unity-status-changed";
 
-/// Event name for `NodeSdkStatusChangedPayload`.
+/// kept while `node_supervisor/jsonrpc.rs` still emits it internally.
+/// Removed alongside `node_supervisor/`
 pub const EVT_NODE_SDK_STATUS_CHANGED: &str = "node-sdk-status-changed";
+
+/// Event name for `SupervisorStatusChangedPayload` — replaces
+/// `node-sdk-status-changed` from F01.
+pub const EVT_SUPERVISOR_STATUS_CHANGED: &str = "supervisor-status-changed";
 
 /// Event name for `Message` delivery (full, non-streamed messages).
 pub const EVT_MESSAGE_RECEIVED: &str = "message-received";
@@ -84,6 +90,24 @@ pub fn emit_node_sdk_status_changed(
     payload: NodeSdkStatusChangedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_NODE_SDK_STATUS_CHANGED, payload)
+}
+
+/// Broadcasts a Claude Code supervisor lifecycle change to the frontend.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - New supervisor status plus the OS process id when known.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+#[allow(dead_code)]
+pub fn emit_supervisor_status_changed(
+    app: &AppHandle,
+    payload: SupervisorStatusChangedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_SUPERVISOR_STATUS_CHANGED, payload)
 }
 
 /// Delivers a complete (non-streamed) message to the frontend.

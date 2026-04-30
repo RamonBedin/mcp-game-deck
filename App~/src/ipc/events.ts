@@ -14,11 +14,11 @@ import type {
   MessageStreamChunkPayload,
   MessageStreamCompletePayload,
   NodeLogPayload,
-  NodeSdkStatusChangedPayload,
   PermissionRequestedPayload,
   RouteRequestedPayload,
   SdkInstallFailedPayload,
   SdkInstallProgressPayload,
+  SupervisorStatusChangedPayload,
   UnityStatusChangedPayload,
 } from "./types";
 
@@ -31,7 +31,7 @@ const wrap =
 
 export const onUnityStatusChanged = wrap<UnityStatusChangedPayload>("unity-status-changed");
 
-export const onNodeSdkStatusChanged = wrap<NodeSdkStatusChangedPayload>("node-sdk-status-changed");
+export const onSupervisorStatusChanged = wrap<SupervisorStatusChangedPayload>("supervisor-status-changed");
 
 // #endregion
 

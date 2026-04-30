@@ -20,23 +20,23 @@ import type {
   ConnectionStatus,
   Message,
   MessageId,
-  NodeSdkStatus,
   PermissionMode,
   Plan,
   PlanMeta,
   Rule,
   RuleMeta,
+  SupervisorStatus,
 } from "./types";
 
 // #region Connection
 
 export const getUnityStatus = (): Promise<ConnectionStatus> => invoke("get_unity_status");
 
-export const getNodeSdkStatus = (): Promise<NodeSdkStatus> => invoke("get_node_sdk_status");
+export const getSupervisorStatus = (): Promise<SupervisorStatus> => invoke("get_supervisor_status");
 
 export const reconnectUnity = (): Promise<void> => invoke("reconnect_unity");
 
-export const restartNodeSdk = (): Promise<void> => invoke("restart_node_sdk");
+export const restartSupervisor = (): Promise<void> => invoke("restart_supervisor");
 
 // #endregion
 

@@ -17,7 +17,7 @@ pub mod unity_client;
 
 use tauri::{AppHandle, Manager, WindowEvent};
 
-use node_supervisor::NodeSupervisor;
+use claude_supervisor::ClaudeSupervisor;
 use unity_client::UnityClient;
 
 // region: Single-instance handler
@@ -69,17 +69,17 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(handle_single_instance))
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(NodeSupervisor::new())
+        .manage(ClaudeSupervisor::new())
         .manage(UnityClient::new())
         .setup(|app| {
             let app_handle = app.handle().clone();
 
-            let app_for_node = app_handle.clone();
+            let app_for_supervisor = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                let supervisor = app_for_node.state::<NodeSupervisor>();
-                match supervisor.spawn(app_for_node.clone()).await {
-                    Ok(pid) => println!("[node-supervisor] spawned PID {pid}"),
-                    Err(e) => eprintln!("[node-supervisor] spawn failed: {e}"),
+                let supervisor = app_for_supervisor.state::<ClaudeSupervisor>();
+                match supervisor.spawn(app_for_supervisor.clone()).await {
+                    Ok(pid) => println!("[claude-supervisor] spawned PID {pid}"),
+                    Err(e) => eprintln!("[claude-supervisor] {e}"),
                 }
             });
 
@@ -94,7 +94,7 @@ pub fn run() {
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Some(supervisor) = app.try_state::<NodeSupervisor>() {
+                    if let Some(supervisor) = app.try_state::<ClaudeSupervisor>() {
                         supervisor.shutdown().await;
                     }
                     app.exit(0);
@@ -103,9 +103,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::connection::get_unity_status,
-            commands::connection::get_node_sdk_status,
+            commands::connection::get_supervisor_status,
             commands::connection::reconnect_unity,
-            commands::connection::restart_node_sdk,
+            commands::connection::restart_supervisor,
             commands::conversation::send_message,
             commands::conversation::get_conversation_history,
             commands::conversation::clear_conversation,

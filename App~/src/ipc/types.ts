@@ -128,16 +128,19 @@ export interface UnityStatusChangedPayload
 }
 
 /**
- * Lifecycle state of the bundled Node.js Agent SDK process.
+ * Lifecycle state of the Claude Code supervisor.
  *
- * Distinct from `ConnectionStatus` — the Node SDK has its own state machine.
+ * `failed` and `crashed` are intentionally distinct: `failed` means
+ * spawn never reached `ready` (SDK missing, exec error — needs user
+ * action); `crashed` means a previously-ready child died (recoverable
+ * via Restart).
  */
-export type NodeSdkStatus = "starting" | "running" | "crashed";
+export type SupervisorStatus = "idle" | "starting" | "ready" | "crashed" | "failed";
 
-/** Payload for `node-sdk-status-changed`. */
-export interface NodeSdkStatusChangedPayload
+/** Payload for `supervisor-status-changed`. */
+export interface SupervisorStatusChangedPayload
 {
-  status: NodeSdkStatus;
+  status: SupervisorStatus;
   pid?: number;
 }
 

@@ -245,6 +245,31 @@ pub struct RouteRequestedPayload {
     pub route: String,
 }
 
+/// Lifecycle state of the Claude Code supervisor.
+///
+/// `Failed` and `Crashed` are intentionally distinct: `Failed` means
+/// spawn never reached `Ready` (SDK missing, exec error, env issue —
+/// requires user action, surface FirstRunPanel-like UX); `Crashed`
+/// means a previously-Ready child died unexpectedly (recoverable via
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SupervisorStatus {
+    Idle,
+    Starting,
+    Ready,
+    Crashed,
+    Failed,
+}
+
+/// Payload for `supervisor-status-changed`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupervisorStatusChangedPayload {
+    pub status: SupervisorStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+}
+
 /// Payload for `sdk-install-progress` — emitted while
 /// `npm install @anthropic-ai/claude-agent-sdk` runs. `percent: None`
 /// signals indeterminate progress (npm output isn't reliably

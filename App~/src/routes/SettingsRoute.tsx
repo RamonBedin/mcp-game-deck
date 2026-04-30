@@ -1,9 +1,10 @@
 /**
  * Settings route — read-only summary plus dev-only diagnostic actions.
  *
- * Surfaces the live Unity / Node SDK status, the active theme, a "Restart
- * Node SDK" button, and (in dev builds only) buttons to emit a test
- * status event, ping the Node SDK, and call a Unity MCP tool.
+ * Surfaces the live Unity / supervisor status, the active theme, a
+ * "Restart Supervisor" button, and (in dev builds only) buttons to
+ * emit a test status event, ping the Node SDK, and call a Unity MCP
+ * tool.
  */
 
 import { useEffect, useState } from "react";
@@ -11,10 +12,10 @@ import {
   devCallUnityTool,
   devEmitTestEvent,
   nodePing,
-  restartNodeSdk,
+  restartSupervisor,
 } from "../ipc/commands";
 import { onUnityStatusChanged } from "../ipc/events";
-import type { ConnectionStatus, NodeSdkStatus } from "../ipc/types";
+import type { ConnectionStatus, SupervisorStatus } from "../ipc/types";
 import { useConnectionStore } from "../stores/connectionStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
@@ -31,13 +32,16 @@ const unityStatusClass = (status: ConnectionStatus): string => {
   }
 };
 
-const nodeSdkStatusClass = (status: NodeSdkStatus): string => {
+const supervisorStatusClass = (status: SupervisorStatus): string => {
   switch (status) {
-    case "running":
+    case "ready":
       return "text-emerald-400";
+    case "idle":
+      return "text-slate-400";
     case "starting":
       return "text-amber-400";
     case "crashed":
+    case "failed":
       return "text-rose-400";
   }
 };
@@ -52,7 +56,7 @@ const nodeSdkStatusClass = (status: NodeSdkStatus): string => {
 export default function SettingsRoute() {
   const theme = useSettingsStore((state) => state.settings.theme);
   const unityStatus = useConnectionStore((s) => s.unityStatus);
-  const nodeSdkStatus = useConnectionStore((s) => s.nodeSdkStatus);
+  const supervisorStatus = useConnectionStore((s) => s.supervisorStatus);
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
 
   // #region Local state
@@ -106,6 +110,26 @@ export default function SettingsRoute() {
 
   // #region Handlers
 
+  const formatError = (err: unknown): string => {
+    if (err instanceof Error)
+    {
+      return err.message;
+    }
+    
+    if (typeof err === "string")
+    {
+      return err;
+    }
+    try
+    {
+      return JSON.stringify(err);
+    }
+    catch
+    {
+      return String(err);
+    }
+  };
+
   const handlePing = async () => {
     setPinging(true);
     setPingResult("…");
@@ -118,7 +142,7 @@ export default function SettingsRoute() {
     } 
     catch (err) 
     {
-      setPingResult(`error: ${String(err)}`);
+      setPingResult(`error: ${formatError(err)}`);
     } 
     finally 
     {
@@ -131,12 +155,12 @@ export default function SettingsRoute() {
     setRestartResult("restarting…");
     try
     {
-      await restartNodeSdk();
+      await restartSupervisor();
       setRestartResult("ok — watch status above");
     }
     catch (err)
     {
-      setRestartResult(`error: ${String(err)}`);
+      setRestartResult(`error: ${formatError(err)}`);
     }
     finally
     {
@@ -158,7 +182,7 @@ export default function SettingsRoute() {
     } 
     catch (err)
     {
-      setUnityToolResult(`error: ${String(err)}`);
+      setUnityToolResult(`error: ${formatError(err)}`);
     } 
     finally 
     {
@@ -182,8 +206,8 @@ export default function SettingsRoute() {
         <dt className="text-slate-500">Unity</dt>
         <dd className={unityStatusClass(unityStatus)}>{unityStatus}</dd>
 
-        <dt className="text-slate-500">Node SDK</dt>
-        <dd className={nodeSdkStatusClass(nodeSdkStatus)}>{nodeSdkStatus}</dd>
+        <dt className="text-slate-500">Supervisor</dt>
+        <dd className={supervisorStatusClass(supervisorStatus)}>{supervisorStatus}</dd>
       </dl>
 
       <div className="mt-6">
@@ -193,7 +217,7 @@ export default function SettingsRoute() {
           disabled={restarting}
           className="rounded bg-slate-700 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Restart Node SDK
+          Restart Supervisor
         </button>
         {restartResult !== null && (
           <p className="mt-1 font-mono text-xs text-slate-400">{restartResult}</p>
