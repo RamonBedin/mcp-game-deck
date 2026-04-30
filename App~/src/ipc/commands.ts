@@ -16,6 +16,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
   AppSettingsPatch,
+  ClaudeInstallStatus,
   ConnectionStatus,
   Message,
   MessageId,
@@ -63,6 +64,24 @@ export const reconnectUnity = (): Promise<void> => invoke("reconnect_unity");
  * @returns Resolves once the new child has been spawned.
  */
 export const restartNodeSdk = (): Promise<void> => invoke("restart_node_sdk");
+
+// #endregion
+
+// #region Install
+
+/**
+ * Probes whether `claude` is on PATH + authenticated and whether
+ * `@anthropic-ai/claude-agent-sdk` is present in the Tauri-managed Node
+ * runtime.
+ *
+ * Polled by `FirstRunPanel` every 5s while mounted; each call runs
+ * fresh subprocess probes (no cache today). Internal 5s timeout per
+ * probe — never hangs the React side.
+ *
+ * @returns A `ClaudeInstallStatus` with the four detection fields populated.
+ */
+export const checkClaudeInstallStatus = (): Promise<ClaudeInstallStatus> =>
+  invoke("check_claude_install_status");
 
 // #endregion
 

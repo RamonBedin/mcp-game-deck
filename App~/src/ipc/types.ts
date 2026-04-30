@@ -12,6 +12,25 @@ export type ConnectionStatus = "connected" | "busy" | "disconnected";
 
 // #endregion
 
+// #region Install detection
+
+/**
+ * Snapshot of the local environment's readiness to run Claude Code.
+ *
+ * Populated by the `check_claude_install_status` Tauri command. A `false`
+ * (or `null` for `claudeVersion`) field means either the dependency is
+ * missing OR the detection probe failed — the FirstRunPanel treats both
+ * cases identically and surfaces the appropriate next step.
+ */
+export interface ClaudeInstallStatus {
+  claudeInstalled: boolean;
+  claudeAuthenticated: boolean;
+  sdkInstalled: boolean;
+  claudeVersion: string | null;
+}
+
+// #endregion
+
 // #region Permissions
 
 /** Permission policy applied to tool calls issued by the agent. */

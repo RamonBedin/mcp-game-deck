@@ -18,6 +18,27 @@ pub enum ConnectionStatus {
 
 // endregion
 
+// region: Install detection
+
+/// Snapshot of the local environment's readiness to run Claude Code.
+///
+/// Populated by `claude_supervisor::install_check::check_install_status`
+/// and surfaced to React via
+/// `commands::install::check_claude_install_status`. A field set to
+/// `false` (or `None` for `claude_version`) means either the dependency
+/// is missing OR the detection probe failed — the React side treats
+/// both cases identically and surfaces the appropriate next step.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeInstallStatus {
+    pub claude_installed: bool,
+    pub claude_authenticated: bool,
+    pub sdk_installed: bool,
+    pub claude_version: Option<String>,
+}
+
+// endregion
+
 // region: Permissions
 
 /// Permission policy applied to tool calls issued by the agent.

@@ -16,7 +16,7 @@
 
 | # | Task | Size | Status | Date | Notes |
 |---|------|------|--------|------|-------|
-| 1.1 | Tauri command `check_claude_install_status()` + Rust install_check.rs | M | ⏳ | | |
+| 1.1 | Tauri command `check_claude_install_status()` + Rust install_check.rs | M | ✅ | 2026-04-29 | New `App~/src-tauri/src/claude_supervisor/install_check.rs` (sibling to existing `node_supervisor/`, no swap — that's task 2.1). 4-field `ClaudeInstallStatus` struct serialized via serde. 4 detection branches running in parallel via `tokio::join!` (required adding `"macros"` feature to tokio in Cargo.toml — was missing): `where.exe claude` exit code, `claude --version` parse, `claude /status` parse, fs.exists check on `App~/runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json`. New `commands/install.rs` (own file — install domain will grow with 1.3 + 4.4) registers `check_claude_install_status` in invoke_handler. No `.manage()` / setup / close hook (function pure, no state). TS binding in `App~/src/ipc/commands.ts`. Validated via DevTools console invoke across 4 forced states (claude renamed, logged out, sdk node_modules deleted) — all 4 fields toggle correctly within ~1s, no panics, errors silenced as defaults. Pre-existing F07 `Cannot find module 'agent-sdk-stub.js'` errors continue (expected — F02 task 2.1 swaps the spawn target). |
 | 1.2 | React `FirstRunPanel.tsx` — 4 states UI (ready / installing-sdk / claude-missing / not-authenticated) | M | ⏳ | | |
 | 1.3 | On-demand `npm install` of @anthropic-ai/claude-agent-sdk on first launch | M | ⏳ | | |
 | 2.1 | Replace node_supervisor with claude_supervisor module skeleton (no logic yet, compiles clean) | S | ⏳ | | |

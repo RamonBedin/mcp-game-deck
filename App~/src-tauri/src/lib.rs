@@ -6,6 +6,7 @@
 
 // region: Module declarations
 
+pub mod claude_supervisor;
 pub mod commands;
 pub mod events;
 pub mod node_supervisor;
@@ -125,6 +126,7 @@ pub fn run() {
             commands::dev::node_ping,
             commands::dev::dev_call_unity_tool,
             commands::env::get_env_var,
+            commands::install::check_claude_install_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
