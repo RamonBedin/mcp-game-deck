@@ -245,6 +245,26 @@ pub struct RouteRequestedPayload {
     pub route: String,
 }
 
+/// Tagged message envelope sent by `sdk-entry.js` over stdout, then
+/// re-emitted to React via the `agent-message` Tauri event. Shape
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum AgentMessage {
+    Ready,
+    AssistantText { text: String },
+    AssistantTurnComplete,
+    Error { message: String },
+}
+
+/// Wire payload for `agent-message` — wraps an `AgentMessage` in a
+/// `{message: ...}` object so future fields (timestamps, ids) can
+/// be added without re-shaping every variant.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentMessagePayload {
+    pub message: AgentMessage,
+}
+
 /// Lifecycle state of the Claude Code supervisor.
 ///
 /// `Failed` and `Crashed` are intentionally distinct: `Failed` means

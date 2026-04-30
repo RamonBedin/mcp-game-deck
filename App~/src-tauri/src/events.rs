@@ -7,10 +7,10 @@
 use tauri::{AppHandle, Emitter};
 
 use crate::types::{
-    AskUserRequestedPayload, Message, MessageStreamChunkPayload, MessageStreamCompletePayload,
-    NodeSdkStatusChangedPayload, PermissionRequestedPayload, RouteRequestedPayload,
-    SdkInstallFailedPayload, SdkInstallProgressPayload, SupervisorStatusChangedPayload,
-    UnityStatusChangedPayload,
+    AgentMessagePayload, AskUserRequestedPayload, Message, MessageStreamChunkPayload,
+    MessageStreamCompletePayload, NodeSdkStatusChangedPayload, PermissionRequestedPayload,
+    RouteRequestedPayload, SdkInstallFailedPayload, SdkInstallProgressPayload,
+    SupervisorStatusChangedPayload, UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -52,6 +52,9 @@ pub const EVT_SDK_INSTALL_COMPLETED: &str = "sdk-install-completed";
 
 /// Event name for `SdkInstallFailedPayload`.
 pub const EVT_SDK_INSTALL_FAILED: &str = "sdk-install-failed";
+
+/// Event name for `AgentMessagePayload` — every line `sdk-entry.js`
+pub const EVT_AGENT_MESSAGE: &str = "agent-message";
 
 // endregion
 
@@ -264,6 +267,26 @@ pub fn emit_sdk_install_failed(
     payload: SdkInstallFailedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_SDK_INSTALL_FAILED, payload)
+}
+
+/// Re-emits a typed `AgentMessage` to the React side for DevTools
+/// debugging. The same message also drives status transitions and
+/// `message-received` emits when applicable — see
+/// `claude_supervisor::spawn::read_stdout`.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - The wrapped `AgentMessage` envelope.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_agent_message(
+    app: &AppHandle,
+    payload: AgentMessagePayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_AGENT_MESSAGE, payload)
 }
 
 // endregion

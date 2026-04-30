@@ -9,6 +9,7 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AgentMessagePayload,
   AskUserRequestedPayload,
   Message,
   MessageStreamChunkPayload,
@@ -75,5 +76,11 @@ export const onSdkInstallCompleted = (
   listen<null>("sdk-install-completed", () => handler());
 
 export const onSdkInstallFailed = wrap<SdkInstallFailedPayload>("sdk-install-failed");
+
+// #endregion
+
+// #region Agent stream
+
+export const onAgentMessage = wrap<AgentMessagePayload>("agent-message");
 
 // #endregion

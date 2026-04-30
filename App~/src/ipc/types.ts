@@ -218,6 +218,22 @@ export interface SdkInstallFailedPayload
   exitCode?: number;
 }
 
+/**
+ * Tagged message envelope emitted by `sdk-entry.js` and re-emitted
+ * to React via the `agent-message` Tauri event. Shape grows in
+ */
+export type AgentMessage =
+  | { type: "ready" }
+  | { type: "assistant-text"; text: string }
+  | { type: "assistant-turn-complete" }
+  | { type: "error"; message: string };
+
+/** Wire payload for `agent-message`. */
+export interface AgentMessagePayload
+{
+  message: AgentMessage;
+}
+
 // #endregion
 
 // #region Errors

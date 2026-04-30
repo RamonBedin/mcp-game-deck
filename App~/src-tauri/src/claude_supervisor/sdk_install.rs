@@ -25,12 +25,14 @@ use crate::types::{SdkInstallFailedPayload, SdkInstallProgressPayload};
 
 /// Minimal `package.json` written before the first `npm install` runs,
 /// keeping npm from auto-generating a manifest with a derived
-/// directory name. No `dependencies` field — `npm install <pkg>`
+/// directory name. `"type": "module"` is required for `sdk-entry.js`'s
+/// ESM `import` syntax. No `dependencies` field — `npm install <pkg>`
 /// adds it with the version chosen by the registry.
 const RUNTIME_PACKAGE_JSON: &str = r#"{
   "name": "mcp-game-deck-runtime",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "type": "module"
 }
 "#;
 
@@ -114,15 +116,51 @@ pub async fn install_sdk_async(app: AppHandle) {
 
 // region: Internal — runtime dir prep
 
-/// Ensures `App~/runtime/` exists with a minimal `package.json`.
+/// Ensures `App~/runtime/` exists with a `package.json` that has
+/// `"type": "module"` set.
+///
+/// Three cases:
+/// 1. File missing → write `RUNTIME_PACKAGE_JSON` verbatim.
+/// 2. File present + `"type": "module"` → no-op.
+/// 3. File present + `"type"` missing/different → migrate in-place
+///
+/// Malformed JSON is left untouched (defensive — `runtime/` is dev-
+/// editable and we don't want to clobber a user's hand-edit).
 async fn prepare_runtime_dir() -> Result<(), std::io::Error> {
     let runtime = paths::runtime_dir();
     tokio::fs::create_dir_all(&runtime).await?;
 
     let pkg_json = paths::runtime_package_json();
-    if tokio::fs::metadata(&pkg_json).await.is_err() {
-        tokio::fs::write(&pkg_json, RUNTIME_PACKAGE_JSON).await?;
+    let existing = match tokio::fs::read_to_string(&pkg_json).await {
+        Ok(s) => s,
+        Err(_) => {
+            tokio::fs::write(&pkg_json, RUNTIME_PACKAGE_JSON).await?;
+            return Ok(());
+        }
+    };
+
+    let mut value: serde_json::Value = match serde_json::from_str(&existing) {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
+
+    let obj = match value.as_object_mut() {
+        Some(o) => o,
+        None => return Ok(()),
+    };
+
+    let already_module = obj.get("type").and_then(|v| v.as_str()) == Some("module");
+    if already_module {
+        return Ok(());
     }
+
+    obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("module".to_string()),
+    );
+    let serialized = serde_json::to_string_pretty(&value)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    tokio::fs::write(&pkg_json, format!("{serialized}\n")).await?;
     Ok(())
 }
 

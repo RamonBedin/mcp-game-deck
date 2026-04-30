@@ -45,4 +45,11 @@ pub fn sdk_package_json() -> PathBuf {
         .join("package.json")
 }
 
+/// Path to the Node entry script written by `runtime_setup`. The
+/// supervisor spawns `node <this path>` to bridge stdin/stdout to
+/// the Agent SDK.
+pub fn sdk_entry_script() -> PathBuf {
+    runtime_dir().join("sdk-entry.js")
+}
+
 // endregion

@@ -1,61 +1,41 @@
 //! Conversation Tauri commands.
 //!
-//! Forward chat traffic between the React frontend and the Node Agent SDK.
-//! (conversation persistence) — the typed surface is in place so the
-//! frontend can wire its calls today.
+//! Forward chat traffic between the React frontend and the Claude
+//! Code supervisor (`claude_supervisor::ClaudeSupervisor`). Stubs for
+//! `get_conversation_history` / `clear_conversation` /
+//! `set_permission_mode` / `get_permission_mode`
 
-use serde_json::json;
 use tauri::State;
 
-use crate::node_supervisor::NodeSupervisor;
-use crate::types::{AppError, Message, MessageId, PermissionMode};
+use crate::claude_supervisor::ClaudeSupervisor;
+use crate::types::{AppError, Message, PermissionMode};
 
 // region: Send / history
 
-/// Forwards a chat message to the Node SDK as the `conversation/send`
-/// JSON-RPC method.
-///
-/// The actual assistant reply arrives asynchronously via a `message/received`
-/// notification (handled in `jsonrpc.rs` and re-emitted as the
-/// `message-received` Tauri event).
+/// Forwards a user message to `sdk-entry.js` over the supervisor's
+/// stdin channel. The assistant reply arrives asynchronously via the
+/// `message-received` Tauri event (dispatched by
+/// `claude_supervisor::spawn::read_stdout` when the SDK emits an
+/// `AssistantText` or `Error` AgentMessage).
 ///
 /// # Arguments
 ///
 /// * `text` - User's message text.
-/// * `agent` - Optional sub-agent name to route the message through.
-/// * `supervisor` - Tauri-managed `NodeSupervisor` state.
-///
-/// # Returns
-///
-/// The message id assigned by the Node SDK, or `"ack"` if the stub hasn't
-/// implemented the full echo response shape yet (task 5.2 wires that).
+/// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
 ///
 /// # Errors
 ///
-/// Returns `AppError::NodeSdkUnavailable` when the JSON-RPC request fails
-/// (child dead, timeout, serde error, or a JSON-RPC error reply).
+/// Returns `AppError::Internal` when the supervisor isn't running,
+/// the stdin writer task is closed, or the JSON encoding fails.
 #[tauri::command]
 pub async fn send_message(
     text: String,
-    agent: Option<String>,
-    supervisor: State<'_, NodeSupervisor>,
-) -> Result<MessageId, AppError> {
-    let params = json!({
-        "text": text,
-        "agent": agent,
-        "session_id": null,
-    });
-    let result = supervisor
-        .request("conversation/send", Some(params))
+    supervisor: State<'_, ClaudeSupervisor>,
+) -> Result<(), AppError> {
+    supervisor
+        .send_input(&text)
         .await
-        .map_err(|e| AppError::NodeSdkUnavailable(e.to_string()))?;
-
-    let id = result
-        .get("message_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("ack")
-        .to_string();
-    Ok(id)
+        .map_err(|e| AppError::Internal(e.to_string()))
 }
 
 /// Stub: returns the recent conversation history for a session.

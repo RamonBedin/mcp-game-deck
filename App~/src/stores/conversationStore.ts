@@ -39,6 +39,26 @@ interface ConversationState
 
 const makeLocalId = (prefix: string): string => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const formatError = (err: unknown): string => {
+  if (err instanceof Error)
+  {
+    return err.message;
+  }
+  
+  if (typeof err === "string")
+  {
+    return err;
+  }
+  try
+  {
+    return JSON.stringify(err);
+  }
+  catch
+  {
+    return String(err);
+  }
+};
+
 // #endregion
 
 // #region Store
@@ -77,7 +97,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
       const errorMsg: Message = {
         id: makeLocalId("err"),
         role: "system",
-        content: `error: ${String(err)}`,
+        content: `error: ${formatError(err)}`,
         timestamp: Date.now(),
       };
       set((state) => ({ messages: [...state.messages, errorMsg] }));

@@ -19,7 +19,6 @@ import type {
   ClaudeInstallStatus,
   ConnectionStatus,
   Message,
-  MessageId,
   PermissionMode,
   Plan,
   PlanMeta,
@@ -50,11 +49,7 @@ export const startSdkInstall = (): Promise<void> => invoke("start_sdk_install");
 
 // #region Conversation
 
-export const sendMessage = (
-  text: string,
-  agent?: string | null,
-): Promise<MessageId> =>
-  invoke("send_message", { text, agent: agent ?? null });
+export const sendMessage = (text: string): Promise<void> => invoke("send_message", { text });
 
 export const getConversationHistory = (
   sessionId: string,
