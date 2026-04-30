@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter};
 use crate::types::{
     AskUserRequestedPayload, Message, MessageStreamChunkPayload, MessageStreamCompletePayload,
     NodeSdkStatusChangedPayload, PermissionRequestedPayload, RouteRequestedPayload,
-    UnityStatusChangedPayload,
+    SdkInstallFailedPayload, SdkInstallProgressPayload, UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -37,6 +37,15 @@ pub const EVT_PERMISSION_REQUESTED: &str = "permission-requested";
 
 /// Event name for `RouteRequestedPayload`.
 pub const EVT_ROUTE_REQUESTED: &str = "route-requested";
+
+/// Event name for `SdkInstallProgressPayload`.
+pub const EVT_SDK_INSTALL_PROGRESS: &str = "sdk-install-progress";
+
+/// Event name for `sdk-install-completed` (no payload — emit `()`).
+pub const EVT_SDK_INSTALL_COMPLETED: &str = "sdk-install-completed";
+
+/// Event name for `SdkInstallFailedPayload`.
+pub const EVT_SDK_INSTALL_FAILED: &str = "sdk-install-failed";
 
 // endregion
 
@@ -182,6 +191,55 @@ pub fn emit_route_requested(
     payload: RouteRequestedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_ROUTE_REQUESTED, payload)
+}
+
+/// Streams a single stdout line from the running `npm install`.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - Indeterminate percent + the latest stdout line.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_sdk_install_progress(
+    app: &AppHandle,
+    payload: SdkInstallProgressPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_SDK_INSTALL_PROGRESS, payload)
+}
+
+/// Signals successful `npm install` completion. No payload.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_sdk_install_completed(app: &AppHandle) -> tauri::Result<()> {
+    app.emit(EVT_SDK_INSTALL_COMPLETED, ())
+}
+
+/// Signals a failed `npm install`, with the trailing stderr lines
+/// and exit code.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - Failure message (last few stderr lines) plus
+///   optional exit code.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_sdk_install_failed(
+    app: &AppHandle,
+    payload: SdkInstallFailedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_SDK_INSTALL_FAILED, payload)
 }
 
 // endregion

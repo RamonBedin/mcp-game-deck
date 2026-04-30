@@ -205,6 +205,16 @@ export interface SdkInstallProgressPayload {
   message?: string;
 }
 
+/**
+ * Payload for `sdk-install-failed` — last few stderr lines plus the
+ * npm exit code (when known). Surfaced verbatim in the Retry card.
+ */
+export interface SdkInstallFailedPayload
+{
+  message: string;
+  exitCode?: number;
+}
+
 // #endregion
 
 // #region Errors

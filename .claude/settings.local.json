@@ -3,7 +3,8 @@
     "allow": [
       "Bash(where rg *)",
       "Bash(node *)",
-      "Bash(rm *)"
+      "Bash(rm *)",
+      "Bash(cargo check *)"
     ]
   }
 }

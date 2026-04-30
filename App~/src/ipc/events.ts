@@ -17,6 +17,7 @@ import type {
   NodeSdkStatusChangedPayload,
   PermissionRequestedPayload,
   RouteRequestedPayload,
+  SdkInstallFailedPayload,
   SdkInstallProgressPayload,
   UnityStatusChangedPayload,
 } from "./types";
@@ -67,5 +68,12 @@ export const onRouteRequested = wrap<RouteRequestedPayload>("route-requested");
 // #region Install events
 
 export const onSdkInstallProgress = wrap<SdkInstallProgressPayload>("sdk-install-progress");
+
+export const onSdkInstallCompleted = (
+  handler: () => void,
+): Promise<UnlistenFn> =>
+  listen<null>("sdk-install-completed", () => handler());
+
+export const onSdkInstallFailed = wrap<SdkInstallFailedPayload>("sdk-install-failed");
 
 // #endregion

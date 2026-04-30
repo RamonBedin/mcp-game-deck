@@ -6,3 +6,5 @@
 //! and replaces `node_supervisor` at that point.
 
 pub mod install_check;
+pub mod paths;
+pub mod sdk_install;

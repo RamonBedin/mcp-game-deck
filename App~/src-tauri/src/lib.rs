@@ -127,6 +127,7 @@ pub fn run() {
             commands::dev::dev_call_unity_tool,
             commands::env::get_env_var,
             commands::install::check_claude_install_status,
+            commands::install::start_sdk_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

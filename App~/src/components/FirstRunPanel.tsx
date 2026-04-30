@@ -21,12 +21,10 @@
  */
 
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useEffect, useState } from "react";
-import { onSdkInstallProgress } from "../ipc/events";
-import type {
-  ClaudeInstallStatus,
-  SdkInstallProgressPayload,
-} from "../ipc/types";
+import { useCallback, useEffect, useState } from "react";
+import { startSdkInstall } from "../ipc/commands";
+import { onSdkInstallCompleted, onSdkInstallFailed, onSdkInstallProgress, } from "../ipc/events";
+import type { ClaudeInstallStatus } from "../ipc/types";
 
 // #region Constants
 
@@ -116,37 +114,8 @@ export function FirstRunCheckingScreen()
 export default function FirstRunPanel({ status }: FirstRunPanelProps)
 {
   const variant = variantFor(status);
-  const [progress, setProgress] = useState<SdkInstallProgressPayload | null>(null,);
 
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    onSdkInstallProgress((payload) => {
-      if (cancelled) return;
-      setProgress(payload);
-    })
-      .then((u) => {
-        if (cancelled)
-        {
-          u();
-        }
-        else
-        {
-          unlisten = u;
-        }
-      })
-      .catch((err) => {
-        console.error("[first-run] failed to subscribe to sdk-install-progress:", err,);
-      });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
-
-  if (variant === "claude-missing") 
+  if (variant === "claude-missing")
   {
     return <ClaudeMissingCard />;
   }
@@ -156,7 +125,7 @@ export default function FirstRunPanel({ status }: FirstRunPanelProps)
     return <NotAuthenticatedCard />;
   }
 
-  return <InstallingSdkCard progress={progress} />;
+  return <InstallingSdkCard />;
 }
 
 // #region Variant cards
@@ -255,41 +224,155 @@ function NotAuthenticatedCard()
 }
 
 /**
- * State 2 — SDK install is in progress (or pending task 1.3 to start it).
+ * State 2 — SDK install in progress, or failed and awaiting retry.
  *
- * Renders the SDK-install card with a progress bar that switches between a
- * determinate fill (when `progress.percent` is provided) and an indeterminate
- * pulse (when it isn't). The status message falls back to a default string
- * when no payload has arrived yet.
+ * Owns its own state machine: dispatches `start_sdk_install` once on
+ * mount, then renders the indeterminate progress strip with the latest
+ * stdout line as `sdk-install-progress` events arrive. On
+ * `sdk-install-failed`, flips to a failure card with the trailing
+ * stderr and a Retry button. On `sdk-install-completed`, the App.tsx
+ * polling loop detects `sdkInstalled` and unmounts the panel — no
+ * local UI change needed.
  *
- * @param props - Component props.
- * @param props.progress - Latest install progress payload, or `null` while
- *   awaiting the first update from the host.
- * @returns The SDK-install card element.
+ * @returns The installing-or-failed card element.
  */
-function InstallingSdkCard({progress,}: {progress: SdkInstallProgressPayload | null;}) 
+function InstallingSdkCard()
 {
-  const message = progress?.message ?? "Installing @anthropic-ai/claude-agent-sdk...";
-  const hasPercent = progress !== null && progress.percent !== null && progress.percent !== undefined;
+  const [phase, setPhase] = useState<"installing" | "failed">("installing");
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const startInstall = useCallback(async () =>
+  {
+    setPhase("installing");
+    setErrorMessage(null);
+    setProgressMessage(null);
+    try
+    {
+      await startSdkInstall();
+    }
+    catch (err)
+    {
+      console.error("[first-run] startSdkInstall failed:", err);
+      setPhase("failed");
+      setErrorMessage(String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unlistenProgress: (() => void) | null = null;
+    let unlistenCompleted: (() => void) | null = null;
+    let unlistenFailed: (() => void) | null = null;
+
+    onSdkInstallProgress((payload) => {
+      if (cancelled)
+      {
+        return;
+      }
+
+      if (payload.message)
+      {
+        setProgressMessage(payload.message);
+      }
+    })
+      .then((u) => {
+        if (cancelled)
+        {
+          u();
+        }
+        else
+        { 
+          unlistenProgress = u;
+        }
+      })
+      .catch((err) => {
+        console.error("[first-run] onSdkInstallProgress subscribe failed:", err);
+      });
+
+    onSdkInstallCompleted(() => {
+    })
+      .then((u) => {
+        if (cancelled)
+        {
+          u();
+        }
+        else
+        {
+          unlistenCompleted = u;
+        }
+      })
+      .catch((err) => {
+        console.error("[first-run] onSdkInstallCompleted subscribe failed:", err);
+      });
+
+    onSdkInstallFailed((payload) => {
+      if (cancelled)
+      {
+        return;
+      }
+
+      setPhase("failed");
+      setErrorMessage(payload.message);
+    })
+      .then((u) => {
+        if (cancelled)
+        {
+          u();
+        }
+        else
+        { 
+          unlistenFailed = u;
+        }
+      })
+      .catch((err) => {
+        console.error("[first-run] onSdkInstallFailed subscribe failed:", err);
+      });
+
+    void startInstall();
+
+    return () => {
+      cancelled = true;
+      unlistenProgress?.();
+      unlistenCompleted?.();
+      unlistenFailed?.();
+    };
+  }, [startInstall]);
+
+  if (phase === "failed")
+  {
+    return (
+      <CardShell title="Install failed">
+        <p className="mb-4 text-sm text-slate-300">
+          The SDK install did not complete. Common causes: no network,
+          npm not on PATH, or registry blocked.
+        </p>
+        {errorMessage && (
+          <pre className="mb-4 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-red-300">
+            {errorMessage}
+          </pre>
+        )}
+        <button
+          type="button"
+          onClick={() => void startInstall()}
+          className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600"
+        >
+          Retry
+        </button>
+      </CardShell>
+    );
+  }
 
   return (
     <CardShell title="Setting up Claude Code SDK">
-      <p className="mb-6 text-sm text-slate-300">{message}</p>
+      <p className="mb-6 text-sm text-slate-300">
+        {progressMessage ?? "Installing @anthropic-ai/claude-agent-sdk..."}
+      </p>
       <div
         className="h-2 w-full overflow-hidden rounded bg-slate-700"
         role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={hasPercent ? (progress?.percent ?? undefined) : undefined}
       >
-        {hasPercent ? (
-          <div
-            className="h-full bg-blue-700 transition-all"
-            style={{ width: `${progress?.percent ?? 0}%` }}
-          />
-        ) : (
-          <div className="h-full w-1/3 animate-pulse bg-blue-700" />
-        )}
+        <div className="h-full w-1/3 animate-pulse bg-blue-700" />
       </div>
       <p className="mt-4 text-xs text-slate-500">
         First launch only — usually 30 seconds to 2 minutes.

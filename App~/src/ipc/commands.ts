@@ -44,6 +44,8 @@ export const restartNodeSdk = (): Promise<void> => invoke("restart_node_sdk");
 
 export const checkClaudeInstallStatus = (): Promise<ClaudeInstallStatus> => invoke("check_claude_install_status");
 
+export const startSdkInstall = (): Promise<void> => invoke("start_sdk_install");
+
 // #endregion
 
 // #region Conversation

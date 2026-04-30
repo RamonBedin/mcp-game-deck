@@ -245,6 +245,28 @@ pub struct RouteRequestedPayload {
     pub route: String,
 }
 
+/// Payload for `sdk-install-progress` — emitted while
+/// `npm install @anthropic-ai/claude-agent-sdk` runs. `percent: None`
+/// signals indeterminate progress (npm output isn't reliably
+/// parseable for a numeric percent); React falls back to a pulse
+/// animation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SdkInstallProgressPayload {
+    pub percent: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// Payload for `sdk-install-failed`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SdkInstallFailedPayload {
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+}
+
 // endregion
 
 // region: Errors
