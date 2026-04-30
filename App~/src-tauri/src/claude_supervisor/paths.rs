@@ -52,4 +52,35 @@ pub fn sdk_entry_script() -> PathBuf {
     runtime_dir().join("sdk-entry.js")
 }
 
+/// Absolute path to the MCP Game Deck Unity package root.
+///
+/// Walks up two levels from `CARGO_MANIFEST_DIR` (= `App~/src-tauri/`)
+/// → `App~/` → `<package>/`. Resolves to the repo root in dev.
+///
+/// `CARGO_MANIFEST_DIR` is a compile-time
+/// anchor that points at the source tree even after Tauri bundles
+/// the binary into an MSI. Production builds need a different
+/// resolution (e.g., walking up from `current_exe()` or asset-side
+/// embedding). For dev/preview, this is correct.
+pub fn package_root() -> PathBuf {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("CARGO_MANIFEST_DIR has no grandparent")
+        .to_path_buf()
+}
+
+/// Path to the compiled MCP proxy script that bridges Claude Code's
+/// MCP transport to the C# MCP Server in Unity. Built from
+/// `<package>/Server~/` via `npm run build`. Skipped silently by
+/// the supervisor when missing — the warning surfaces as an
+/// `AgentMessage::Error` to React.
+pub fn mcp_proxy_script() -> PathBuf {
+    package_root()
+        .join("Server~")
+        .join("dist")
+        .join("mcp-proxy.js")
+}
+
 // endregion

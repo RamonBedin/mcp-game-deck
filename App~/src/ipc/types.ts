@@ -47,13 +47,32 @@ export type MessageRole = "user" | "assistant" | "system";
 /** Stable identifier for a message within a conversation. */
 export type MessageId = string;
 
-/** A single chat message exchanged with the agent. */
+/**
+ * Discriminated union of block types that can appear inside a chat
+ * `Message`. introduced this shape so tool calls
+ * interleave with assistant text in display order.
+ *
+ * - `text` — streamed assistant text or static system/user content.
+ * - `tool-use` — Claude is calling an MCP tool; pre-permission display.
+ * - `tool-result` — the tool returned (or errored); raw payload kept,
+ *   UI truncates display via scrollable container.
+ */
+export type Block =
+  | { type: "text"; text: string }
+  | { type: "tool-use"; toolUseId: string; name: string; input: unknown }
+  | { type: "tool-result"; toolUseId: string; content: unknown; isError: boolean };
+
+/**
+ * A single chat message exchanged with the agent. Content lives in
+ * `blocks` (introduced in task 2.4); the F01 `content: string` field
+ * was dropped — `Message` is now block-based.
+ */
 export interface Message
 {
   id: MessageId;
   role: MessageRole;
-  content: string;
   timestamp: number;
+  blocks: Block[];
   agent?: string;
 }
 
@@ -231,6 +250,8 @@ export type AgentMessage =
   | { type: "ready" }
   | { type: "assistant-text"; text: string }
   | { type: "text-delta"; turnId: string; text: string }
+  | { type: "tool-use"; turnId: string; toolUseId: string; name: string; input: unknown }
+  | { type: "tool-result"; turnId: string; toolUseId: string; content: unknown; isError: boolean }
   | { type: "assistant-turn-complete"; turnId: string }
   | { type: "error"; message: string };
 

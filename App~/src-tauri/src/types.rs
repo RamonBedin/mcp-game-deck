@@ -261,6 +261,18 @@ pub enum AgentMessage {
         turn_id: String,
         text: String,
     },
+    ToolUse {
+        turn_id: String,
+        tool_use_id: String,
+        name: String,
+        input: Value,
+    },
+    ToolResult {
+        turn_id: String,
+        tool_use_id: String,
+        content: Value,
+        is_error: bool,
+    },
     AssistantTurnComplete {
         turn_id: String,
     },

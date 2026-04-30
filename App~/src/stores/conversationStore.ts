@@ -2,26 +2,30 @@
  * Zustand store for the active conversation.
  *
  * Owns the message list, current session id, and permission mode.
- * Exposes an optimistic `sendMessage` that appends the user message
- * locally before forwarding the text to the supervisor; assistant
- * replies arrive as streamed `text-delta` events (consumed by
- * `ChatRoute`'s `onAgentMessage` listener and dispatched here via
- * `appendDelta` / `completeTurn`).
+ * Messages are block-based (task 2.4) — assistant turns interleave
+ * streamed text with tool-use / tool-result entries in display order.
+ *
+ * The optimistic `sendMessage` appends a user message locally before
+ * forwarding the text to the supervisor; assistant replies arrive as
+ * `text-delta` / `tool-use` / `tool-result` / `assistant-turn-complete`
+ * events (consumed by `ChatRoute`'s `onAgentMessage` listener and
+ * dispatched here via `appendDelta` / `appendToolUseBlock` /
+ * `appendToolResultBlock` / `completeTurn`).
  */
 
 import { create } from "zustand";
 import { sendMessage as sendMessageCommand } from "../ipc/commands";
-import type { Message, PermissionMode } from "../ipc/types";
+import type { Block, Message, PermissionMode } from "../ipc/types";
 
 // #region State shape
 
 /**
  * Shape of the conversation-state store that backs the chat panel.
  *
- * Owns the full message history for the active session, the current
- * session identifier, and the user-selected permission mode. Mutators
- * are streaming-shaped: deltas append to a turn-keyed assistant
- * message, completion is a marker, and errors land as system entries.
+ * Mutators are streaming + block-shaped: text deltas append to the
+ * trailing text block of a turn-keyed assistant message, tool blocks
+ * are pushed in arrival order, completion is a marker, and errors
+ * land as system entries.
  */
 interface ConversationState
 {
@@ -29,6 +33,8 @@ interface ConversationState
   currentSessionId: string | null;
   permissionMode: PermissionMode;
   appendDelta: (turnId: string, text: string) => void;
+  appendToolUseBlock: (turnId: string, toolUseId: string, name: string, input: unknown,) => void;
+  appendToolResultBlock: (turnId: string, toolUseId: string, content: unknown, isError: boolean,) => void;
   completeTurn: (turnId: string) => void;
   appendErrorMessage: (text: string) => void;
   clearMessages: () => void;
@@ -63,6 +69,29 @@ const formatError = (err: unknown): string => {
   }
 };
 
+const pushBlockToTurn = (messages: Message[], turnId: string, block: Block,): Message[] => {
+  const idx = messages.findIndex((m) => m.id === turnId);
+  if (idx >= 0)
+  {
+    const next = [...messages];
+    next[idx] = {
+      ...next[idx],
+      blocks: [...next[idx].blocks, block],
+    };
+    return next;
+  }
+
+  return [
+    ...messages,
+    {
+      id: turnId,
+      role: "assistant",
+      timestamp: Date.now(),
+      blocks: [block],
+    },
+  ];
+};
+
 // #endregion
 
 // #region Store
@@ -74,25 +103,53 @@ export const useConversationStore = create<ConversationState>((set) => ({
   appendDelta: (turnId, text) =>
     set((state) => {
       const idx = state.messages.findIndex((m) => m.id === turnId);
-
       if (idx >= 0)
       {
+        const msg = state.messages[idx];
+        const lastBlock = msg.blocks[msg.blocks.length - 1];
+        let newBlocks: Block[];
+
+        if (lastBlock?.type === "text")
+        {
+          newBlocks = msg.blocks.slice(0, -1);
+          newBlocks.push({ type: "text", text: lastBlock.text + text });
+        }
+        else
+        {
+          newBlocks = [...msg.blocks, { type: "text", text }];
+        }
+
         const next = [...state.messages];
-        next[idx] = {
-          ...next[idx],
-          content: next[idx].content + text,
-        };
+        next[idx] = { ...msg, blocks: newBlocks };
         return { messages: next };
       }
 
       const newMsg: Message = {
         id: turnId,
         role: "assistant",
-        content: text,
         timestamp: Date.now(),
+        blocks: [{ type: "text", text }],
       };
       return { messages: [...state.messages, newMsg] };
     }),
+  appendToolUseBlock: (turnId, toolUseId, name, input) =>
+    set((state) => ({
+      messages: pushBlockToTurn(state.messages, turnId, {
+        type: "tool-use",
+        toolUseId,
+        name,
+        input,
+      }),
+    })),
+  appendToolResultBlock: (turnId, toolUseId, content, isError) =>
+    set((state) => ({
+      messages: pushBlockToTurn(state.messages, turnId, {
+        type: "tool-result",
+        toolUseId,
+        content,
+        isError,
+      }),
+    })),
   completeTurn: (_turnId) => {
   },
   appendErrorMessage: (text) =>
@@ -102,8 +159,8 @@ export const useConversationStore = create<ConversationState>((set) => ({
         {
           id: makeLocalId("err"),
           role: "system",
-          content: `error: ${text}`,
           timestamp: Date.now(),
+          blocks: [{ type: "text", text: `error: ${text}` }],
         },
       ],
     })),
@@ -121,8 +178,8 @@ export const useConversationStore = create<ConversationState>((set) => ({
     const userMsg: Message = {
       id: makeLocalId("user"),
       role: "user",
-      content: trimmed,
       timestamp: Date.now(),
+      blocks: [{ type: "text", text: trimmed }],
     };
     set((state) => ({ messages: [...state.messages, userMsg] }));
 
@@ -135,8 +192,8 @@ export const useConversationStore = create<ConversationState>((set) => ({
       const errorMsg: Message = {
         id: makeLocalId("err"),
         role: "system",
-        content: `error: ${formatError(err)}`,
         timestamp: Date.now(),
+        blocks: [{ type: "text", text: `error: ${formatError(err)}` }],
       };
       set((state) => ({ messages: [...state.messages, errorMsg] }));
     }

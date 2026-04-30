@@ -48,6 +48,40 @@ function emitTextDelta(turnId, text)
 }
 
 /**
+ * Emits a `tool-use` envelope: Claude is calling an MCP tool. Sent
+ * pre-permission so the host can render the call before the result
+ * arrives. `input` is the parsed JSON object the tool will be invoked
+ * with; on parse failure the caller emits a `_parseError` placeholder.
+ *
+ * @param {string} turnId - Stable id of the current turn.
+ * @param {string} toolUseId - SDK-assigned id for this tool invocation.
+ * @param {string} name - Tool name (e.g. `mcp__game-deck__list_scenes`).
+ * @param {unknown} input - Parsed input payload.
+ * @returns {void}
+ */
+function emitToolUse(turnId, toolUseId, name, input)
+{
+  emit({ type: "tool-use", turnId, toolUseId, name, input });
+}
+
+/**
+ * Emits a `tool-result` envelope: the matching `tool-use` returned.
+ * `content` matches the SDK's `tool_result.content` shape — usually a
+ * string but can be a structured array; the host handles both. The
+ * `toolUseId` ties this back to the originating `tool-use`.
+ *
+ * @param {string} turnId - Stable id of the current turn.
+ * @param {string} toolUseId - Matches the originating `tool-use`.
+ * @param {unknown} content - Raw payload returned by the tool.
+ * @param {boolean} isError - True when the tool reported an error.
+ * @returns {void}
+ */
+function emitToolResult(turnId, toolUseId, content, isError)
+{
+  emit({ type: "tool-result", turnId, toolUseId, content, isError });
+}
+
+/**
  * Emits an `assistant-turn-complete` envelope to signal that the
  * current `query()` round-trip has finished. Carries the same
  * `turnId` as the deltas it closes.
@@ -126,23 +160,61 @@ function makeTurnId()
 }
 
 /**
+ * Builds the `mcpServers` config passed to `query()` when the host
+ * has resolved a built `mcp-proxy.js`. Returns `undefined` when
+ * `MCP_PROXY_PATH` is unset — `spawn.rs` already surfaced the soft
+ * warn to React, so the SDK simply runs without MCP tools.
+ *
+ * @returns {Record<string, object> | undefined} The `mcpServers`
+ *   config for `query()`'s options, or `undefined` to omit it.
+ */
+function buildMcpServers()
+{
+  const proxyPath = process.env.MCP_PROXY_PATH;
+
+  if (!proxyPath || proxyPath.length === 0)
+  {
+    return undefined;
+  }
+
+  return {
+    "game-deck": {
+      command: "node",
+      args: [proxyPath],
+      env: {
+        UNITY_MCP_HOST: process.env.UNITY_MCP_HOST ?? "",
+        UNITY_MCP_PORT: process.env.UNITY_MCP_PORT ?? "",
+      },
+    },
+  };
+}
+
+/**
  * Runs one `query()` round-trip for a user input string with
  * `includePartialMessages: true`. The SDK emits one `stream_event`
- * per content delta; we forward each `content_block_delta` /
- * `text_delta` payload as a `text-delta` envelope. Long pauses
- * between deltas are expected and intentional — the loop waits
- * indefinitely until a `result` message arrives or the SDK stream
- * closes (see Anthropic SDK GitHub issue #44). The turn is closed
- * with `assistant-turn-complete` when `result` arrives.
+ * per content delta; we discriminate by event type:
  *
- * Tool-use deltas (content_block_start with type `tool_use`) and
- * other non-text events are intentionally ignored here — task 2.4
- * wires those.
+ * - `content_block_start` with `text` block → no-op (next delta brings
+ *   the text)
+ * - `content_block_start` with `tool_use` block → register an
+ *   accumulator slot keyed by content-block index (carries the SDK's
+ *   `tool_use_id` and `name`); if the start already includes a
+ *   non-empty `input` field, emit immediately
+ * - `content_block_delta` with `text_delta` → forward to the host
+ *   as a `text-delta` envelope
+ * - `content_block_delta` with `input_json_delta` → append the
+ *   `partial_json` chunk to the matching accumulator
+ * - `content_block_stop` → if the block was a pending tool_use,
+ *   `JSON.parse` the accumulator and emit a `tool-use` envelope
  *
- * Multi-block turns (Claude splitting the response into separate
- * `content_block`s) accumulate into the same turn — every delta
- * carries the same `turnId`, so the host appends them in order
- * without resetting between blocks.
+ * Tool results arrive as `user` messages whose `content` array carries
+ * `tool_result` blocks; we extract and forward each as a `tool-result`
+ * envelope. The turn is closed with `assistant-turn-complete` when a
+ * `result` SDK message arrives.
+ *
+ * Long pauses between deltas are expected (see Anthropic SDK issue
+ * #44). Multi-block turns accumulate into the same turn — every
+ * envelope carries the same `turnId`, so the host appends in order.
  *
  * @param {string} text - The user-authored prompt to forward to the SDK.
  * @returns {Promise<void>} Resolves once the round-trip has finished
@@ -151,6 +223,7 @@ function makeTurnId()
 async function handleInput(text)
 {
   const turnId = makeTurnId();
+  const activeBlocks = new Map();
   try
   {
     const q = query({
@@ -158,6 +231,7 @@ async function handleInput(text)
       options: {
         cwd: projectPath,
         includePartialMessages: true,
+        mcpServers: buildMcpServers(),
       },
     });
 
@@ -165,14 +239,20 @@ async function handleInput(text)
     {
       if (msg?.type === "stream_event")
       {
-        const ev = msg.event;
-        if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta"
-        )
+        handleStreamEvent(msg.event, turnId, activeBlocks);
+      }
+      else if (msg?.type === "user" && Array.isArray(msg.message?.content))
+      {
+        for (const block of msg.message.content)
         {
-          const delta = ev.delta.text;
-          if (typeof delta === "string" && delta.length > 0)
+          if (block?.type === "tool_result" && typeof block.tool_use_id === "string")
           {
-            emitTextDelta(turnId, delta);
+            emitToolResult(
+              turnId,
+              block.tool_use_id,
+              block.content,
+              block.is_error === true,
+            );
           }
         }
       }
@@ -186,6 +266,110 @@ async function handleInput(text)
   {
     debug("query error:", err);
     emitError(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * Dispatches one `stream_event` payload from the SDK. Pulled out of
+ * `handleInput` to keep the `for await` loop readable.
+ *
+ * @param {object} ev - The stream-event body (`msg.event`).
+ * @param {string} turnId - Current turn id.
+ * @param {Map<number, object>} activeBlocks - Per-turn block state.
+ * @returns {void}
+ */
+function handleStreamEvent(ev, turnId, activeBlocks)
+{
+  if (ev?.type === "content_block_start")
+  {
+    const idx = ev.index;
+    const block = ev.content_block;
+
+    if (block?.type === "tool_use")
+    {
+      const toolUseId = block.id;
+      const name = block.name;
+      const initial = block.input;
+      const hasInitialInput =
+        initial !== null &&
+        typeof initial === "object" &&
+        Object.keys(initial).length > 0;
+
+      if (hasInitialInput)
+      {
+        emitToolUse(turnId, toolUseId, name, initial);
+        activeBlocks.set(idx, { kind: "tool_use_emitted" });
+      }
+      else
+      {
+        activeBlocks.set(idx, {
+          kind: "tool_use_pending",
+          toolUseId,
+          name,
+          inputBuffer: "",
+        });
+      }
+    }
+    else if (block?.type === "text")
+    {
+      activeBlocks.set(idx, { kind: "text" });
+    }
+    return;
+  }
+
+  if (ev?.type === "content_block_delta")
+  {
+    const idx = ev.index;
+    const delta = ev.delta;
+
+    if (delta?.type === "text_delta")
+    {
+      const text = delta.text;
+
+      if (typeof text === "string" && text.length > 0)
+      {
+        emitTextDelta(turnId, text);
+      }
+      return;
+    }
+
+    if (delta?.type === "input_json_delta")
+    {
+      const block = activeBlocks.get(idx);
+
+      if (block?.kind === "tool_use_pending" && typeof delta.partial_json === "string")
+      {
+        block.inputBuffer += delta.partial_json;
+      }
+      return;
+    }
+
+    return;
+  }
+
+  if (ev?.type === "content_block_stop")
+  {
+    const idx = ev.index;
+    const block = activeBlocks.get(idx);
+    
+    if (block?.kind === "tool_use_pending")
+    {
+      let input;
+      try
+      {
+        input = block.inputBuffer.length > 0 ? JSON.parse(block.inputBuffer) : {};
+      }
+      catch (e)
+      {
+        debug("tool input JSON parse failed:", String(e), block.inputBuffer);
+        input = {
+          _parseError: e instanceof Error ? e.message : String(e),
+          _raw: block.inputBuffer,
+        };
+      }
+      emitToolUse(turnId, block.toolUseId, block.name, input);
+    }
+    activeBlocks.delete(idx);
   }
 }
 

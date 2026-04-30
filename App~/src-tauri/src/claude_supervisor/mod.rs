@@ -163,7 +163,7 @@ impl ClaudeSupervisor {
 
         self.set_status(&app, SupervisorStatus::Starting, None);
 
-        let mut child = match spawn::spawn_node_child(&project_path) {
+        let mut child = match spawn::spawn_node_child(&app, &project_path) {
             Ok(c) => c,
             Err(e) => {
                 self.set_status(&app, SupervisorStatus::Failed, None);

@@ -16,16 +16,37 @@ use crate::types::{
     AgentMessage, AgentMessagePayload, SupervisorStatus, SupervisorStatusChangedPayload,
 };
 
+// region: MCP proxy resolution
+
+/// Resolves the absolute path to `Server~/dist/mcp-proxy.js` if it
+/// exists. Returns `None` when the script is missing — the caller
+/// surfaces a soft warning to React via `AgentMessage::Error` and
+/// proceeds without the `mcpServers` config (tools become unavailable
+/// for that session, but unrelated prompts still work).
+fn resolve_mcp_proxy() -> Option<std::path::PathBuf> {
+    let path = paths::mcp_proxy_script();
+    if path.is_file() { Some(path) } else { None }
+}
+
+// endregion
+
 // region: Spawn
 
 /// Spawns a Node child running `App~/runtime/sdk-entry.js`. Sets the
-/// F07 env contract explicitly (UNITY_PROJECT_PATH / UNITY_MCP_HOST /
-/// UNITY_MCP_PORT) instead of relying on Tauri's default env
-/// inheritance — guarantees the contract regardless of platform /
-/// shell quirks.
+/// env contract explicitly (UNITY_PROJECT_PATH / UNITY_MCP_HOST /
+/// UNITY_MCP_PORT) plus the task-2.4 `MCP_PROXY_PATH` when the
+/// proxy script is built. Default env inheritance is bypassed —
+/// the contract is guaranteed regardless of platform / shell quirks.
+///
+/// When `Server~/dist/mcp-proxy.js` is missing, an `AgentMessage::Error`
+/// is emitted to React explaining the build step and the child is
+/// spawned without `MCP_PROXY_PATH`. `sdk-entry.js` then skips the
+/// `mcpServers` config and tool calls become unavailable for that
+/// session.
 ///
 /// # Arguments
 ///
+/// * `app` - Application handle used to surface the soft-warn event.
 /// * `project_path` - Pre-validated UNITY_PROJECT_PATH (caller is
 ///   responsible for ensuring it is non-empty).
 ///
@@ -33,12 +54,28 @@ use crate::types::{
 ///
 /// Returns `std::io::Error` when Node is missing on PATH or the
 /// child process can't be created.
-pub fn spawn_node_child(project_path: &str) -> std::io::Result<Child> {
+pub fn spawn_node_child(app: &AppHandle, project_path: &str) -> std::io::Result<Child> {
     let runtime_dir = paths::runtime_dir();
     let entry = paths::sdk_entry_script();
 
     let unity_host = std::env::var("UNITY_MCP_HOST").unwrap_or_default();
     let unity_port = std::env::var("UNITY_MCP_PORT").unwrap_or_default();
+    let mcp_proxy = resolve_mcp_proxy();
+
+    if mcp_proxy.is_none() {
+        let expected = paths::mcp_proxy_script();
+        let _ = emit_agent_message(
+            app,
+            AgentMessagePayload {
+                message: AgentMessage::Error {
+                    message: format!(
+                        "MCP proxy not found at {}. Build with `cd Server~ && npm run build` to enable MCP tool calls. Spawning without mcpServers — non-tool prompts still work.",
+                        expected.display()
+                    ),
+                },
+            },
+        );
+    }
 
     let mut cmd = Command::new("node");
     cmd.arg(&entry)
@@ -49,6 +86,10 @@ pub fn spawn_node_child(project_path: &str) -> std::io::Result<Child> {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    if let Some(path) = mcp_proxy {
+        cmd.env("MCP_PROXY_PATH", path.to_string_lossy().as_ref());
+    }
 
     cmd.spawn()
 }
@@ -97,6 +138,8 @@ pub async fn read_stdout(
                 );
             }
             AgentMessage::TextDelta { .. }
+            | AgentMessage::ToolUse { .. }
+            | AgentMessage::ToolResult { .. }
             | AgentMessage::AssistantTurnComplete { .. }
             | AgentMessage::AssistantText { .. }
             | AgentMessage::Error { .. } => {

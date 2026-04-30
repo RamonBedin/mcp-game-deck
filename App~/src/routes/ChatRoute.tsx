@@ -9,8 +9,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
+import ToolResultBlock from "../components/ToolResultBlock";
+import ToolUseBlock from "../components/ToolUseBlock";
 import { onAgentMessage } from "../ipc/events";
-import type { MessageRole } from "../ipc/types";
+import type { Block, MessageRole } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
 // #region Helpers
@@ -26,6 +28,32 @@ const roleColor = (role: MessageRole): string => {
   }
 };
 
+/**
+ * Renders a single message block — text inline, tool blocks via the
+ * dedicated collapsible components.
+ *
+ * @param props - The block to render.
+ * @returns The rendered block element.
+ */
+function BlockView({ block }: { block: Block })
+{
+  switch (block.type)
+  {
+    case "text":
+      return (
+        <div className="whitespace-pre-wrap font-mono text-sm text-slate-200">
+          {block.text}
+        </div>
+      );
+    case "tool-use":
+      return <ToolUseBlock name={block.name} input={block.input} />;
+    case "tool-result":
+      return (
+        <ToolResultBlock content={block.content} isError={block.isError} />
+      );
+  }
+}
+
 // #endregion
 
 /**
@@ -37,6 +65,8 @@ export default function ChatRoute() {
   const messages = useConversationStore((s) => s.messages);
   const sendMessage = useConversationStore((s) => s.sendMessage);
   const appendDelta = useConversationStore((s) => s.appendDelta);
+  const appendToolUseBlock = useConversationStore((s) => s.appendToolUseBlock);
+  const appendToolResultBlock = useConversationStore((s) => s.appendToolResultBlock,);
   const completeTurn = useConversationStore((s) => s.completeTurn);
   const appendErrorMessage = useConversationStore((s) => s.appendErrorMessage);
 
@@ -63,6 +93,12 @@ export default function ChatRoute() {
       {
         case "text-delta":
           appendDelta(m.turnId, m.text);
+          break;
+        case "tool-use":
+          appendToolUseBlock(m.turnId, m.toolUseId, m.name, m.input);
+          break;
+        case "tool-result":
+          appendToolResultBlock(m.turnId, m.toolUseId, m.content, m.isError);
           break;
         case "assistant-turn-complete":
           completeTurn(m.turnId);
@@ -93,7 +129,13 @@ export default function ChatRoute() {
       cancelled = true;
       unlisten?.();
     };
-  }, [appendDelta, completeTurn, appendErrorMessage]);
+  }, [
+    appendDelta,
+    appendToolUseBlock,
+    appendToolResultBlock,
+    completeTurn,
+    appendErrorMessage,
+  ]);
 
   // Auto-anchor the scroll to the bottom on every new message.
   useEffect(() => {
@@ -148,8 +190,10 @@ export default function ChatRoute() {
               >
                 {m.role}
               </div>
-              <div className="whitespace-pre-wrap font-mono text-sm text-slate-200">
-                {m.content}
+              <div className="space-y-2">
+                {m.blocks.map((b, i) => (
+                  <BlockView key={i} block={b} />
+                ))}
               </div>
             </div>
           ))
