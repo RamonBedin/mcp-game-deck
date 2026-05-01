@@ -245,8 +245,13 @@ impl ClaudeSupervisor {
         Ok(pid)
     }
 
-    /// Sends a user input string to `sdk-entry.js` as the JSON line
-    /// `{"type":"input","text":"..."}`.
+    /// Sends a user input to `sdk-entry.js` as the JSON line
+    /// `{"type":"input","text":"...","attachments":[...]}`.
+    ///
+    /// `attachments` carries absolute paths the user attached alongside
+    /// the prompt. Real handling lands in Group 5; today the field is
+    /// always an empty slice from `commands::conversation::send_message`
+    /// and `sdk-entry.js` only logs it for visibility.
     ///
     /// # Errors
     ///
@@ -254,10 +259,15 @@ impl ClaudeSupervisor {
     /// `SendError::WriterClosed` when the stdin writer task has
     /// exited (typically because the child died). `SendError::Serde`
     /// on encoding failure (extremely unlikely for a plain string).
-    pub async fn send_input(&self, text: &str) -> Result<(), SendError> {
+    pub async fn send_input(
+        &self,
+        text: &str,
+        attachments: &[String],
+    ) -> Result<(), SendError> {
         let line = serde_json::to_string(&serde_json::json!({
             "type": "input",
             "text": text,
+            "attachments": attachments,
         }))
         .map_err(SendError::Serde)?;
         let s = self.state.lock().await;

@@ -18,7 +18,6 @@ import type {
   AppSettingsPatch,
   ClaudeInstallStatus,
   ConnectionStatus,
-  Message,
   PermissionMode,
   Plan,
   PlanMeta,
@@ -49,16 +48,10 @@ export const startSdkInstall = (): Promise<void> => invoke("start_sdk_install");
 
 // #region Conversation
 
-export const sendMessage = (text: string): Promise<void> => invoke("send_message", { text });
-
-export const getConversationHistory = (
-  sessionId: string,
-  limit: number,
-): Promise<Message[]> =>
-  invoke("get_conversation_history", { sessionId, limit });
-
-export const clearConversation = (sessionId: string): Promise<void> =>
-  invoke("clear_conversation", { sessionId });
+export const sendMessage = (
+  text: string,
+  attachmentPaths: string[] = [],
+): Promise<void> => invoke("send_message", { text, attachmentPaths });
 
 export const setPermissionMode = (mode: PermissionMode): Promise<void> =>
   invoke("set_permission_mode", { mode });

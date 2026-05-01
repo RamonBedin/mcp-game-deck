@@ -287,11 +287,19 @@ function buildAdditionalDirectories()
  * envelope carries the same `turnId`, so the host appends in order.
  *
  * @param {string} text - The user-authored prompt to forward to the SDK.
+ * @param {string[]} attachments - Absolute paths the user attached.
+ *   Empty today (UI wiring lands in Group 5); logged for visibility
+ *   and otherwise ignored.
  * @returns {Promise<void>} Resolves once the round-trip has finished
  *   and all envelopes have been emitted.
  */
-async function handleInput(text)
+async function handleInput(text, attachments)
 {
+  if (attachments.length > 0)
+  {
+    debug("attachments received (Group 5 will wire these into the prompt):", attachments);
+  }
+
   const turnId = makeTurnId();
   const activeBlocks = new Map();
   try
@@ -466,9 +474,11 @@ for await (const line of rl)
     debug("bad input line:", line);
     continue;
   }
-  if (parsed?.type === "input" && typeof parsed.text === "string") 
+
+  if (parsed?.type === "input" && typeof parsed.text === "string")
   {
-    await handleInput(parsed.text);
+    const attachments = Array.isArray(parsed.attachments) ? parsed.attachments.filter((p) => typeof p === "string") : [];
+    await handleInput(parsed.text, attachments);
   }
 }
 

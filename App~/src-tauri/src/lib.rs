@@ -107,8 +107,6 @@ pub fn run() {
             commands::connection::reconnect_unity,
             commands::connection::restart_supervisor,
             commands::conversation::send_message,
-            commands::conversation::get_conversation_history,
-            commands::conversation::clear_conversation,
             commands::conversation::set_permission_mode,
             commands::conversation::get_permission_mode,
             commands::plans::list_plans,
