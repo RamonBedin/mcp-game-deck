@@ -201,12 +201,18 @@ function buildMcpServers()
  * Loaded via the SDK's first-class `plugins` option — the plugin
  * mechanism is what auto-discovers skills AND agents (both share
  * the `mcp-game-deck:` namespace from the manifest's `name`).
- * `additionalDirectories` only grants filesystem read access, not
- * discovery, so it is reserved for `commands/` (see
- * {@link buildAdditionalDirectories}).
  *
  * Skills appear as `mcp-game-deck:<skill-name>` in the chat;
  * agents are invoked via `@agent-mcp-game-deck:<agent-name>`.
+ *
+ * IMPORTANT: registering the plugin via `plugins` does NOT auto-grant
+ * filesystem read access for paths inside the plugin directory. When
+ * agents/skills reference content via `${CLAUDE_PLUGIN_ROOT}/...` (e.g.
+ * the knowledge base under `Plugin~/knowledge/`), the SDK substitutes
+ * the path correctly but the working-directory restriction still
+ * applies. The same env var is therefore included in
+ * {@link buildAdditionalDirectories} to grant read access for those
+ * `Read` calls.
  *
  * @returns {Array<object> | undefined} The `plugins` config for
  *   `query()`'s options, or `undefined` to omit it when the env var is
@@ -226,22 +232,29 @@ function buildPlugins()
 
 /**
  * Builds the `additionalDirectories` array passed to `query()` from
- * the env-var contract `spawn.rs` sets up:
+ * the env-var contract `spawn.rs` sets up.
  *
+ * Two purposes today:
+ *
+ * - `MCP_GAME_DECK_PLUGIN_DIR` — `<package>/Plugin~/`. Granted read
+ *   access so agents/skills can `Read` files referenced via
+ *   `${CLAUDE_PLUGIN_ROOT}/...` (notably the knowledge base under
+ *   `Plugin~/knowledge/`). Discovery is handled separately via the
+ *   `plugins` option (see {@link buildPlugins}); this entry only
+ *   widens the working-directory allowlist.
  * - `MCP_GAME_DECK_COMMANDS_DIR` — `<unity-project>/ProjectSettings/
  *   GameDeck/commands/` (opt-in user-authored commands). Set by Rust
  *   only when the directory exists.
  *
- * Used purely for filesystem read access — commands are not Claude Code
- * skills and don't need plugin-style discovery. The package's own
- * skills are surfaced via {@link buildPlugins}, not this list.
+ * Both env vars set by Rust only when the corresponding paths exist.
  *
- * @returns {string[]} Absolute paths in load order. Empty when the
- *   commands env var is not set.
+ * @returns {string[]} Absolute paths in load order. Empty when neither
+ *   env var is set.
  */
 function buildAdditionalDirectories()
 {
   return [
+    process.env.MCP_GAME_DECK_PLUGIN_DIR,
     process.env.MCP_GAME_DECK_COMMANDS_DIR,
   ].filter((p) => typeof p === "string" && p.length > 0);
 }

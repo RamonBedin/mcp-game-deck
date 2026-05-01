@@ -29,7 +29,7 @@ When this skill is invoked:
    - Read relevant existing files to understand current patterns
 
 4. **Read knowledge base docs** relevant to the feature domain:
-   - Always read `{{KB_PATH}}/01-unity-project-architecture.md` for project structure
+   - Always read `${CLAUDE_PLUGIN_ROOT}/knowledge/01-unity-project-architecture.md` for project structure
    - Read additional KB docs based on feature type (e.g., doc 07 for gameplay,
      doc 08 for UI, doc 02 for data-driven systems)
 

@@ -39,6 +39,23 @@ fn resolve_commands_dir(project_path: &str) -> Option<std::path::PathBuf> {
     if path.is_dir() { Some(path) } else { None }
 }
 
+/// Resolves `<package>/Plugin~/` if the directory exists. Logs an
+/// `eprintln!` warning when missing (package corruption / odd dev
+/// setup) but does not propagate — `claude` keeps running with
+/// built-in tools only (no package-bundled skills or agents).
+fn resolve_plugin_dir() -> Option<std::path::PathBuf> {
+    let path = paths::plugin_dir();
+    if path.is_dir() {
+        Some(path)
+    } else {
+        eprintln!(
+            "[claude-supervisor] Plugin~/ not found at {}. Package skills and agents disabled; user-level extensions in ~/.claude/ still load.",
+            path.display()
+        );
+        None
+    }
+}
+
 // endregion
 
 // region: Spawn
@@ -55,16 +72,17 @@ fn resolve_commands_dir(project_path: &str) -> Option<std::path::PathBuf> {
 /// `mcpServers` config and tool calls become unavailable for that
 /// session.
 ///
+/// `MCP_GAME_DECK_PLUGIN_DIR` points at the source `<package>/Plugin~/`
+/// directly — the SDK reads agent/skill content from there and
+/// resolves `${CLAUDE_PLUGIN_ROOT}` inline at runtime. Knowledge base
+/// markdown lives inside `Plugin~/knowledge/`, so reads stay within
+/// the plugin's auto-permission scope.
+///
 /// # Arguments
 ///
 /// * `app` - Application handle used to surface the soft-warn event.
 /// * `project_path` - Pre-validated UNITY_PROJECT_PATH (caller is
 ///   responsible for ensuring it is non-empty).
-/// * `plugin_dir` - Path to the per-project processed plugin
-///   (`<project>/Library/GameDeck/plugin/`) returned by
-///   `asset_install::install_plugin`. `None` when the install step
-///   failed; `MCP_GAME_DECK_PLUGIN_DIR` is left unset and the SDK
-///   runs without the package plugin.
 ///
 /// # Errors
 ///
@@ -73,7 +91,6 @@ fn resolve_commands_dir(project_path: &str) -> Option<std::path::PathBuf> {
 pub fn spawn_node_child(
     app: &AppHandle,
     project_path: &str,
-    plugin_dir: Option<&std::path::Path>,
 ) -> std::io::Result<Child> {
     let runtime_dir = paths::runtime_dir();
     let entry = paths::sdk_entry_script();
@@ -81,6 +98,7 @@ pub fn spawn_node_child(
     let unity_host = std::env::var("UNITY_MCP_HOST").unwrap_or_default();
     let unity_port = std::env::var("UNITY_MCP_PORT").unwrap_or_default();
     let mcp_proxy = resolve_mcp_proxy();
+    let plugin_dir = resolve_plugin_dir();
     let commands_dir = resolve_commands_dir(project_path);
 
     if mcp_proxy.is_none() {
@@ -113,10 +131,6 @@ pub fn spawn_node_child(
     }
     if let Some(path) = plugin_dir {
         cmd.env("MCP_GAME_DECK_PLUGIN_DIR", path.to_string_lossy().as_ref());
-    } else {
-        eprintln!(
-            "[claude-supervisor] processed plugin dir not provided — package skills and agents disabled this session."
-        );
     }
     if let Some(path) = commands_dir {
         cmd.env(

@@ -5,7 +5,6 @@
 //! `App~/runtime/sdk-entry.js`, captures stdout for the AgentMessage
 //! protocol, and pushes user input via stdin. Health check formal
 
-pub mod asset_install;
 pub mod install_check;
 pub mod paths;
 pub mod runtime_setup;
@@ -22,10 +21,8 @@ use tokio::process::Child;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 
-use crate::events::{emit_agent_message, emit_supervisor_status_changed};
-use crate::types::{
-    AgentMessage, AgentMessagePayload, SupervisorStatus, SupervisorStatusChangedPayload,
-};
+use crate::events::emit_supervisor_status_changed;
+use crate::types::{SupervisorStatus, SupervisorStatusChangedPayload};
 
 // region: SpawnError
 
@@ -164,27 +161,9 @@ impl ClaudeSupervisor {
             return Err(SpawnError::EntryScriptWrite(e));
         }
 
-        let plugin_dir = match asset_install::install_plugin(&project_path, &app).await {
-            Ok(p) => Some(p),
-            Err(e) => {
-                eprintln!("[asset-install] failed: {e}");
-                let _ = emit_agent_message(
-                    &app,
-                    AgentMessagePayload {
-                        message: AgentMessage::Error {
-                            message: format!(
-                                "Plugin asset install failed: {e}. Plugin (skills + agents) disabled this session; non-plugin prompts still work."
-                            ),
-                        },
-                    },
-                );
-                None
-            }
-        };
-
         self.set_status(&app, SupervisorStatus::Starting, None);
 
-        let mut child = match spawn::spawn_node_child(&app, &project_path, plugin_dir.as_deref()) {
+        let mut child = match spawn::spawn_node_child(&app, &project_path) {
             Ok(c) => c,
             Err(e) => {
                 self.set_status(&app, SupervisorStatus::Failed, None);

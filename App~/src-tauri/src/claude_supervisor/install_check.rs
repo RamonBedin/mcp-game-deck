@@ -108,16 +108,23 @@ async fn detect_claude_installed() -> bool {
 /// the parser extracts the first whitespace-separated token shaped like a
 /// dotted numeric version (with optional `v` prefix). Returns `None` when
 /// the binary is missing, the call times out, or no token matches.
+///
+/// Windows: invoked via `cmd /C claude --version` because npm-installed
+/// `claude` is a `.cmd` shim that `Command::new("claude")` won't resolve
+/// (the Rust-side PATHEXT lookup only finds `.exe`).
 async fn detect_claude_version() -> Option<String> {
-    let output = timeout(
-        PROBE_TIMEOUT,
-        Command::new("claude")
-            .arg("--version")
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output(),
-    )
-    .await;
+    let mut cmd = if cfg!(windows) {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "claude", "--version"]);
+        c
+    } else {
+        let mut c = Command::new("claude");
+        c.arg("--version");
+        c
+    };
+    cmd.stdin(Stdio::null()).stderr(Stdio::null());
+
+    let output = timeout(PROBE_TIMEOUT, cmd.output()).await;
 
     let stdout = match output {
         Ok(Ok(out)) if out.status.success() => out.stdout,
@@ -175,15 +182,18 @@ fn parse_version(text: &str) -> Option<String> {
 /// query during spawn (task 2.2 health check), so this probe is only the
 /// fast path for the FirstRunPanel UX.
 async fn detect_claude_authenticated() -> bool {
-    let output = timeout(
-        PROBE_TIMEOUT,
-        Command::new("claude")
-            .arg("/status")
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output(),
-    )
-    .await;
+    let mut cmd = if cfg!(windows) {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "claude", "/status"]);
+        c
+    } else {
+        let mut c = Command::new("claude");
+        c.arg("/status");
+        c
+    };
+    cmd.stdin(Stdio::null()).stderr(Stdio::null());
+
+    let output = timeout(PROBE_TIMEOUT, cmd.output()).await;
 
     let out = match output {
         Ok(Ok(out)) if out.status.success() => out,

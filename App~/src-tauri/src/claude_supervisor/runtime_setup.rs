@@ -25,6 +25,13 @@ const SDK_ENTRY_SCRIPT: &str = include_str!("sdk_entry.js");
 /// hand-edit during local debugging without a relaunch surprising
 /// them).
 ///
+/// Defensively creates the parent directory if missing. The runtime
+/// dir is normally created by `sdk_install::prepare_runtime_dir` on
+/// first launch, but `ensure_entry_script` runs from `mod.rs::spawn`
+/// before the install flow completes (e.g., on a fresh clone where
+/// the user hasn't gone through the FirstRunPanel yet), so this
+/// guard lets the call succeed regardless of setup ordering.
+///
 /// `package.json` "type": "module" presence is `sdk_install.rs`'s
 /// job; this module only writes the entry script.
 ///
@@ -35,6 +42,9 @@ pub async fn ensure_entry_script() -> std::io::Result<()> {
     let path = paths::sdk_entry_script();
     if tokio::fs::metadata(&path).await.is_ok() {
         return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
     }
     tokio::fs::write(&path, SDK_ENTRY_SCRIPT).await
 }

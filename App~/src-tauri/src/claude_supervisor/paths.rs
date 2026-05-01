@@ -84,35 +84,13 @@ pub fn mcp_proxy_script() -> PathBuf {
 }
 
 /// Path to the package's `Plugin~/` directory — the bundled Claude
-/// Code plugin shipped with MCP Game Deck. This is the **source**
-/// for `asset_install::install_plugin`, which mirrors it into a
-/// processed per-project copy (see `installed_plugin_dir`). Plugin~/
-/// is package-shipped (lives in the Unity PackageCache, conceptually
-/// read-only), so substitution must happen on a copy.
+/// Code plugin shipped with MCP Game Deck. Used directly as the
+/// value of `MCP_GAME_DECK_PLUGIN_DIR` — the SDK reads from the
+/// source path. Knowledge base lives at `Plugin~/knowledge/` inside
+/// this directory and is referenced from agent/skill content via
+/// `${CLAUDE_PLUGIN_ROOT}/knowledge/<file>.md`.
 pub fn plugin_dir() -> PathBuf {
     package_root().join("Plugin~")
-}
-
-/// Path to the package's `KnowledgeBase~/` directory. This is what
-/// `{{KB_PATH}}` substitutes to inside processed `Plugin~/` markdown
-/// files — agents/skills then `Read` documents at this absolute
-/// path. The KB itself is not copied; only the placeholder gets
-/// resolved during `asset_install::install_plugin`.
-pub fn knowledge_base_dir() -> PathBuf {
-    package_root().join("KnowledgeBase~")
-}
-
-/// Path to the per-project processed plugin directory written by
-/// `asset_install::install_plugin`. Lives under `Library/`
-/// (Unity convention; gitignored by default) so it's tied to the
-/// user's Unity project rather than the package or the Tauri
-/// runtime. `MCP_GAME_DECK_PLUGIN_DIR` points here after task 3.2 —
-/// not at `plugin_dir()` directly.
-pub fn installed_plugin_dir(project_path: &str) -> PathBuf {
-    std::path::Path::new(project_path)
-        .join("Library")
-        .join("GameDeck")
-        .join("plugin")
 }
 
 // endregion

@@ -4,7 +4,9 @@
       "Bash(where rg *)",
       "Bash(node *)",
       "Bash(rm *)",
-      "Bash(cargo check *)"
+      "Bash(cargo check *)",
+      "Bash(pnpm tsc *)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }
