@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
+import PermissionModeToggle from "../components/PermissionModeToggle";
 import ToolResultBlock from "../components/ToolResultBlock";
 import ToolUseBlock from "../components/ToolUseBlock";
 import { onAgentMessage } from "../ipc/events";
@@ -202,6 +203,9 @@ export default function ChatRoute() {
       </div>
 
       <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
+        <div className="flex items-center justify-end">
+          <PermissionModeToggle />
+        </div>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}

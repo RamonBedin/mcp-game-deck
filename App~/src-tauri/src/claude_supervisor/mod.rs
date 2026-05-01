@@ -22,7 +22,7 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 
 use crate::events::emit_supervisor_status_changed;
-use crate::types::{SupervisorStatus, SupervisorStatusChangedPayload};
+use crate::types::{PermissionMode, SupervisorStatus, SupervisorStatusChangedPayload};
 
 // region: SpawnError
 
@@ -91,6 +91,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Tauri-managed supervisor for the Claude Code subprocess.
 pub struct ClaudeSupervisor {
     status: Arc<StdMutex<SupervisorStatus>>,
+    permission_mode: Arc<StdMutex<PermissionMode>>,
     state: Arc<Mutex<State>>,
 }
 
@@ -108,6 +109,7 @@ impl ClaudeSupervisor {
     pub fn new() -> Self {
         Self {
             status: Arc::new(StdMutex::new(SupervisorStatus::Idle)),
+            permission_mode: Arc::new(StdMutex::new(PermissionMode::Default)),
             state: Arc::new(Mutex::new(State {
                 child: None,
                 stdin_tx: None,
@@ -119,6 +121,64 @@ impl ClaudeSupervisor {
     /// the lock is never held across an await.
     pub fn current_status(&self) -> SupervisorStatus {
         *self.status.lock().expect("supervisor status mutex poisoned")
+    }
+
+    /// Returns the supervisor's currently-selected permission mode.
+    /// Mirrors what `sdk-entry.js` will apply on the next `query()`
+    /// round-trip — kept in sync via control messages on stdin.
+    pub fn current_permission_mode(&self) -> PermissionMode {
+        *self
+            .permission_mode
+            .lock()
+            .expect("supervisor permission_mode mutex poisoned")
+    }
+
+    /// Updates the supervisor's permission mode. Always writes the new
+    /// mode to local state so React's "current mode" read stays
+    /// accurate; additionally pushes a `setPermissionMode` control
+    /// message to `sdk-entry.js`'s stdin when the supervisor is
+    /// running so the next prompt picks up the new mode.
+    ///
+    /// Returns `Ok(())` even when the supervisor isn't running — the
+    /// mode is stored anyway and re-pushed on the next `spawn`.
+    ///
+    /// # Errors
+    ///
+    /// `SendError::WriterClosed` when the stdin writer task has
+    /// exited. `SendError::Serde` on encoding failure.
+    pub async fn set_permission_mode(
+        &self,
+        mode: PermissionMode,
+    ) -> Result<(), SendError> {
+        {
+            let mut current = self
+                .permission_mode
+                .lock()
+                .expect("supervisor permission_mode mutex poisoned");
+            *current = mode;
+        }
+        self.push_permission_mode_line(mode).await
+    }
+
+    /// Internal — serializes a `setPermissionMode` JSON line and
+    /// pushes it onto the stdin writer's mpsc channel. Soft-success
+    /// when the supervisor isn't running (no child to talk to).
+    async fn push_permission_mode_line(
+        &self,
+        mode: PermissionMode,
+    ) -> Result<(), SendError> {
+        let line = serde_json::to_string(&serde_json::json!({
+            "type": "setPermissionMode",
+            "mode": mode,
+        }))
+        .map_err(SendError::Serde)?;
+        let s = self.state.lock().await;
+        let tx = match s.stdin_tx.as_ref() {
+            Some(tx) => tx,
+            None => return Ok(()),
+        };
+        tx.send(line).map_err(|_| SendError::WriterClosed)?;
+        Ok(())
     }
 
     /// Launches `sdk-entry.js` as a Node child, wires stdin/stdout/
@@ -205,6 +265,18 @@ impl ClaudeSupervisor {
             let mut s = self.state.lock().await;
             s.child = Some(child);
             s.stdin_tx = Some(tx);
+        }
+
+        // Re-sync the JS-side permission mode after a respawn — the
+        // child boots with `currentPermissionMode = "default"`, but
+        // the user may have changed it before the previous child died.
+        let stored_mode = self.current_permission_mode();
+        if stored_mode != PermissionMode::Default {
+            if let Err(e) = self.push_permission_mode_line(stored_mode).await {
+                eprintln!(
+                    "[claude-supervisor] failed to re-sync permission mode after spawn: {e}"
+                );
+            }
         }
 
         let app_for_timeout = app.clone();

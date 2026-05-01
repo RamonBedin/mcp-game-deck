@@ -99,7 +99,7 @@ const pushBlockToTurn = (messages: Message[], turnId: string, block: Block,): Me
 export const useConversationStore = create<ConversationState>((set) => ({
   messages: [],
   currentSessionId: null,
-  permissionMode: "ask",
+  permissionMode: "default",
   appendDelta: (turnId, text) =>
     set((state) => {
       const idx = state.messages.findIndex((m) => m.id === turnId);

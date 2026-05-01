@@ -50,38 +50,42 @@ pub async fn send_message(
 
 // region: Permission mode
 
-/// Stub: persists the agent's permission mode.
-///
-/// No-op today. Real implementation lands alongside Feature 02's
-/// permission flow.
+/// Updates the supervisor's permission mode and pushes a control
+/// message to `sdk-entry.js`'s stdin so the next `query()` round-trip
+/// applies it. Tolerates a non-running supervisor — the mode is
+/// stored and re-pushed on the next `spawn`.
 ///
 /// # Arguments
 ///
-/// * `mode` - Desired permission policy (currently ignored).
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
+/// * `mode` - New permission policy.
+/// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// Returns `AppError::Internal` when the stdin writer task is closed
+/// or the JSON encoding fails.
 #[tauri::command]
-#[allow(unused_variables)]
-pub fn set_permission_mode(mode: PermissionMode) -> Result<(), AppError> {
-    Ok(())
+pub async fn set_permission_mode(
+    mode: PermissionMode,
+    supervisor: State<'_, ClaudeSupervisor>,
+) -> Result<(), AppError> {
+    supervisor
+        .set_permission_mode(mode)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
 }
 
-/// Stub: reads the agent's permission mode.
-///
-/// Always returns `PermissionMode::Ask` today.
+/// Reads the supervisor's current permission mode.
 ///
 /// # Returns
 ///
-/// `PermissionMode::Ask` (the safe default).
+/// The latest mode set via `set_permission_mode`, or
+/// `PermissionMode::Default` on a fresh supervisor.
 #[tauri::command]
-pub fn get_permission_mode() -> PermissionMode {
-    PermissionMode::Ask
+pub fn get_permission_mode(
+    supervisor: State<'_, ClaudeSupervisor>,
+) -> PermissionMode {
+    supervisor.current_permission_mode()
 }
 
 // endregion

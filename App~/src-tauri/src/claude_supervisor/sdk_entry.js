@@ -125,6 +125,52 @@ function debug(...args)
 
 // endregion
 
+// region: permission mode
+
+/**
+ * Five surface-level permission modes mirrored from the Rust enum
+ * (`types::PermissionMode`). The SDK only accepts the first four —
+ * `auto` is a UI alias for `bypassPermissions` (see CLAUDE.md gotcha)
+ * and is mapped via {@link resolveSdkMode} before reaching `query()`.
+ */
+const VALID_PERMISSION_MODES = new Set([
+  "default",
+  "acceptEdits",
+  "plan",
+  "bypassPermissions",
+  "auto",
+]);
+
+/**
+ * Currently-selected permission mode, kept in sync with the Rust-side
+ * `ClaudeSupervisor.permission_mode` via stdin control messages
+ * (`{type:"setPermissionMode", mode:"..."}`). Applied to every
+ * `query()` round-trip via `options.permissionMode`.
+ *
+ * @type {string}
+ */
+let currentPermissionMode = "default";
+
+/**
+ * Maps the UI-level permission mode string to one the SDK's
+ * `query()` actually understands. `auto` collapses to
+ * `bypassPermissions` (CLAUDE.md gotcha — historical v1 behavior we
+ * preserve in v2); the other four pass through verbatim.
+ *
+ * @param {string} mode - One of the five UI modes.
+ * @returns {string} A mode the SDK accepts.
+ */
+function resolveSdkMode(mode)
+{
+  if (mode === "auto")
+  {
+    return "bypassPermissions";
+  }
+  return mode;
+}
+
+// endregion
+
 // region: env contract from F07
 
 const projectPath = process.env.UNITY_PROJECT_PATH;
@@ -309,6 +355,7 @@ async function handleInput(text, attachments)
       options: {
         cwd: projectPath,
         includePartialMessages: true,
+        permissionMode: resolveSdkMode(currentPermissionMode),
         mcpServers: buildMcpServers(),
         plugins: buildPlugins(),
         additionalDirectories: buildAdditionalDirectories(),
@@ -479,6 +526,18 @@ for await (const line of rl)
   {
     const attachments = Array.isArray(parsed.attachments) ? parsed.attachments.filter((p) => typeof p === "string") : [];
     await handleInput(parsed.text, attachments);
+  }
+  else if (parsed?.type === "setPermissionMode" && typeof parsed.mode === "string")
+  {
+    if (VALID_PERMISSION_MODES.has(parsed.mode))
+    {
+      currentPermissionMode = parsed.mode;
+      debug("permission mode set:", parsed.mode);
+    }
+    else
+    {
+      debug("ignored unknown permission mode:", parsed.mode);
+    }
   }
 }
 

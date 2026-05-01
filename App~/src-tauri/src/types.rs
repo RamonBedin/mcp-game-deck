@@ -42,12 +42,21 @@ pub struct ClaudeInstallStatus {
 // region: Permissions
 
 /// Permission policy applied to tool calls issued by the agent.
+///
+/// Mirrors the five surface-level modes the Claude Code chat exposes
+/// (`default` / `acceptEdits` / `plan` / `bypassPermissions` / `auto`).
+/// `Auto` is a UI alias for `BypassPermissions` (CLAUDE.md gotcha:
+/// "Auto permission mode: Uses bypassPermissions, NOT acceptEdits");
+/// `sdk-entry.js::resolveSdkMode` performs that mapping before
+/// passing the mode to the SDK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum PermissionMode {
-    Auto,
-    Ask,
+    Default,
+    AcceptEdits,
     Plan,
+    BypassPermissions,
+    Auto,
 }
 
 // endregion

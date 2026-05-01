@@ -34,8 +34,19 @@ export interface ClaudeInstallStatus
 
 // #region Permissions
 
-/** Permission policy applied to tool calls issued by the agent. */
-export type PermissionMode = "auto" | "ask" | "plan";
+/**
+ * Permission policy applied to tool calls issued by the agent.
+ *
+ * Mirrors the five surface-level modes the Claude Code chat exposes.
+ * `auto` is a UI alias for `bypassPermissions` (CLAUDE.md gotcha);
+ * the JS side maps it via `resolveSdkMode` before reaching the SDK.
+ */
+export type PermissionMode =
+  | "default"
+  | "acceptEdits"
+  | "plan"
+  | "bypassPermissions"
+  | "auto";
 
 // #endregion
 
