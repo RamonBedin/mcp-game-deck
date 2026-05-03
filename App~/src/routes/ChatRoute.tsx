@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import PermissionModeToggle from "../components/PermissionModeToggle";
+import SessionList from "../components/SessionList";
 import ToolResultBlock from "../components/ToolResultBlock";
 import ToolUseBlock from "../components/ToolUseBlock";
 import { setPermissionMode as setPermissionModeCommand } from "../ipc/commands";
@@ -204,55 +205,61 @@ export default function ChatRoute() {
   // #endregion
 
   return (
-    <div className="flex h-full flex-col">
-      <h1 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-        Chat
-      </h1>
+    <div className="flex h-full gap-4">
+      <aside className="w-60 shrink-0 border-r border-slate-800 pr-3">
+        <SessionList />
+      </aside>
 
-      <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-        {messages.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            Type a message and press Enter to send.
-          </p>
-        ) : (
-          messages.map((m) => (
-            <div key={m.id} className="rounded bg-slate-800/40 p-3">
-              <div
-                className={`mb-1 text-xs font-semibold uppercase tracking-wide ${roleColor(m.role)}`}
-              >
-                {m.role}
-              </div>
-              <div className="space-y-2">
-                {m.blocks.map((b, i) => (
-                  <BlockView key={i} block={b} />
-                ))}
-              </div>
-            </div>
-          ))
-        )}
-        <div ref={bottomRef} />
-      </div>
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <h1 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Chat
+        </h1>
 
-      <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
-        <div className="flex items-center justify-end">
-          <PermissionModeToggle />
+        <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+          {messages.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Type a message and press Enter to send.
+            </p>
+          ) : (
+            messages.map((m) => (
+              <div key={m.id} className="rounded bg-slate-800/40 p-3">
+                <div
+                  className={`mb-1 text-xs font-semibold uppercase tracking-wide ${roleColor(m.role)}`}
+                >
+                  {m.role}
+                </div>
+                <div className="space-y-2">
+                  {m.blocks.map((b, i) => (
+                    <BlockView key={i} block={b} />
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={bottomRef} />
         </div>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={3}
-          placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-          className="resize-none rounded border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-100 focus:border-slate-500 focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim()}
-          className="self-end rounded bg-sky-700 px-4 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Send
-        </button>
-      </form>
+
+        <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
+          <div className="flex items-center justify-end">
+            <PermissionModeToggle />
+          </div>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={3}
+            placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+            className="resize-none rounded border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-100 focus:border-slate-500 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="self-end rounded bg-sky-700 px-4 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

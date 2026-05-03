@@ -92,6 +92,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct ClaudeSupervisor {
     status: Arc<StdMutex<SupervisorStatus>>,
     permission_mode: Arc<StdMutex<PermissionMode>>,
+    resume_session_id: Arc<StdMutex<Option<String>>>,
     state: Arc<Mutex<State>>,
 }
 
@@ -110,6 +111,7 @@ impl ClaudeSupervisor {
         Self {
             status: Arc::new(StdMutex::new(SupervisorStatus::Idle)),
             permission_mode: Arc::new(StdMutex::new(PermissionMode::Default)),
+            resume_session_id: Arc::new(StdMutex::new(None)),
             state: Arc::new(Mutex::new(State {
                 child: None,
                 stdin_tx: None,
@@ -172,6 +174,72 @@ impl ClaudeSupervisor {
             "mode": mode,
         }))
         .map_err(SendError::Serde)?;
+        let s = self.state.lock().await;
+        let tx = match s.stdin_tx.as_ref() {
+            Some(tx) => tx,
+            None => return Ok(()),
+        };
+        tx.send(line).map_err(|_| SendError::WriterClosed)?;
+        Ok(())
+    }
+
+    /// Returns the session id the supervisor is configured to resume
+    /// on the next `query()` round-trip, or `None` for a fresh
+    /// session.
+    pub fn current_resume_session_id(&self) -> Option<String> {
+        self.resume_session_id
+            .lock()
+            .expect("supervisor resume_session_id mutex poisoned")
+            .clone()
+    }
+
+    /// Pins a session id for the supervisor to resume — every
+    /// subsequent prompt is appended to that session's JSONL until
+    /// `clear_resume_session` runs (or the user picks another).
+    /// Pushes a `setResumeSession` control message to the JS side
+    /// when running; soft-success when not.
+    pub async fn set_resume_session(&self, id: String) -> Result<(), SendError> {
+        {
+            let mut current = self
+                .resume_session_id
+                .lock()
+                .expect("supervisor resume_session_id mutex poisoned");
+            *current = Some(id.clone());
+        }
+        self.push_resume_session_line(Some(id)).await
+    }
+
+    /// Resets the supervisor back to a fresh session — the next
+    /// prompt starts a new JSONL file. Pushes a `clearResumeSession`
+    /// control message when running.
+    pub async fn clear_resume_session(&self) -> Result<(), SendError> {
+        {
+            let mut current = self
+                .resume_session_id
+                .lock()
+                .expect("supervisor resume_session_id mutex poisoned");
+            *current = None;
+        }
+        self.push_resume_session_line(None).await
+    }
+
+    /// Internal — pushes either `{type:"setResumeSession",sessionId}`
+    /// or `{type:"clearResumeSession"}` to the JS stdin. Soft-success
+    /// when the supervisor isn't running.
+    async fn push_resume_session_line(
+        &self,
+        id: Option<String>,
+    ) -> Result<(), SendError> {
+        let payload = match id {
+            Some(session_id) => serde_json::json!({
+                "type": "setResumeSession",
+                "sessionId": session_id,
+            }),
+            None => serde_json::json!({
+                "type": "clearResumeSession",
+            }),
+        };
+        let line = serde_json::to_string(&payload).map_err(SendError::Serde)?;
         let s = self.state.lock().await;
         let tx = match s.stdin_tx.as_ref() {
             Some(tx) => tx,
@@ -274,14 +342,21 @@ impl ClaudeSupervisor {
             s.stdin_tx = Some(tx);
         }
 
-        // Re-sync the JS-side permission mode after a respawn — the
-        // child boots with `currentPermissionMode = "default"`, but
-        // the user may have changed it before the previous child died.
         let stored_mode = self.current_permission_mode();
         if stored_mode != PermissionMode::Default {
             if let Err(e) = self.push_permission_mode_line(stored_mode).await {
                 eprintln!(
                     "[claude-supervisor] failed to re-sync permission mode after spawn: {e}"
+                );
+            }
+        }
+
+        if let Some(stored_session) = self.current_resume_session_id() {
+            if let Err(e) =
+                self.push_resume_session_line(Some(stored_session)).await
+            {
+                eprintln!(
+                    "[claude-supervisor] failed to re-sync resume session after spawn: {e}"
                 );
             }
         }

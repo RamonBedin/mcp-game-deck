@@ -6,7 +6,12 @@
       "Bash(rm *)",
       "Bash(cargo check *)",
       "Bash(pnpm tsc *)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(awk NR==6 {print substr\\($0, 1, 500\\)} *)",
+      "Bash(awk NR==8 {print substr\\($0, 1, 500\\)} *)",
+      "Bash(awk NR==9 {print substr\\($0, 1, 1500\\)} *)",
+      "Bash(awk '-F\"type\":\"' 'NR>1 {split\\($2,a,\"\\\\\"\"\\); print a[1]}' __TRACKED_VAR__/.claude/projects/E--Projects-mcp-game-deck/1f72a187-e87d-41a8-9d53-3e58dd9043c5.jsonl)",
+      "Bash(awk '{ start = substr\\($0, 1, 80\\); print NR\": \"start }' __TRACKED_VAR__/.claude/projects/E--Projects-mcp-game-deck/1f72a187-e87d-41a8-9d53-3e58dd9043c5.jsonl)"
     ]
   }
 }

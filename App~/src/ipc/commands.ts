@@ -18,11 +18,13 @@ import type {
   AppSettingsPatch,
   ClaudeInstallStatus,
   ConnectionStatus,
+  Message,
   PermissionMode,
   Plan,
   PlanMeta,
   Rule,
   RuleMeta,
+  SessionSummary,
   SupervisorStatus,
 } from "./types";
 
@@ -70,6 +72,18 @@ export const readPlan = (name: string): Promise<Plan> => invoke("read_plan", { n
 export const writePlan = (name: string, content: string): Promise<void> => invoke("write_plan", { name, content });
 
 export const deletePlan = (name: string): Promise<void> => invoke("delete_plan", { name });
+
+// #endregion
+
+// #region Sessions
+
+export const getSessions = (): Promise<SessionSummary[]> => invoke("get_sessions");
+
+export const getSessionMessages = (sessionId: string): Promise<Message[]> => invoke("get_session_messages", { sessionId });
+
+export const resumeSession = (sessionId: string): Promise<void> => invoke("resume_session", { sessionId });
+
+export const startNewSession = (): Promise<void> => invoke("start_new_session");
 
 // #endregion
 

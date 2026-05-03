@@ -93,4 +93,43 @@ pub fn plugin_dir() -> PathBuf {
     package_root().join("Plugin~")
 }
 
+/// Path to Claude Code's per-project session storage root —
+/// `<home>/.claude/projects/`. Reads `USERPROFILE` on Windows and
+/// `HOME` on Unix; returns `None` when neither is set.
+pub fn claude_projects_root() -> Option<PathBuf> {
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
+    Some(PathBuf::from(home).join(".claude").join("projects"))
+}
+
+/// Encodes a project path into Claude Code's directory naming
+/// convention — every non-alphanumeric character (except the hyphen
+/// itself) is replaced with `-`. Mirrors what the CLI does
+/// internally, verified against existing entries under
+/// `<home>/.claude/projects/`.
+///
+/// Examples:
+/// * `E:\Projects\mcp-game-deck` → `E--Projects-mcp-game-deck`
+/// * `/home/user/foo bar` → `-home-user-foo-bar`
+pub fn encode_project_path(project_path: &str) -> String {
+    project_path
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+/// Path to the per-project session JSONL directory:
+/// `<home>/.claude/projects/<encoded-cwd>/`. Returns `None` when no
+/// home directory is resolvable. The directory may not exist yet —
+/// callers handle that as "no sessions".
+pub fn claude_sessions_dir(project_path: &str) -> Option<PathBuf> {
+    let root = claude_projects_root()?;
+    Some(root.join(encode_project_path(project_path)))
+}
+
 // endregion

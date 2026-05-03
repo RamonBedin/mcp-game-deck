@@ -38,6 +38,7 @@ interface ConversationState
   completeTurn: (turnId: string) => void;
   appendErrorMessage: (text: string) => void;
   clearMessages: () => void;
+  loadHistory: (messages: Message[]) => void;
   setPermissionMode: (mode: PermissionMode) => void;
   setCurrentSessionId: (sessionId: string | null) => void;
   sendMessage: (text: string) => Promise<void>;
@@ -165,6 +166,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
       ],
     })),
   clearMessages: () => set({ messages: [] }),
+  loadHistory: (messages) => set({ messages }),
   setPermissionMode: (mode) => set({ permissionMode: mode }),
   setCurrentSessionId: (sessionId) => set({ currentSessionId: sessionId }),
   sendMessage: async (text) => {

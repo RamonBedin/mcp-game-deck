@@ -185,6 +185,22 @@ function resolveSdkMode(mode)
 
 // endregion
 
+// region: resume session
+
+/**
+ * Session id the supervisor wants the SDK to resume on the next
+ * `query()` round-trip. Updated via `setResumeSession` /
+ * `clearResumeSession` stdin control messages from the Rust side.
+ * Stays set across consecutive turns — the SDK appends each turn to
+ * the same session JSONL until React picks a different session or
+ * starts a new one.
+ *
+ * @type {string | null}
+ */
+let pendingResumeSessionId = null;
+
+// endregion
+
 // region: env contract from F07
 
 const projectPath = process.env.UNITY_PROJECT_PATH;
@@ -364,16 +380,23 @@ async function handleInput(text, attachments)
   const activeBlocks = new Map();
   try
   {
+    const queryOptions = {
+      cwd: projectPath,
+      includePartialMessages: true,
+      permissionMode: resolveSdkMode(currentPermissionMode),
+      mcpServers: buildMcpServers(),
+      plugins: buildPlugins(),
+      additionalDirectories: buildAdditionalDirectories(),
+    };
+
+    if (pendingResumeSessionId !== null)
+    {
+      queryOptions.resume = pendingResumeSessionId;
+    }
+    
     const q = query({
       prompt: text,
-      options: {
-        cwd: projectPath,
-        includePartialMessages: true,
-        permissionMode: resolveSdkMode(currentPermissionMode),
-        mcpServers: buildMcpServers(),
-        plugins: buildPlugins(),
-        additionalDirectories: buildAdditionalDirectories(),
-      },
+      options: queryOptions,
     });
 
     for await (const msg of q)
@@ -553,6 +576,16 @@ for await (const line of rl)
     {
       debug("ignored unknown permission mode:", parsed.mode);
     }
+  }
+  else if (parsed?.type === "setResumeSession" && typeof parsed.sessionId === "string")
+  {
+    pendingResumeSessionId = parsed.sessionId;
+    debug("resume session set:", parsed.sessionId);
+  }
+  else if (parsed?.type === "clearResumeSession")
+  {
+    pendingResumeSessionId = null;
+    debug("resume session cleared");
   }
 }
 

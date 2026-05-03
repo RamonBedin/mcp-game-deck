@@ -87,6 +87,55 @@ pub struct Message {
     pub agent: Option<String>,
 }
 
+/// A single content block inside a `LoadedMessage` — mirrors React's
+/// `Block` union so the frontend can render session history without
+/// any further translation. Tagged on the wire by `type` field
+/// (`text` / `tool-use` / `tool-result`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum LoadedBlock {
+    Text {
+        text: String,
+    },
+    ToolUse {
+        tool_use_id: String,
+        name: String,
+        input: Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: Value,
+        is_error: bool,
+    },
+}
+
+/// A single chat message reconstructed from Claude Code's JSONL
+/// session storage. Mirrors the React-side `Message` shape exactly
+/// (`{id, role, timestamp, blocks}`) so `commands::sessions::
+/// get_session_messages` can hand the array straight to
+/// `conversationStore.loadHistory`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadedMessage {
+    pub id: MessageId,
+    pub role: MessageRole,
+    pub timestamp: i64,
+    pub blocks: Vec<LoadedBlock>,
+}
+
+/// Lightweight summary of a Claude Code session, derived from the
+/// JSONL file at `<home>/.claude/projects/<encoded-cwd>/<id>.jsonl`.
+/// `title` is the first user prompt's leading line, trimmed of
+/// `<command-message>` wrappers and truncated for the sidebar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSummary {
+    pub id: String,
+    pub title: String,
+    pub last_modified: i64,
+    pub message_count: usize,
+}
+
 // endregion
 
 // region: Plans

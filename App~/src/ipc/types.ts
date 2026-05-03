@@ -89,6 +89,23 @@ export interface Message
 
 // #endregion
 
+// #region Sessions
+
+/**
+ * Lightweight summary of a Claude Code session, surfaced in the
+ * SessionList sidebar. Reads from
+ * `<home>/.claude/projects/<encoded-cwd>/<id>.jsonl` — Decision #6.
+ */
+export interface SessionSummary
+{
+  id: string;
+  title: string;
+  lastModified: number;
+  messageCount: number;
+}
+
+// #endregion
+
 // #region Plans
 
 /** Lightweight metadata for a plan file (used in list views). */

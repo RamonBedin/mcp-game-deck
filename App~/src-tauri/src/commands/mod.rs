@@ -13,4 +13,5 @@ pub mod env;
 pub mod install;
 pub mod plans;
 pub mod rules;
+pub mod sessions;
 pub mod settings;
