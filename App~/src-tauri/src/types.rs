@@ -351,6 +351,10 @@ pub enum AgentMessage {
     PermissionModeChanged {
         mode: PermissionMode,
     },
+    HealthOk,
+    HealthFailed {
+        message: String,
+    },
 }
 
 /// Wire payload for `agent-message` — wraps an `AgentMessage` in a

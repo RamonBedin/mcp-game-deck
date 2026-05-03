@@ -271,7 +271,7 @@ export interface SdkInstallFailedPayload
  *
  * added `text-delta` for streaming and gave
  * `assistant-turn-complete` a `turnId`. `assistant-text` is kept as
- * a legacy variant with no producer in 2.3+ — preserved so the wire
+ * a legacy variant with no producer in — preserved so the wire
  * shape stays additive across feature cycles.
  */
 export type AgentMessage =
@@ -282,7 +282,9 @@ export type AgentMessage =
   | { type: "tool-result"; turnId: string; toolUseId: string; content: unknown; isError: boolean }
   | { type: "assistant-turn-complete"; turnId: string }
   | { type: "error"; message: string }
-  | { type: "permission-mode-changed"; mode: PermissionMode };
+  | { type: "permission-mode-changed"; mode: PermissionMode }
+  | { type: "health-ok" }
+  | { type: "health-failed"; message: string };
 
 /** Wire payload for `agent-message`. */
 export interface AgentMessagePayload

@@ -123,6 +123,29 @@ function emitPermissionModeChanged(mode)
 }
 
 /**
+ * Emits a `health-ok` envelope. The Rust side transitions the
+ * supervisor status from `Starting` to `Ready` on receipt — Task 6.1.
+ *
+ * @returns {void}
+ */
+function emitHealthOk()
+{
+  emit({ type: "health-ok" });
+}
+
+/**
+ * Emits a `health-failed` envelope. The Rust side transitions the
+ * supervisor status to `Crashed` and surfaces the message in stderr.
+ *
+ * @param {string} message - Cause of failure (timeout, SDK error, etc.).
+ * @returns {void}
+ */
+function emitHealthFailed(message)
+{
+  emit({ type: "health-failed", message });
+}
+
+/**
  * Writes a debug line to stderr, prefixed with `[sdk-entry]`. Non-string args
  * are JSON-stringified so structured payloads remain inspectable in the host
  * log.
@@ -271,6 +294,79 @@ async function buildAttachmentBlock(filePath)
     debug("attachment read failed:", filePath, String(err));
     emitError(`Could not read attachment ${baseName}: ${err instanceof Error ? err.message : String(err)}`);
     return null;
+  }
+}
+
+// endregion
+
+// region: health check
+
+const HEALTH_CHECK_TIMEOUT_MS = 5000;
+
+/**
+ * Runs a minimal `query()` round-trip with the prompt `"__health__"`,
+ * consuming the assistant turn locally and emitting `health-ok` on
+ * success or `health-failed` on timeout / SDK error. The internal
+ * messages (text-delta / tool-use / turn-complete) are NOT forwarded
+ * to the host — the chat UI stays untouched by the probe.
+ *
+ * Future optimization: switch to streaming-input mode and use
+ * `q.initializationResult()` instead of a real query — burns zero
+ * tokens. Requires refactor of `handleInput` to streaming input.
+ * Consider when spawn frequency / cost becomes a concern.
+ *
+ * @returns {Promise<void>} Resolves once an outcome envelope has
+ *   been emitted.
+ */
+async function runHealthCheck()
+{
+  let q;
+  try
+  {
+    q = query({
+      prompt: "__health__",
+      options: { cwd: projectPath },
+    });
+  }
+  catch (err)
+  {
+    emitHealthFailed(err instanceof Error ? err.message : String(err));
+    return;
+  }
+
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`health check timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`)),
+      HEALTH_CHECK_TIMEOUT_MS,
+    );
+  });
+
+  const consume = (async () => {
+    for await (const msg of q)
+    {
+      if (msg?.type === "result")
+      {
+        return;
+      }
+    }
+  })();
+  try
+  {
+    await Promise.race([consume, timeoutPromise]);
+    emitHealthOk();
+  }
+  catch (err)
+  {
+    debug("health check failed:", String(err));
+    emitHealthFailed(err instanceof Error ? err.message : String(err));
+  }
+  finally
+  {
+    if (timer !== undefined)
+    {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -704,6 +800,10 @@ for await (const line of rl)
   {
     pendingResumeSessionId = null;
     debug("resume session cleared");
+  }
+  else if (parsed?.type === "healthCheck")
+  {
+    void runHealthCheck();
   }
 }
 

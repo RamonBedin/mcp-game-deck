@@ -9,8 +9,9 @@ use std::sync::Mutex as StdMutex;
 use tauri::AppHandle;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
+use tokio::sync::mpsc;
 
-use crate::claude_supervisor::paths;
+use crate::claude_supervisor::{lifecycle, paths};
 use crate::events::{
     emit_agent_message, emit_permission_mode_changed, emit_supervisor_status_changed,
 };
@@ -164,6 +165,7 @@ pub async fn read_stdout(
     app: AppHandle,
     status: Arc<StdMutex<SupervisorStatus>>,
     permission_mode: Arc<StdMutex<PermissionMode>>,
+    stdin_tx: mpsc::UnboundedSender<String>,
 ) {
     let mut reader = BufReader::new(stdout).lines();
     while let Ok(Some(line)) = reader.next_line().await {
@@ -177,6 +179,16 @@ pub async fn read_stdout(
 
         match &payload.message {
             AgentMessage::Ready => {
+                eprintln!(
+                    "[claude-supervisor] JS ready; scheduling health check in {:?}",
+                    lifecycle::HEALTH_CHECK_DELAY
+                );
+                let stdin_tx_clone = stdin_tx.clone();
+                tokio::spawn(async move {
+                    lifecycle::schedule_health_check_trigger(stdin_tx_clone).await;
+                });
+            }
+            AgentMessage::HealthOk => {
                 {
                     let mut s = status.lock().expect("supervisor status mutex poisoned");
                     *s = SupervisorStatus::Ready;
@@ -185,6 +197,20 @@ pub async fn read_stdout(
                     &app,
                     SupervisorStatusChangedPayload {
                         status: SupervisorStatus::Ready,
+                        pid: None,
+                    },
+                );
+            }
+            AgentMessage::HealthFailed { message } => {
+                eprintln!("[claude-supervisor] health check failed: {message}");
+                {
+                    let mut s = status.lock().expect("supervisor status mutex poisoned");
+                    *s = SupervisorStatus::Crashed;
+                }
+                let _ = emit_supervisor_status_changed(
+                    &app,
+                    SupervisorStatusChangedPayload {
+                        status: SupervisorStatus::Crashed,
                         pid: None,
                     },
                 );

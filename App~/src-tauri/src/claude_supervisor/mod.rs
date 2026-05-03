@@ -6,6 +6,7 @@
 //! protocol, and pushes user input via stdin. Health check formal
 
 pub mod install_check;
+pub mod lifecycle;
 pub mod paths;
 pub mod runtime_setup;
 pub mod sdk_install;
@@ -322,12 +323,14 @@ impl ClaudeSupervisor {
         let app_for_stdout = app.clone();
         let status_for_stdout = self.status.clone();
         let permission_mode_for_stdout = self.permission_mode.clone();
+        let stdin_tx_for_stdout = tx.clone();
         tokio::spawn(async move {
             spawn::read_stdout(
                 stdout,
                 app_for_stdout,
                 status_for_stdout,
                 permission_mode_for_stdout,
+                stdin_tx_for_stdout,
             )
             .await;
         });
