@@ -15,6 +15,7 @@ import type {
   MessageStreamChunkPayload,
   MessageStreamCompletePayload,
   NodeLogPayload,
+  PermissionModeChangedPayload,
   PermissionRequestedPayload,
   RouteRequestedPayload,
   SdkInstallFailedPayload,
@@ -82,5 +83,7 @@ export const onSdkInstallFailed = wrap<SdkInstallFailedPayload>("sdk-install-fai
 // #region Agent stream
 
 export const onAgentMessage = wrap<AgentMessagePayload>("agent-message");
+
+export const onPermissionModeChanged = wrap<PermissionModeChangedPayload>("permission-mode-changed");
 
 // #endregion

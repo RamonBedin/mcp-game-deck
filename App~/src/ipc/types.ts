@@ -264,12 +264,19 @@ export type AgentMessage =
   | { type: "tool-use"; turnId: string; toolUseId: string; name: string; input: unknown }
   | { type: "tool-result"; turnId: string; toolUseId: string; content: unknown; isError: boolean }
   | { type: "assistant-turn-complete"; turnId: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "permission-mode-changed"; mode: PermissionMode };
 
 /** Wire payload for `agent-message`. */
 export interface AgentMessagePayload
 {
   message: AgentMessage;
+}
+
+/** Payload for `permission-mode-changed`. */
+export interface PermissionModeChangedPayload
+{
+  mode: PermissionMode;
 }
 
 // #endregion

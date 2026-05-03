@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from "react";
 import { getPermissionMode, setPermissionMode as setPermissionModeCommand } from "../ipc/commands";
+import { onPermissionModeChanged } from "../ipc/events";
 import type { PermissionMode } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
@@ -63,6 +64,42 @@ export default function PermissionModeToggle()
       });
     return () => {
       cancelled = true;
+    };
+  }, [setMode]);
+
+  // Passive sync: every time the supervisor confirms a mode change
+  // (echo from sdk-entry.js after applying setPermissionMode, or a
+  // future Shift+Tab / SDK-driven cycle), update the store. Idempotent
+  // when the mode already matches the optimistic update.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    onPermissionModeChanged((payload) => {
+      if (cancelled)
+      {
+        return;
+      }
+      
+      setMode(payload.mode);
+    })
+      .then((u) => {
+        if (cancelled)
+        {
+          u();
+        }
+        else
+        {
+          unlisten = u;
+        }
+      })
+      .catch((err) => {
+        console.error("[permission-mode] failed to subscribe to mode-changed:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
     };
   }, [setMode]);
 

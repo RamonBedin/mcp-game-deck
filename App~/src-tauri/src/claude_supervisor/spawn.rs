@@ -11,9 +11,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
 use crate::claude_supervisor::paths;
-use crate::events::{emit_agent_message, emit_supervisor_status_changed};
+use crate::events::{
+    emit_agent_message, emit_permission_mode_changed, emit_supervisor_status_changed,
+};
 use crate::types::{
-    AgentMessage, AgentMessagePayload, SupervisorStatus, SupervisorStatusChangedPayload,
+    AgentMessage, AgentMessagePayload, PermissionMode, PermissionModeChangedPayload,
+    SupervisorStatus, SupervisorStatusChangedPayload,
 };
 
 // region: MCP proxy resolution
@@ -160,6 +163,7 @@ pub async fn read_stdout(
     stdout: ChildStdout,
     app: AppHandle,
     status: Arc<StdMutex<SupervisorStatus>>,
+    permission_mode: Arc<StdMutex<PermissionMode>>,
 ) {
     let mut reader = BufReader::new(stdout).lines();
     while let Ok(Some(line)) = reader.next_line().await {
@@ -183,6 +187,18 @@ pub async fn read_stdout(
                         status: SupervisorStatus::Ready,
                         pid: None,
                     },
+                );
+            }
+            AgentMessage::PermissionModeChanged { mode } => {
+                {
+                    let mut current = permission_mode
+                        .lock()
+                        .expect("supervisor permission_mode mutex poisoned");
+                    *current = *mode;
+                }
+                let _ = emit_permission_mode_changed(
+                    &app,
+                    PermissionModeChangedPayload { mode: *mode },
                 );
             }
             AgentMessage::TextDelta { .. }

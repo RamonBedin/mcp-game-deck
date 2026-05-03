@@ -8,9 +8,9 @@ use tauri::{AppHandle, Emitter};
 
 use crate::types::{
     AgentMessagePayload, AskUserRequestedPayload, Message, MessageStreamChunkPayload,
-    MessageStreamCompletePayload, NodeSdkStatusChangedPayload, PermissionRequestedPayload,
-    RouteRequestedPayload, SdkInstallFailedPayload, SdkInstallProgressPayload,
-    SupervisorStatusChangedPayload, UnityStatusChangedPayload,
+    MessageStreamCompletePayload, NodeSdkStatusChangedPayload, PermissionModeChangedPayload,
+    PermissionRequestedPayload, RouteRequestedPayload, SdkInstallFailedPayload,
+    SdkInstallProgressPayload, SupervisorStatusChangedPayload, UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -55,6 +55,10 @@ pub const EVT_SDK_INSTALL_FAILED: &str = "sdk-install-failed";
 
 /// Event name for `AgentMessagePayload` — every line `sdk-entry.js`
 pub const EVT_AGENT_MESSAGE: &str = "agent-message";
+
+/// Event name for `PermissionModeChangedPayload` — emitted when the
+/// supervisor confirms the JS side has applied a new permission mode.
+pub const EVT_PERMISSION_MODE_CHANGED: &str = "permission-mode-changed";
 
 // endregion
 
@@ -287,6 +291,26 @@ pub fn emit_agent_message(
     payload: AgentMessagePayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_AGENT_MESSAGE, payload)
+}
+
+/// Broadcasts a permission-mode change to the frontend. Driven by
+/// `sdk-entry.js`'s echo after applying a `setPermissionMode` control
+/// message — see `claude_supervisor::spawn::read_stdout` for the
+/// `AgentMessage::PermissionModeChanged` translation.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - The new permission mode.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_permission_mode_changed(
+    app: &AppHandle,
+    payload: PermissionModeChangedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_PERMISSION_MODE_CHANGED, payload)
 }
 
 // endregion

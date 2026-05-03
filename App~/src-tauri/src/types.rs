@@ -254,6 +254,17 @@ pub struct RouteRequestedPayload {
     pub route: String,
 }
 
+/// Payload for `permission-mode-changed` — fired whenever the
+/// supervisor's permission mode is updated (echo from `sdk-entry.js`
+/// after applying a `setPermissionMode` control message; future
+/// SDK-driven cycles such as Shift+Tab in task 4.3 reuse the same
+/// channel).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionModeChangedPayload {
+    pub mode: PermissionMode,
+}
+
 /// Tagged message envelope sent by `sdk-entry.js` over stdout, then
 /// re-emitted to React via the `agent-message` Tauri event.
 ///
@@ -287,6 +298,9 @@ pub enum AgentMessage {
     },
     Error {
         message: String,
+    },
+    PermissionModeChanged {
+        mode: PermissionMode,
     },
 }
 

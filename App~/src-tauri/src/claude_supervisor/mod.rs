@@ -253,8 +253,15 @@ impl ClaudeSupervisor {
 
         let app_for_stdout = app.clone();
         let status_for_stdout = self.status.clone();
+        let permission_mode_for_stdout = self.permission_mode.clone();
         tokio::spawn(async move {
-            spawn::read_stdout(stdout, app_for_stdout, status_for_stdout).await;
+            spawn::read_stdout(
+                stdout,
+                app_for_stdout,
+                status_for_stdout,
+                permission_mode_for_stdout,
+            )
+            .await;
         });
 
         tokio::spawn(async move {

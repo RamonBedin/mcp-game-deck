@@ -107,6 +107,20 @@ function emitError(message)
 }
 
 /**
+ * Emits a `permission-mode-changed` envelope echoing the mode that
+ * was just applied. The Rust side translates this to the
+ * `permission-mode-changed` Tauri event so React's
+ * `PermissionModeToggle` can passively sync (Task 4.3).
+ *
+ * @param {string} mode - One of the five UI permission modes.
+ * @returns {void}
+ */
+function emitPermissionModeChanged(mode)
+{
+  emit({ type: "permission-mode-changed", mode });
+}
+
+/**
  * Writes a debug line to stderr, prefixed with `[sdk-entry]`. Non-string args
  * are JSON-stringified so structured payloads remain inspectable in the host
  * log.
@@ -533,6 +547,7 @@ for await (const line of rl)
     {
       currentPermissionMode = parsed.mode;
       debug("permission mode set:", parsed.mode);
+      emitPermissionModeChanged(parsed.mode);
     }
     else
     {

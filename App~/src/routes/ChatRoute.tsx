@@ -12,8 +12,9 @@ import type { FormEvent, KeyboardEvent } from "react";
 import PermissionModeToggle from "../components/PermissionModeToggle";
 import ToolResultBlock from "../components/ToolResultBlock";
 import ToolUseBlock from "../components/ToolUseBlock";
+import { setPermissionMode as setPermissionModeCommand } from "../ipc/commands";
 import { onAgentMessage } from "../ipc/events";
-import type { Block, MessageRole } from "../ipc/types";
+import type { Block, MessageRole, PermissionMode } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
 // #region Helpers
@@ -27,6 +28,20 @@ const roleColor = (role: MessageRole): string => {
     case "system":
       return "text-amber-400";
   }
+};
+
+const PERMISSION_MODE_CYCLE: PermissionMode[] = [
+  "default",
+  "acceptEdits",
+  "plan",
+  "bypassPermissions",
+  "auto",
+];
+
+const nextPermissionMode = (current: PermissionMode): PermissionMode => {
+  const idx = PERMISSION_MODE_CYCLE.indexOf(current);
+  const next = (idx + 1) % PERMISSION_MODE_CYCLE.length;
+  return PERMISSION_MODE_CYCLE[next];
 };
 
 /**
@@ -70,6 +85,8 @@ export default function ChatRoute() {
   const appendToolResultBlock = useConversationStore((s) => s.appendToolResultBlock,);
   const completeTurn = useConversationStore((s) => s.completeTurn);
   const appendErrorMessage = useConversationStore((s) => s.appendErrorMessage);
+  const permissionMode = useConversationStore((s) => s.permissionMode);
+  const setPermissionMode = useConversationStore((s) => s.setPermissionMode);
 
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -163,10 +180,24 @@ export default function ChatRoute() {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) 
+    if (e.key === "Enter" && !e.shiftKey)
     {
       e.preventDefault();
       submit();
+      return;
+    }
+
+    if (e.key === "Tab" && e.shiftKey)
+    {
+      e.preventDefault();
+      const next = nextPermissionMode(permissionMode);
+      const previous = permissionMode;
+      setPermissionMode(next);
+      
+      void setPermissionModeCommand(next).catch((err) => {
+        console.error("[chat] Shift+Tab permission cycle failed:", err);
+        setPermissionMode(previous);
+      });
     }
   };
 
