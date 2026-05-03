@@ -17,6 +17,8 @@
 // version-drift detection finds a problem — for 2.2, default behavior.
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { promises as fsp } from "node:fs";
+import path from "node:path";
 import readline from "node:readline";
 
 // region: stdout protocol
@@ -181,6 +183,95 @@ function resolveSdkMode(mode)
     return "bypassPermissions";
   }
   return mode;
+}
+
+// endregion
+
+// region: attachments
+
+/**
+ * Maps a lower-cased file extension (without leading dot) to the
+ * Anthropic API media-type string for image / document blocks.
+ * Returns `null` for extensions we treat as plain text — those are
+ * read as utf-8 and embedded via a `text` content block.
+ *
+ * @param {string} ext - Extension without leading dot, lower-cased.
+ * @returns {{kind: "image" | "document", mediaType: string} | null}
+ */
+function attachmentKindFor(ext)
+{
+  switch (ext)
+  {
+    case "png":
+      return { kind: "image", mediaType: "image/png" };
+    case "jpg":
+    case "jpeg":
+      return { kind: "image", mediaType: "image/jpeg" };
+    case "gif":
+      return { kind: "image", mediaType: "image/gif" };
+    case "webp":
+      return { kind: "image", mediaType: "image/webp" };
+    case "pdf":
+      return { kind: "document", mediaType: "application/pdf" };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Reads `filePath` and converts it to an Anthropic content block.
+ * Image / PDF files become base64-sourced `image` / `document` blocks;
+ * everything else is read as utf-8 text and embedded inside a
+ * `document` block with a `PlainTextSource`. The SDK then passes the
+ * block straight to the model — no path leakage past this boundary.
+ *
+ * Read failures emit an `error` envelope to the host and return
+ * `null` so the caller can drop that attachment from the prompt.
+ *
+ * @param {string} filePath - Absolute path supplied by Tauri.
+ * @returns {Promise<object | null>} The content block, or `null` on
+ *   read error.
+ */
+async function buildAttachmentBlock(filePath)
+{
+  const ext = path.extname(filePath).slice(1).toLowerCase();
+  const kind = attachmentKindFor(ext);
+  const baseName = path.basename(filePath);
+  try
+  {
+    if (kind === null)
+    {
+      const text = await fsp.readFile(filePath, "utf8");
+
+      return {
+        type: "document",
+        source: {
+          type: "text",
+          media_type: "text/plain",
+          data: text,
+        },
+        title: baseName,
+      };
+    }
+
+    const buffer = await fsp.readFile(filePath);
+    const data = buffer.toString("base64");
+    return {
+      type: kind.kind,
+      source: {
+        type: "base64",
+        media_type: kind.mediaType,
+        data,
+      },
+      ...(kind.kind === "document" ? { title: baseName } : {}),
+    };
+  }
+  catch (err)
+  {
+    debug("attachment read failed:", filePath, String(err));
+    emitError(`Could not read attachment ${baseName}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
 }
 
 // endregion
@@ -364,18 +455,16 @@ function buildAdditionalDirectories()
  *
  * @param {string} text - The user-authored prompt to forward to the SDK.
  * @param {string[]} attachments - Absolute paths the user attached.
- *   Empty today (UI wiring lands in Group 5); logged for visibility
- *   and otherwise ignored.
+ *   When non-empty, the prompt is upgraded from a string to an
+ *   AsyncIterable yielding one `SDKUserMessage` whose content
+ *   includes the text plus one image / document block per file.
+ *   {@link buildAttachmentBlock} reads the file and base64-encodes
+ *   it inline; the SDK has no file-path source.
  * @returns {Promise<void>} Resolves once the round-trip has finished
  *   and all envelopes have been emitted.
  */
 async function handleInput(text, attachments)
 {
-  if (attachments.length > 0)
-  {
-    debug("attachments received (Group 5 will wire these into the prompt):", attachments);
-  }
-
   const turnId = makeTurnId();
   const activeBlocks = new Map();
   try
@@ -393,9 +482,38 @@ async function handleInput(text, attachments)
     {
       queryOptions.resume = pendingResumeSessionId;
     }
-    
+
+    let prompt;
+
+    if (attachments.length === 0)
+    {
+      prompt = text;
+    }
+    else
+    {
+      const blocks = [{ type: "text", text }];
+
+      for (const filePath of attachments)
+      {
+        const block = await buildAttachmentBlock(filePath);
+        
+        if (block !== null)
+        {
+          blocks.push(block);
+        }
+      }
+      prompt = (async function* singleUserMessage()
+      {
+        yield {
+          type: "user",
+          message: { role: "user", content: blocks },
+          parent_tool_use_id: null,
+        };
+      })();
+    }
+
     const q = query({
-      prompt: text,
+      prompt,
       options: queryOptions,
     });
 

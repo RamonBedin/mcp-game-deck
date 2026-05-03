@@ -7,12 +7,13 @@
  * inserts a newline).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import PermissionModeToggle from "../components/PermissionModeToggle";
 import SessionList from "../components/SessionList";
 import ToolResultBlock from "../components/ToolResultBlock";
 import ToolUseBlock from "../components/ToolUseBlock";
+import { useFileDragDrop } from "../hooks/useFileDragDrop";
 import { setPermissionMode as setPermissionModeCommand } from "../ipc/commands";
 import { onAgentMessage } from "../ipc/events";
 import type { Block, MessageRole, PermissionMode } from "../ipc/types";
@@ -43,6 +44,11 @@ const nextPermissionMode = (current: PermissionMode): PermissionMode => {
   const idx = PERMISSION_MODE_CYCLE.indexOf(current);
   const next = (idx + 1) % PERMISSION_MODE_CYCLE.length;
   return PERMISSION_MODE_CYCLE[next];
+};
+
+const basenameOf = (filePath: string): string => {
+  const idx = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+  return idx >= 0 ? filePath.slice(idx + 1) : filePath;
 };
 
 /**
@@ -90,7 +96,28 @@ export default function ChatRoute() {
   const setPermissionMode = useConversationStore((s) => s.setPermissionMode);
 
   const [input, setInput] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const handleFilesDropped = useCallback((paths: string[]) => {
+    setPendingAttachments((prev) => {
+      const merged = [...prev];
+      for (const p of paths)
+      {
+        if (!merged.includes(p))
+        {
+          merged.push(p);
+        }
+      }
+      return merged;
+    });
+  }, []);
+
+  const { isDragging } = useFileDragDrop(handleFilesDropped);
+
+  const removeAttachment = (target: string) => {
+    setPendingAttachments((prev) => prev.filter((p) => p !== target));
+  };
 
   // #region Effects
 
@@ -166,13 +193,14 @@ export default function ChatRoute() {
   // #region Handlers
 
   const submit = () => {
-    if (!input.trim())
+    if (!input.trim() && pendingAttachments.length === 0)
     {
       return;
     }
 
-    void sendMessage(input);
+    void sendMessage(input, pendingAttachments);
     setInput("");
+    setPendingAttachments([]);
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -243,17 +271,47 @@ export default function ChatRoute() {
           <div className="flex items-center justify-end">
             <PermissionModeToggle />
           </div>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={3}
-            placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-            className="resize-none rounded border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-100 focus:border-slate-500 focus:outline-none"
-          />
+
+          {pendingAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {pendingAttachments.map((p) => (
+                <span
+                  key={p}
+                  className="flex items-center gap-1 rounded border border-slate-700 bg-slate-800/60 px-2 py-0.5 text-xs text-slate-300"
+                  title={p}
+                >
+                  <span className="max-w-[180px] truncate">{basenameOf(p)}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(p)}
+                    className="text-slate-500 hover:text-slate-200"
+                    aria-label={`Remove ${basenameOf(p)}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="relative">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={3}
+              placeholder="Type a message... (Enter to send, Shift+Enter for newline; drop files to attach)"
+              className="w-full resize-none rounded border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-100 focus:border-slate-500 focus:outline-none"
+            />
+            {isDragging && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-sky-500 bg-sky-950/70 text-xs font-semibold uppercase tracking-wider text-sky-200">
+                Drop files to attach
+              </div>
+            )}
+          </div>
           <button
             type="submit"
-            disabled={!input.trim()}
+            disabled={!input.trim() && pendingAttachments.length === 0}
             className="self-end rounded bg-sky-700 px-4 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Send

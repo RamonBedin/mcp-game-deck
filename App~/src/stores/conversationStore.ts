@@ -41,7 +41,7 @@ interface ConversationState
   loadHistory: (messages: Message[]) => void;
   setPermissionMode: (mode: PermissionMode) => void;
   setCurrentSessionId: (sessionId: string | null) => void;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, attachmentPaths?: string[]) => Promise<void>;
 }
 
 // #endregion
@@ -169,10 +169,10 @@ export const useConversationStore = create<ConversationState>((set) => ({
   loadHistory: (messages) => set({ messages }),
   setPermissionMode: (mode) => set({ permissionMode: mode }),
   setCurrentSessionId: (sessionId) => set({ currentSessionId: sessionId }),
-  sendMessage: async (text) => {
+  sendMessage: async (text, attachmentPaths = []) => {
     const trimmed = text.trim();
 
-    if (!trimmed)
+    if (!trimmed && attachmentPaths.length === 0)
     {
       return;
     }
@@ -187,7 +187,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
 
     try
     {
-      await sendMessageCommand(trimmed);
+      await sendMessageCommand(trimmed, attachmentPaths);
     }
     catch (err)
     {
