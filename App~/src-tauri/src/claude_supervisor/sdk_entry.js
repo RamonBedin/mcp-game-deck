@@ -301,7 +301,7 @@ async function buildAttachmentBlock(filePath)
 
 // region: health check
 
-const HEALTH_CHECK_TIMEOUT_MS = 5000;
+const HEALTH_CHECK_TIMEOUT_MS = 15000;
 
 /**
  * Runs a minimal `query()` round-trip with the prompt `"__health__"`,

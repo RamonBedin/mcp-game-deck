@@ -14,13 +14,12 @@ pub mod spawn;
 
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
-use std::time::Duration;
 
 use tauri::AppHandle;
 use tokio::io::AsyncWriteExt;
-use tokio::process::Child;
 use tokio::sync::Mutex;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 
 use crate::events::emit_supervisor_status_changed;
 use crate::types::{PermissionMode, SupervisorStatus, SupervisorStatusChangedPayload};
@@ -79,14 +78,6 @@ impl std::error::Error for SendError {}
 
 // endregion
 
-// region: Constants
-
-/// Time we give `sdk-entry.js` to emit its `ready` signal before
-/// health-check round-trip.
-const READY_TIMEOUT: Duration = Duration::from_secs(5);
-
-// endregion
-
 // region: ClaudeSupervisor
 
 /// Tauri-managed supervisor for the Claude Code subprocess.
@@ -97,12 +88,18 @@ pub struct ClaudeSupervisor {
     state: Arc<Mutex<State>>,
 }
 
-/// Runtime handles owned by a single live supervisor session. Both
+/// Runtime handles owned by a single live supervisor session. The
 /// fields reset together on `spawn` and `shutdown` — never out of
 /// sync with the `status` field.
+///
+/// The `Child` itself is no longer kept here: it's owned by the
+/// `monitor_child_exit` task spawned in `spawn`. To request shutdown,
+/// `shutdown_inner` fires `kill_tx` and awaits `monitor_handle` so the
+/// monitor task kills + reaps the child before the next `spawn` runs.
 struct State {
-    child: Option<Child>,
     stdin_tx: Option<mpsc::UnboundedSender<String>>,
+    kill_tx: Option<oneshot::Sender<()>>,
+    monitor_handle: Option<JoinHandle<()>>,
 }
 
 impl ClaudeSupervisor {
@@ -114,8 +111,9 @@ impl ClaudeSupervisor {
             permission_mode: Arc::new(StdMutex::new(PermissionMode::Default)),
             resume_session_id: Arc::new(StdMutex::new(None)),
             state: Arc::new(Mutex::new(State {
-                child: None,
                 stdin_tx: None,
+                kill_tx: None,
+                monitor_handle: None,
             })),
         }
     }
@@ -251,10 +249,14 @@ impl ClaudeSupervisor {
     }
 
     /// Launches `sdk-entry.js` as a Node child, wires stdin/stdout/
-    /// stderr, and arms the 5s ready-signal timeout.
+    /// stderr.
     ///
-    /// Status flow: Idle → Starting → Ready (on stdout `{type:"ready"}`)
-    /// or Failed (on missing env, write/spawn error, timeout).
+    /// Status flow: Idle -> Starting -> (JS emits ready) -> health
+    /// check trigger scheduled (1.5s delay) -> health check runs in
+    /// JS with 5s race timeout -> health-ok -> Ready, OR health-failed
+    /// -> Crashed. The 5s ready-signal legacy timeout was removed in
+    /// 6.1 — the health check exercises the full pipeline and is the
+    /// single source of truth for liveness now.
     ///
     /// # Arguments
     ///
@@ -339,10 +341,24 @@ impl ClaudeSupervisor {
             spawn::read_stderr(stderr).await;
         });
 
+        let (kill_tx, kill_rx) = oneshot::channel::<()>();
+        let app_for_monitor = app.clone();
+        let status_for_monitor = self.status.clone();
+        let monitor_handle = tokio::spawn(async move {
+            lifecycle::monitor_child_exit(
+                child,
+                kill_rx,
+                app_for_monitor,
+                status_for_monitor,
+            )
+            .await;
+        });
+
         {
             let mut s = self.state.lock().await;
-            s.child = Some(child);
             s.stdin_tx = Some(tx);
+            s.kill_tx = Some(kill_tx);
+            s.monitor_handle = Some(monitor_handle);
         }
 
         let stored_mode = self.current_permission_mode();
@@ -364,40 +380,6 @@ impl ClaudeSupervisor {
             }
         }
 
-        let app_for_timeout = app.clone();
-        let status_for_timeout = self.status.clone();
-        let state_for_timeout = self.state.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(READY_TIMEOUT).await;
-            let still_starting = {
-                let s = status_for_timeout
-                    .lock()
-                    .expect("supervisor status mutex poisoned");
-                *s == SupervisorStatus::Starting
-            };
-            if !still_starting {
-                return;
-            }
-            eprintln!("[claude-supervisor] ready signal timed out after {READY_TIMEOUT:?}");
-            {
-                let mut s = status_for_timeout
-                    .lock()
-                    .expect("supervisor status mutex poisoned");
-                *s = SupervisorStatus::Failed;
-            }
-            let _ = emit_supervisor_status_changed(
-                &app_for_timeout,
-                SupervisorStatusChangedPayload {
-                    status: SupervisorStatus::Failed,
-                    pid: None,
-                },
-            );
-            let mut state = state_for_timeout.lock().await;
-            state.stdin_tx = None;
-            if let Some(mut child) = state.child.take() {
-                let _ = child.kill().await;
-            }
-        });
 
         Ok(pid)
     }
@@ -441,19 +423,29 @@ impl ClaudeSupervisor {
 
     /// Internal teardown shared by `spawn` (pre-spawn cleanup, no
     /// status emit) and the public `shutdown` (post-shutdown status
-    /// emit). Drops the stdin writer first so the writer task exits
-    /// cleanly, then kills + reaps the child.
+    /// emit). Drops the stdin writer, sets status to `Idle` BEFORE
+    /// firing the kill signal — so any race with `monitor_child_exit`'s
+    /// wait branch sees the new status and skips its emit — then asks
+    /// the monitor task to kill + reap the child and awaits the
+    /// monitor's completion.
+    ///
+    /// `emit_status` is reserved for 6.3: the explicit shutdown path
+    /// (window close) will surface `Idle` to React via this flag so
+    /// the UI reflects the teardown before the window goes away.
     async fn shutdown_inner(&self, emit_status: bool) {
-        {
+        let (kill_tx, monitor_handle) = {
             let mut s = self.state.lock().await;
             s.stdin_tx = None;
-            if let Some(mut child) = s.child.take() {
-                let _ = child.kill().await;
-                let _ = child.wait().await;
-            }
-        }
+            (s.kill_tx.take(), s.monitor_handle.take())
+        };
         *self.status.lock().expect("supervisor status mutex poisoned") =
             SupervisorStatus::Idle;
+        if let Some(tx) = kill_tx {
+            let _ = tx.send(());
+        }
+        if let Some(h) = monitor_handle {
+            let _ = h.await;
+        }
         if emit_status {
         }
     }
