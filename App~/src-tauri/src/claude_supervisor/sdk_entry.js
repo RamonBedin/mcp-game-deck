@@ -152,6 +152,64 @@ function emitHealthFailed(message)
 }
 
 /**
+ * Emits an `ask-user-requested` envelope: Claude is calling the
+ * built-in `AskUserQuestion` tool with one or more clarifying
+ * questions. The host renders a question card; the user's answer
+ * round-trips back via a `respond-to-request` stdin line (task 1.3).
+ *
+ * @param {string} requestId - SDK's `toolUseID` for this invocation.
+ * @param {string | null} turnId - Stable id of the current turn.
+ * @param {string | null} agentId - Subagent id when the call originates
+ *   from a delegated context, else null.
+ * @param {object} input - Raw `AskUserQuestionInput` from the SDK.
+ * @returns {void}
+ */
+function emitAskUserRequested(requestId, turnId, agentId, input)
+{
+  emit({ type: "ask-user-requested", requestId, turnId, agentId, input });
+}
+
+/**
+ * Emits a `permission-requested` envelope: Claude wants to call a tool
+ * that isn't auto-approved under the current `permissionMode`. The
+ * host renders a permission card; the user's choice round-trips back
+ * via a `respond-to-request` stdin line (task 1.3).
+ *
+ * @param {string} requestId - SDK's `toolUseID` for this invocation.
+ * @param {string | null} turnId - Stable id of the current turn.
+ * @param {string | null} agentId - Subagent id when the call originates
+ *   from a delegated context, else null.
+ * @param {string} toolName - Name of the tool the SDK is gating.
+ * @param {unknown} input - The tool input that would be passed to the call.
+ * @param {string | null} blockedPath - Filesystem path the tool would
+ *   touch, when the SDK supplied it; else null.
+ * @param {string | null} decisionReason - SDK's reason hint, when supplied; else null.
+ * @returns {void}
+ */
+function emitPermissionRequested(requestId, turnId, agentId, toolName, input, blockedPath, decisionReason)
+{
+  emit({ type: "permission-requested", requestId, turnId, agentId, toolName, input, blockedPath, decisionReason });
+}
+
+/**
+ * Emits a `request-resolved` envelope: the awaited `canUseTool`
+ * promise resolved (either via user response or, after task 1.4 lands,
+ * via the in-session Allow Always cache short-circuit). Lets the host
+ * transition the matching card to its terminal visual state.
+ *
+ * @param {string} requestId - SDK's `toolUseID` for this invocation.
+ * @param {"allow" | "allow-always" | "deny" | "auto-allowed"} outcome
+ *   - The terminal decision applied to the request.
+ * @param {object | null | undefined} answer - When the request was a
+ *   question, the `AskUserQuestionOutput` payload; else null.
+ * @returns {void}
+ */
+function emitRequestResolved(requestId, outcome, answer)
+{
+  emit({ type: "request-resolved", requestId, outcome, answer: answer ?? null });
+}
+
+/**
  * Writes a debug line to stderr, prefixed with `[sdk-entry]`. Non-string args
  * are JSON-stringified so structured payloads remain inspectable in the host
  * log.
@@ -436,13 +494,26 @@ const pending = new Map();
  */
 async function canUseToolCallback(toolName, input, opts)
 {
+  const requestId = opts.toolUseID;
+  const turnId = currentTurnId;
+  const agentId = opts.agentID ?? null;
+
   if (toolName === "AskUserQuestion")
   {
-    console.error(`[canUseTool] AskUserQuestion intercepted (1.2 will emit)`);
-    return { behavior: "allow", updatedInput: input };
+    emitAskUserRequested(requestId, turnId, agentId, input);
+    const answer = await new Promise((resolve, reject) => { pending.set(requestId, { resolve, reject, requestType: "question" });});
+    emitRequestResolved(requestId, "allow", answer);
+    return { behavior: "allow", updatedInput: answer };
   }
-  
-  console.error(`[canUseTool] permission for ${toolName} (1.2 will emit)`);
+
+  emitPermissionRequested(requestId, turnId, agentId, toolName, input, opts.blockedPath ?? null, opts.decisionReason ?? null,);
+  const decision = await new Promise((resolve, reject) => { pending.set(requestId, { resolve, reject, requestType: "permission" });});
+  emitRequestResolved(requestId, decision.outcome);
+
+  if (decision.outcome === "deny")
+  {
+    return { behavior: "deny", message: "User denied via Tauri UI", interrupt: false };
+  }
   return { behavior: "allow", updatedInput: input };
 }
 
@@ -462,6 +533,18 @@ function makeTurnId()
   const rand = Math.random().toString(36).slice(2, 8);
   return `asst-${Date.now()}-${rand}`;
 }
+
+/**
+ * Set at the start of each `handleInput` call so the `canUseTool`
+ * callback (which fires synchronously from inside the SDK during
+ * `query()` execution) can stamp every emitted request envelope with
+ * the same `turnId` as the surrounding text/tool-use blocks. A single
+ * mutable slot is safe because `handleInput` is awaited in the stdin
+ * for-await loop — only one round-trip runs at a time.
+ *
+ * @type {string | null}
+ */
+let currentTurnId = null;
 
 /**
  * Builds the `mcpServers` config passed to `query()` when the host
@@ -603,6 +686,7 @@ function buildAdditionalDirectories()
 async function handleInput(text, attachments)
 {
   const turnId = makeTurnId();
+  currentTurnId = turnId;
   const activeBlocks = new Map();
   try
   {
