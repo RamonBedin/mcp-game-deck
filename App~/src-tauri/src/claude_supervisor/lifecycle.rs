@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use tauri::AppHandle;
-use tokio::process::Child;
+use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::events::emit_supervisor_status_changed;
@@ -26,6 +26,8 @@ use crate::types::{SupervisorStatus, SupervisorStatusChangedPayload};
 // region: Constants
 
 pub const HEALTH_CHECK_DELAY: Duration = Duration::from_millis(1500);
+
+const TREE_KILL_CAP: Duration = Duration::from_millis(1500);
 
 // endregion
 
@@ -61,7 +63,9 @@ pub async fn schedule_health_check_trigger(stdin_tx: mpsc::UnboundedSender<Strin
 /// Owns the freshly spawned `Child` and races two outcomes:
 ///
 /// * `kill_rx` fires (intentional shutdown requested by `shutdown_inner`)
-///   → `start_kill()` + `wait()` to reap; status emit is owned by the
+///   → tree-kill the OS process tree first so the `claude` grandchild
+///   spawned by the SDK dies alongside Node; then `start_kill()` +
+///   `wait()` reap any zombie remaining. Status emit is owned by the
 ///   caller, so this branch stays silent.
 /// * `child.wait()` resolves first (unexpected exit — segfault, OOM,
 ///   manual `Task Manager` kill, parent process death cascading down)
@@ -76,14 +80,22 @@ pub async fn schedule_health_check_trigger(stdin_tx: mpsc::UnboundedSender<Strin
 /// sets status to `Idle` before sending on `kill_rx`, so even if the
 /// `wait` branch were to win the select race (it shouldn't, but in
 /// theory could on heavy load), the gate suppresses the spurious emit.
+///
+/// `pid` is the OS process id of the Node child, captured by the
+/// caller before `child` was moved into this task. `None` (or `0`)
+/// disables the tree-kill step — `start_kill` + `kill_on_drop` then
+/// remain the only teardown path, which leaks the `claude` grandchild
+/// on Windows.
 pub async fn monitor_child_exit(
     mut child: Child,
+    pid: Option<u32>,
     mut kill_rx: oneshot::Receiver<()>,
     app: AppHandle,
     status: Arc<StdMutex<SupervisorStatus>>,
 ) {
     tokio::select! {
         _ = &mut kill_rx => {
+            kill_process_tree(pid, TREE_KILL_CAP).await;
             let _ = child.start_kill();
             let _ = child.wait().await;
         }
@@ -119,6 +131,79 @@ pub async fn monitor_child_exit(
                 );
             }
         }
+    }
+}
+
+// endregion
+
+// region: Tree kill
+
+/// Kills the entire OS process tree rooted at `pid`. The
+/// `@anthropic-ai/claude-agent-sdk` spawns the `claude` binary as a
+/// grandchild of Tauri (Tauri → Node `sdk-entry.js` → `claude`), and
+/// `child.start_kill()` only signals the immediate Node child. On
+/// Windows the grandchild then survives Node's death and shows up as
+/// an orphan in Task Manager
+///
+/// Behavior per platform:
+///
+/// * **Windows** — spawns `taskkill /T /F /PID <pid>`. `/T` walks the
+///   descendant tree, `/F` forces termination (no WM_CLOSE round-trip).
+///   The taskkill child is awaited with `cap` as an upper bound; on
+///   timeout we move on and let `start_kill()` + `kill_on_drop` finish
+///   what they can.
+/// * **Non-Windows** — no-op for now. `kill_on_drop(true)` set in
+///   `spawn::spawn_node_child` covers the immediate Node child via
+///   SIGKILL on `Child` drop. A robust process-group teardown
+///   (`process_group(0)` at spawn + `kill(-pgid, SIGTERM/SIGKILL)`
+///   here) is parked until we have a Unix smoke environment to
+///   validate it; tracked in tasks.
+async fn kill_process_tree(pid: Option<u32>, cap: Duration) {
+    let Some(pid) = pid else { return };
+    if pid == 0 {
+        return;
+    }
+
+    #[cfg(windows)]
+    {
+        let mut cmd = Command::new("taskkill");
+        cmd.arg("/T")
+            .arg("/F")
+            .arg("/PID")
+            .arg(pid.to_string())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        match cmd.spawn() {
+            Ok(mut tk) => match tokio::time::timeout(cap, tk.wait()).await {
+                Ok(Ok(status)) => {
+                    if !status.success() {
+                        eprintln!(
+                            "[claude-supervisor] taskkill /T /F /PID {pid} exited with {status}"
+                        );
+                    }
+                }
+                Ok(Err(e)) => {
+                    eprintln!("[claude-supervisor] taskkill wait error: {e}");
+                }
+                Err(_) => {
+                    eprintln!(
+                        "[claude-supervisor] taskkill /T /F /PID {pid} did not finish within {cap:?}; continuing teardown"
+                    );
+                }
+            },
+            Err(e) => {
+                eprintln!(
+                    "[claude-supervisor] failed to spawn taskkill for PID {pid}: {e}"
+                );
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = (pid, cap);
     }
 }
 

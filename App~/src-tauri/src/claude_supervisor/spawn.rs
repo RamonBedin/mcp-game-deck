@@ -128,7 +128,8 @@ pub fn spawn_node_child(
         .env("UNITY_MCP_PORT", &unity_port)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
 
     if let Some(path) = mcp_proxy {
         cmd.env("MCP_PROXY_PATH", path.to_string_lossy().as_ref());

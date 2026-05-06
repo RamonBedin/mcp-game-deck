@@ -302,6 +302,7 @@ impl ClaudeSupervisor {
             }
         };
         let pid = child.id().unwrap_or(0);
+        let pid_for_monitor = if pid == 0 { None } else { Some(pid) };
         let stdin = child.stdin.take().expect("stdin piped");
         let stdout = child.stdout.take().expect("stdout piped");
         let stderr = child.stderr.take().expect("stderr piped");
@@ -347,6 +348,7 @@ impl ClaudeSupervisor {
         let monitor_handle = tokio::spawn(async move {
             lifecycle::monitor_child_exit(
                 child,
+                pid_for_monitor,
                 kill_rx,
                 app_for_monitor,
                 status_for_monitor,
@@ -429,10 +431,23 @@ impl ClaudeSupervisor {
     /// the monitor task to kill + reap the child and awaits the
     /// monitor's completion.
     ///
-    /// `emit_status` is reserved for 6.3: the explicit shutdown path
-    /// (window close) will surface `Idle` to React via this flag so
-    /// the UI reflects the teardown before the window goes away.
+    /// The monitor await is bounded by a 2s budget per
+    /// definition of done: the close handler in `lib.rs` calls
+    /// `app.exit(0)` immediately after `shutdown` returns, so a hung
+    /// `wait()` would otherwise pin the Tauri process indefinitely on
+    /// window close. On timeout we surrender the join handle to the
+    /// background; the OS-level `taskkill /T /F` issued inside the
+    /// monitor's kill branch (see `lifecycle::kill_process_tree`)
+    /// almost always completes well under the cap, so the timeout
+    /// mostly guards against pathological zombies rather than the
+    /// happy path.
+    ///
+    /// `emit_status` is reserved for a follow-up that wires React-
+    /// side teardown UX; for 6.3 it stays a no-op flag (the window
+    /// disappears in microseconds after `app.exit(0)`, so emitting
+    /// `Idle` to a vanishing surface buys nothing).
     async fn shutdown_inner(&self, emit_status: bool) {
+        let start = std::time::Instant::now();
         let (kill_tx, monitor_handle) = {
             let mut s = self.state.lock().await;
             s.stdin_tx = None;
@@ -444,8 +459,19 @@ impl ClaudeSupervisor {
             let _ = tx.send(());
         }
         if let Some(h) = monitor_handle {
-            let _ = h.await;
+            match tokio::time::timeout(std::time::Duration::from_secs(2), h).await {
+                Ok(_) => {}
+                Err(_) => {
+                    eprintln!(
+                        "[claude-supervisor] shutdown exceeded 2s budget; monitor task detached, possible orphan"
+                    );
+                }
+            }
         }
+        eprintln!(
+            "[claude-supervisor] shutdown completed in {:?}",
+            start.elapsed()
+        );
         if emit_status {
         }
     }
