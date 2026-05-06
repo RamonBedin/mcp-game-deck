@@ -11,6 +11,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AgentMessagePayload,
   AskUserRequestedPayload,
+  ClaudeVersionOutOfRangePayload,
   Message,
   MessageStreamChunkPayload,
   MessageStreamCompletePayload,
@@ -34,6 +35,8 @@ const wrap =
 export const onUnityStatusChanged = wrap<UnityStatusChangedPayload>("unity-status-changed");
 
 export const onSupervisorStatusChanged = wrap<SupervisorStatusChangedPayload>("supervisor-status-changed");
+
+export const onClaudeVersionOutOfRange = wrap<ClaudeVersionOutOfRangePayload>("claude-version-out-of-range");
 
 // #endregion
 

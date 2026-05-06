@@ -112,7 +112,19 @@ async fn detect_claude_installed() -> bool {
 /// Windows: invoked via `cmd /C claude --version` because npm-installed
 /// `claude` is a `.cmd` shim that `Command::new("claude")` won't resolve
 /// (the Rust-side PATHEXT lookup only finds `.exe`).
-async fn detect_claude_version() -> Option<String> {
+///
+/// `MCP_GAME_DECK_CLAUDE_VERSION_OVERRIDE`, when set to a non-empty
+/// value, short-circuits the probe and returns that string verbatim.
+/// Used to exercise the `version_check` warning banner without
+/// installing an out-of-range Claude Code build; not consumed by any
+/// production code path.
+pub(super) async fn detect_claude_version() -> Option<String> {
+    if let Ok(override_val) = std::env::var("MCP_GAME_DECK_CLAUDE_VERSION_OVERRIDE") {
+        if !override_val.is_empty() {
+            return Some(override_val);
+        }
+    }
+
     let mut cmd = if cfg!(windows) {
         let mut c = Command::new("cmd");
         c.args(["/C", "claude", "--version"]);

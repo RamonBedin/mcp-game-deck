@@ -391,6 +391,18 @@ pub struct SupervisorStatusChangedPayload {
     pub pid: Option<u32>,
 }
 
+/// Payload for `claude-version-out-of-range` — emitted once per
+/// supervisor startup when the local `claude --version` falls outside
+/// the smoke-tested range advertised by `package.json`'s `claudeCode`
+/// field. Surfaces a non-blocking banner; the app keeps running on the
+/// detected version.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeVersionOutOfRangePayload {
+    pub detected: String,
+    pub supported: String,
+}
+
 /// Payload for `sdk-install-progress` — emitted while
 /// `npm install @anthropic-ai/claude-agent-sdk` runs. `percent: None`
 /// signals indeterminate progress (npm output isn't reliably

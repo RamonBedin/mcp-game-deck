@@ -7,10 +7,11 @@
 use tauri::{AppHandle, Emitter};
 
 use crate::types::{
-    AgentMessagePayload, AskUserRequestedPayload, Message, MessageStreamChunkPayload,
-    MessageStreamCompletePayload, NodeSdkStatusChangedPayload, PermissionModeChangedPayload,
-    PermissionRequestedPayload, RouteRequestedPayload, SdkInstallFailedPayload,
-    SdkInstallProgressPayload, SupervisorStatusChangedPayload, UnityStatusChangedPayload,
+    AgentMessagePayload, AskUserRequestedPayload, ClaudeVersionOutOfRangePayload, Message,
+    MessageStreamChunkPayload, MessageStreamCompletePayload, NodeSdkStatusChangedPayload,
+    PermissionModeChangedPayload, PermissionRequestedPayload, RouteRequestedPayload,
+    SdkInstallFailedPayload, SdkInstallProgressPayload, SupervisorStatusChangedPayload,
+    UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -59,6 +60,9 @@ pub const EVT_AGENT_MESSAGE: &str = "agent-message";
 /// Event name for `PermissionModeChangedPayload` — emitted when the
 /// supervisor confirms the JS side has applied a new permission mode.
 pub const EVT_PERMISSION_MODE_CHANGED: &str = "permission-mode-changed";
+
+/// Event name for `ClaudeVersionOutOfRangePayload`.
+pub const EVT_CLAUDE_VERSION_OUT_OF_RANGE: &str = "claude-version-out-of-range";
 
 // endregion
 
@@ -311,6 +315,25 @@ pub fn emit_permission_mode_changed(
     payload: PermissionModeChangedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_PERMISSION_MODE_CHANGED, payload)
+}
+
+/// Broadcasts a Claude Code version-out-of-range warning to the
+/// frontend. Fires at most once per supervisor startup — see
+/// `claude_supervisor::version_check::run`.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - Detected version plus the supported range string.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_claude_version_out_of_range(
+    app: &AppHandle,
+    payload: ClaudeVersionOutOfRangePayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_CLAUDE_VERSION_OUT_OF_RANGE, payload)
 }
 
 // endregion

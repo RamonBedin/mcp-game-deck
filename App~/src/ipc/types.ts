@@ -191,6 +191,19 @@ export interface SupervisorStatusChangedPayload
   pid?: number;
 }
 
+/**
+ * Payload for `claude-version-out-of-range` — fired once per supervisor
+ * startup when the locally installed `claude --version` falls outside
+ * the smoke-tested range advertised by repo-root `package.json`'s
+ * `claudeCode` field. Drives a non-blocking warning banner; the app
+ * continues to run on the detected version.
+ */
+export interface ClaudeVersionOutOfRangePayload
+{
+  detected: string;
+  supported: string;
+}
+
 /** Payload for `message-stream-chunk` — incremental token delivery for an in-flight message. */
 export interface MessageStreamChunkPayload
 {

@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import ClaudeVersionWarningBanner from "./components/ClaudeVersionWarningBanner";
 import FirstRunPanel, {FirstRunCheckingScreen, isInstallReady,} from "./components/FirstRunPanel";
 import UpdateBanner from "./components/UpdateBanner";
 import {checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus,} from "./ipc/commands";
@@ -241,6 +242,7 @@ export default function App()
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-900 text-slate-100">
       <UpdateBanner />
+      <ClaudeVersionWarningBanner />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-[200px] shrink-0 border-r border-slate-800 bg-slate-950 p-4">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">

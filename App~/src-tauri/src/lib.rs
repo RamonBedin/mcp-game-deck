@@ -83,7 +83,11 @@ pub fn run() {
                 }
             });
 
-            // Unity client — connect, heartbeat, reconnect with backoff.
+            let app_for_version_check = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                claude_supervisor::version_check::run(app_for_version_check).await;
+            });
+
             let unity = app_handle.state::<UnityClient>();
             unity.start(app_handle.clone());
 
