@@ -220,7 +220,7 @@ type CanUseTool = (
 ) => Promise<PermissionResult>;
 
 type PermissionResult =
-  | { behavior: "allow"; updatedInput?: Record<string, unknown>; updatedPermissions?: PermissionUpdate[]; toolUseID?: string }
+  | { behavior: "allow"; updatedInput: Record<string, unknown>; updatedPermissions?: PermissionUpdate[]; toolUseID?: string }
   | { behavior: "deny"; message: string; interrupt?: boolean; toolUseID?: string };
 ```
 
@@ -228,8 +228,8 @@ We use `toolUseID` as the `requestId` for the React side — guaranteed unique p
 
 Our callback returns:
 
-- **Allow** → `{ behavior: "allow" }` (we don't override `updatedInput`)
-- **Allow Always** → `{ behavior: "allow" }` plus inserts `${toolName}:${stableHash(input)}` into the in-session cache; subsequent `canUseTool` calls matching the same key short-circuit with `{ behavior: "allow" }` without surfacing a card
+- **Allow** → `{ behavior: "allow", updatedInput: input }` (`updatedInput` is required by the SDK's Zod schema even when we don't modify; passing the original `input` unchanged signals "allow as-is". A bare `{ behavior: "allow" }` raises a ZodError that the SDK surfaces as a `Tool permission request failed` rejection — discovered during F04 task 1.1 validation.)
+- **Allow Always** → `{ behavior: "allow", updatedInput: input }` plus inserts `${toolName}:${stableHash(input)}` into the in-session cache; subsequent `canUseTool` calls matching the same key short-circuit with `{ behavior: "allow", updatedInput: input }` without surfacing a card
 - **Deny** → `{ behavior: "deny", message: "User denied via Tauri UI", interrupt: false }`
 
 `interrupt: false` lets Claude continue and try a different approach. `interrupt: true` would abort the whole turn; we don't expose that to the user in v2.0 (could be a v2.1 "Deny & Stop" button).

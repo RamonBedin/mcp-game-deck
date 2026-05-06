@@ -16,7 +16,7 @@
 
 | # | Task | Size | Status | Date | Notes |
 |---|------|------|--------|------|-------|
-| 1.1 | `canUseTool` callback skeleton in sdk-entry.js — pending Map + dispatch | S | ⏳ | | |
+| 1.1 | `canUseTool` callback skeleton in sdk-entry.js — pending Map + dispatch | S | ✅ | 2026-05-06 | Schema fix: `updatedInput` required on `behavior:"allow"` |
 | 1.2 | Emit branches — ask-user-requested + permission-requested + request-resolved | S | ⏳ | | |
 | 1.3 | `respond-to-request` stdin handler — resolve awaited promises | S | ⏳ | | |
 | 1.4 | In-session "Allow Always" cache — keyed by toolName + stable input hash | S | ⏳ | | |
@@ -56,7 +56,7 @@
   - Module-level `pending = new Map()` (key: `requestId`, value: `{ resolve, reject, requestType }`)
   - Function `canUseToolCallback(toolName, input, opts)`:
     - If `toolName === "AskUserQuestion"` → console.error stub: `[canUseTool] AskUserQuestion intercepted (1.2 will emit)` + return `{ behavior: "allow", updatedInput: input }` placeholder so flow doesn't stall during dev
-    - Else → console.error stub: `[canUseTool] permission for ${toolName} (1.2 will emit)` + return `{ behavior: "allow" }` placeholder
+    - Else → console.error stub: `[canUseTool] permission for ${toolName} (1.2 will emit)` + return `{ behavior: "allow", updatedInput: input }` placeholder (the SDK's Zod schema requires `updatedInput` on `behavior: "allow"` even when we don't modify; passing `input` unchanged signals "allow as-is")
   - Add `canUseTool: canUseToolCallback` to the `queryOptions` object passed to `query()` in `handleInput`
 - No new exports; this is internal supervisor scaffolding
 - Apply same change to runtime mirror manually after build (per F02 bug B4 — delete `runtime/sdk-entry.js` before testing)
@@ -126,7 +126,7 @@ Refs: 04-interactive-approvals-tasks.md (task 1.1)
       if (decision.outcome === "deny") {
         return { behavior: "deny", message: "User denied via Tauri UI", interrupt: false };
       }
-      return { behavior: "allow" };
+      return { behavior: "allow", updatedInput: input };
     }
     ```
   - `currentTurnId` module variable set at start of `handleInput` (before `query()` call) so emit helpers can access it
@@ -248,7 +248,7 @@ Refs: 04-interactive-approvals-tasks.md (task 1.3)
     const key = cacheKey(toolName, input);
     if (allowAlwaysCache.has(key)) {
       emitRequestResolved(requestId, "auto-allowed");
-      return { behavior: "allow" };
+      return { behavior: "allow", updatedInput: input };
     }
     ```
   - In stdin's `respond-to-request` branch, when `outcome === "allow-always"`, also add to cache:

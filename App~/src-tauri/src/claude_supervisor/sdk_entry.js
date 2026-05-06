@@ -413,6 +413,41 @@ debug("boot", JSON.stringify({
 
 // endregion
 
+// region: canUseTool callback
+
+/** @typedef {import("@anthropic-ai/claude-agent-sdk").CanUseTool} CanUseTool */
+/** @typedef {import("@anthropic-ai/claude-agent-sdk").PermissionResult} PermissionResult */
+
+const pending = new Map();
+
+/**
+ * Single dispatcher for both kinds of user-input requests Claude Code
+ * emits to its host: permission prompts for tool calls in `default`
+ * mode, and clarifying questions via the built-in `AskUserQuestion`
+ * tool. Branches on `toolName`; React renders each variant with its
+ * own card UI (Group 3).
+ *
+ * Task 1.1 wires the skeleton only — both branches log a marker to
+ * stderr and resolve immediately with an `allow` placeholder so the
+ * SDK does not stall while wire emit (1.2) and stdin response
+ * handling (1.3) are still being built.
+ *
+ * @type {CanUseTool}
+ */
+async function canUseToolCallback(toolName, input, opts)
+{
+  if (toolName === "AskUserQuestion")
+  {
+    console.error(`[canUseTool] AskUserQuestion intercepted (1.2 will emit)`);
+    return { behavior: "allow", updatedInput: input };
+  }
+  
+  console.error(`[canUseTool] permission for ${toolName} (1.2 will emit)`);
+  return { behavior: "allow", updatedInput: input };
+}
+
+// endregion
+
 // region: input → query() round-trip
 
 /**
@@ -584,6 +619,7 @@ async function handleInput(text, attachments)
       mcpServers: buildMcpServers(),
       plugins: buildPlugins(),
       additionalDirectories: buildAdditionalDirectories(),
+      canUseTool: canUseToolCallback,
     };
 
     if (pendingResumeSessionId !== null)
