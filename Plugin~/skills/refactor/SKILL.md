@@ -28,8 +28,8 @@ When this skill is invoked:
 3. **Read the target file(s)** in full using the Read tool. Also read:
    - Files that reference the target (use Grep to find usages)
    - Related KB docs for recommended patterns:
-     - `{{KB_PATH}}/01-unity-project-architecture.md` for structure
-     - `{{KB_PATH}}/03-unity-design-patterns.md` for patterns
+     - `${CLAUDE_PLUGIN_ROOT}/knowledge/01-unity-project-architecture.md` for structure
+     - `${CLAUDE_PLUGIN_ROOT}/knowledge/03-unity-design-patterns.md` for patterns
      - Other KB docs as relevant to the specific problem
 
 4. **Analyze the current architecture** and identify:

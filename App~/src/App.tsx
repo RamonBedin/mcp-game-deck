@@ -3,15 +3,18 @@
  *
  * Hosts the persistent left-rail navigation and the routed `<Outlet />`,
  * and owns three cross-cutting effects that need to live above any single
- * route: the connection-status poller, the Node SDK status fast-path
+ * route: the connection-status poller, the supervisor status fast-path
  * subscription, and the Node SDK log → console forwarder.
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import ClaudeVersionWarningBanner from "./components/ClaudeVersionWarningBanner";
+import FirstRunPanel, {FirstRunCheckingScreen, isInstallReady,} from "./components/FirstRunPanel";
 import UpdateBanner from "./components/UpdateBanner";
-import { getNodeSdkStatus, getUnityStatus } from "./ipc/commands";
-import { onNodeLog, onNodeSdkStatusChanged, onRouteRequested } from "./ipc/events";
+import {checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus,} from "./ipc/commands";
+import { onRouteRequested, onSupervisorStatusChanged } from "./ipc/events";
+import type { ClaudeInstallStatus } from "./ipc/types";
 import { useConnectionStore } from "./stores/connectionStore";
 
 // #region Constants
@@ -24,8 +27,8 @@ const NAV_ITEMS = [
   { to: "/settings", label: "Settings" },
 ] as const;
 
-/** Polling cadence for the connection-status backstop (events are the fast path). */
 const CONNECTION_POLL_INTERVAL_MS = 2000;
+const INSTALL_POLL_INTERVAL_MS = 5000;
 
 // #endregion
 
@@ -35,12 +38,58 @@ const CONNECTION_POLL_INTERVAL_MS = 2000;
  *
  * @returns The root layout element.
  */
-export default function App() {
+export default function App()
+{
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
-  const setNodeSdkStatus = useConnectionStore((s) => s.setNodeSdkStatus);
+  const setSupervisorStatus = useConnectionStore((s) => s.setSupervisorStatus);
   const navigate = useNavigate();
+  const [installStatus, setInstallStatus] = useState<ClaudeInstallStatus | null>(null);
 
   // #region Effects
+
+  // Claude install-detection poll. Drives the FirstRunPanel gate. Runs
+  // every INSTALL_POLL_INTERVAL_MS while at least one prerequisite is
+  // missing; clears itself once everything reports ready. Defensive
+  // re-arming on later regressions (e.g., user logs out)
+  useEffect(() => {
+    let cancelled = false;
+    let intervalId: number | null = null;
+
+    const tick = async () => {
+      try 
+      {
+        const status = await checkClaudeInstallStatus();
+
+        if (cancelled)
+        {
+          return;
+        }
+
+        setInstallStatus(status);
+
+        if (isInstallReady(status) && intervalId !== null)
+        {
+          window.clearInterval(intervalId);
+          intervalId = null;
+        }
+      } 
+      catch (err)
+      {
+        console.error("[first-run] install check failed:", err);
+      }
+    };
+
+    void tick();
+    intervalId = window.setInterval(tick, INSTALL_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+
+      if (intervalId !== null)
+      {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, []);
 
   // Connection-status poll. Runs every CONNECTION_POLL_INTERVAL_MS as a
   // backstop for the event-driven fast path below.
@@ -48,15 +97,20 @@ export default function App() {
     let cancelled = false;
 
     const tick = async () => {
-      try {
-        const [unity, node] = await Promise.all([
-          getUnityStatus(),
-          getNodeSdkStatus(),
-        ]);
-        if (cancelled) return;
+      try
+      {
+        const [unity, supervisor] = await Promise.all([getUnityStatus(), getSupervisorStatus(),]);
+
+        if (cancelled)
+        {
+          return;
+        }
+
         setUnityStatus(unity);
-        setNodeSdkStatus(node);
-      } catch (err) {
+        setSupervisorStatus(supervisor);
+      }
+      catch (err)
+      {
         console.error("[connection] poll failed:", err);
       }
     };
@@ -67,62 +121,41 @@ export default function App() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [setUnityStatus, setNodeSdkStatus]);
+  }, [setUnityStatus, setSupervisorStatus]);
 
-  // Fast-path Node SDK transitions via Tauri events. Polling is the
-  // backstop; this catches Starting / Running / Crashed within milliseconds
+  // Fast-path supervisor transitions via Tauri events. Polling is the
+  // backstop; this catches Starting / Ready / Crashed within milliseconds
   // instead of waiting up to 2s for the next tick.
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 
-    onNodeSdkStatusChanged((payload) => {
-      if (cancelled) return;
-      setNodeSdkStatus(payload.status);
+    onSupervisorStatusChanged((payload) => {
+
+      if (cancelled)
+      {
+        return;
+      }
+
+      setSupervisorStatus(payload.status);
     })
       .then((u) => {
-        if (cancelled) u();
-        else unlisten = u;
+        if (cancelled)
+        {
+          u();
+        }
+        else
+        {
+          unlisten = u;
+        }
       })
-      .catch((err) => {
-        console.error("[app] failed to subscribe to node-sdk-status-changed:", err);
-      });
+      .catch((err) => {console.error("[app] failed to subscribe to supervisor-status-changed:", err);});
 
     return () => {
       cancelled = true;
       unlisten?.();
     };
-  }, [setNodeSdkStatus]);
-
-  // Forward Node SDK log notifications to the DevTools console. Lives at
-  // the layout root so it survives route changes.
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    onNodeLog((payload) => {
-      if (cancelled) return;
-      const fn =
-        payload.level === "error"
-          ? console.error
-          : payload.level === "warn"
-            ? console.warn
-            : console.log;
-      fn("[node]", payload.text);
-    })
-      .then((u) => {
-        if (cancelled) u();
-        else unlisten = u;
-      })
-      .catch((err) => {
-        console.error("[app] failed to subscribe to node-log:", err);
-      });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
+  }, [setSupervisorStatus]);
 
   // Navigate the running window when a re-launched instance carries a
   // --route= CLI argument; the single-instance callback (Rust side) emits
@@ -132,12 +165,22 @@ export default function App() {
     let unlisten: (() => void) | null = null;
 
     onRouteRequested((payload) => {
-      if (cancelled) return;
+      if (cancelled)
+      {
+        return;
+      }
+
       navigate(payload.route);
     })
       .then((u) => {
-        if (cancelled) u();
-        else unlisten = u;
+        if (cancelled)
+        {
+          u();
+        }
+        else
+        {
+          unlisten = u;
+        }
       })
       .catch((err) => {
         console.error("[app] failed to subscribe to route-requested:", err);
@@ -151,9 +194,20 @@ export default function App() {
 
   // #endregion
 
+  if (installStatus === null) 
+  {
+    return <FirstRunCheckingScreen />;
+  }
+
+  if (!isInstallReady(installStatus))
+  {
+    return <FirstRunPanel status={installStatus} />;
+  }
+
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-900 text-slate-100">
       <UpdateBanner />
+      <ClaudeVersionWarningBanner />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-[200px] shrink-0 border-r border-slate-800 bg-slate-950 p-4">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">

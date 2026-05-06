@@ -24,8 +24,8 @@ When this skill is invoked:
    Wait for the user to answer all three before proceeding.
 
 3. **Read knowledge base docs** for architecture guidance:
-   - `{{KB_PATH}}/02-scriptableobjects-data-driven.md` — for ScriptableObject patterns
-   - `{{KB_PATH}}/03-unity-design-patterns.md` — for system design patterns
+   - `${CLAUDE_PLUGIN_ROOT}/knowledge/02-scriptableobjects-data-driven.md` — for ScriptableObject patterns
+   - `${CLAUDE_PLUGIN_ROOT}/knowledge/03-unity-design-patterns.md` — for system design patterns
 
 4. **Generate the system class** following these conventions:
    - Namespace: `[ProjectName].Systems` (or appropriate sub-namespace)

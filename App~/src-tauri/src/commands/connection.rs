@@ -5,8 +5,8 @@
 
 use tauri::{AppHandle, State};
 
-use crate::node_supervisor::NodeSupervisor;
-use crate::types::{AppError, ConnectionStatus, NodeSdkStatus};
+use crate::claude_supervisor::ClaudeSupervisor;
+use crate::types::{AppError, ConnectionStatus, SupervisorStatus};
 use crate::unity_client::UnityClient;
 
 // region: Status getters
@@ -28,20 +28,22 @@ pub fn get_unity_status(client: State<'_, UnityClient>) -> ConnectionStatus {
     client.current_status()
 }
 
-/// Reads the live state machine maintained by the Node SDK supervisor.
+/// Reads the live state machine maintained by the Claude Code supervisor.
 ///
 /// Sync — microsecond cheap. Polled every 2s by `App.tsx`; the
-/// `node-sdk-status-changed` event provides the fast-path updates between polls.
+/// `supervisor-status-changed` event provides the fast-path updates
+/// between polls.
 ///
 /// # Arguments
 ///
-/// * `supervisor` - Tauri-managed `NodeSupervisor` state.
+/// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
 ///
 /// # Returns
 ///
-/// The latest `NodeSdkStatus` (Starting / Running / Crashed).
+/// The latest `SupervisorStatus` (Idle / Starting / Ready / Crashed /
+/// Failed).
 #[tauri::command]
-pub fn get_node_sdk_status(supervisor: State<'_, NodeSupervisor>) -> NodeSdkStatus {
+pub fn get_supervisor_status(supervisor: State<'_, ClaudeSupervisor>) -> SupervisorStatus {
     supervisor.current_status()
 }
 
@@ -69,35 +71,30 @@ pub fn reconnect_unity() -> Result<(), AppError> {
     Ok(())
 }
 
-/// Restarts the Node SDK child.
+/// Restarts the Claude Code supervisor.
 ///
-/// Implemented as `supervisor.spawn(app)` — idempotent, kills any prior
-/// child first.
+/// Skeleton today: returns `AppError::Internal` with the message
+/// . Real spawn lands in
+/// and replaces the body without changing the signature.
 ///
 /// # Arguments
 ///
-/// * `app` - Application handle forwarded to `spawn` for event emission.
-/// * `supervisor` - Tauri-managed `NodeSupervisor` state.
-///
-/// # Returns
-///
-/// `Ok(())` once the child has been respawned (the new PID is logged but
-/// not returned to the caller).
+/// * `app` - Application handle forwarded to `spawn`.
+/// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
 ///
 /// # Errors
 ///
-/// Returns `AppError::NodeSdkUnavailable` when the spawn fails (e.g. Node
-/// not on PATH, stdio pipes missing).
+/// Returns `AppError::Internal`
 #[tauri::command]
-pub async fn restart_node_sdk(
+pub async fn restart_supervisor(
     app: AppHandle,
-    supervisor: State<'_, NodeSupervisor>,
+    supervisor: State<'_, ClaudeSupervisor>,
 ) -> Result<(), AppError> {
     supervisor
         .spawn(app)
         .await
         .map(|_pid| ())
-        .map_err(|e| AppError::NodeSdkUnavailable(e.to_string()))
+        .map_err(|e| AppError::Internal(e.to_string()))
 }
 
 // endregion

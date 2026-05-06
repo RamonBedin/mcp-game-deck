@@ -1,31 +1,24 @@
 /**
  * Settings route — read-only summary plus dev-only diagnostic actions.
  *
- * Surfaces the live Unity / Node SDK status, the active theme, a "Restart
- * Node SDK" button, and (in dev builds only) buttons to emit a test
- * status event, ping the Node SDK, and call a Unity MCP tool.
+ * Surfaces the live Unity / supervisor status, the active theme, a
+ * "Restart Supervisor" button, and (in dev builds only) buttons to
+ * emit a test status event and call a Unity MCP tool.
  */
 
 import { useEffect, useState } from "react";
 import {
   devCallUnityTool,
   devEmitTestEvent,
-  nodePing,
-  restartNodeSdk,
+  restartSupervisor,
 } from "../ipc/commands";
 import { onUnityStatusChanged } from "../ipc/events";
-import type { ConnectionStatus, NodeSdkStatus } from "../ipc/types";
+import type { ConnectionStatus, SupervisorStatus } from "../ipc/types";
 import { useConnectionStore } from "../stores/connectionStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
 // #region Helpers
 
-/**
- * Maps a Unity connection status to its display text-color class.
- *
- * @param status - Current Unity connection state.
- * @returns The Tailwind text-color class for that state.
- */
 const unityStatusClass = (status: ConnectionStatus): string => {
   switch (status) {
     case "connected":
@@ -37,19 +30,16 @@ const unityStatusClass = (status: ConnectionStatus): string => {
   }
 };
 
-/**
- * Maps a Node SDK status to its display text-color class.
- *
- * @param status - Current Node SDK process state.
- * @returns The Tailwind text-color class for that state.
- */
-const nodeSdkStatusClass = (status: NodeSdkStatus): string => {
+const supervisorStatusClass = (status: SupervisorStatus): string => {
   switch (status) {
-    case "running":
+    case "ready":
       return "text-emerald-400";
+    case "idle":
+      return "text-slate-400";
     case "starting":
       return "text-amber-400";
     case "crashed":
+    case "failed":
       return "text-rose-400";
   }
 };
@@ -64,13 +54,11 @@ const nodeSdkStatusClass = (status: NodeSdkStatus): string => {
 export default function SettingsRoute() {
   const theme = useSettingsStore((state) => state.settings.theme);
   const unityStatus = useConnectionStore((s) => s.unityStatus);
-  const nodeSdkStatus = useConnectionStore((s) => s.nodeSdkStatus);
+  const supervisorStatus = useConnectionStore((s) => s.supervisorStatus);
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
 
   // #region Local state
 
-  const [pingResult, setPingResult] = useState<string | null>(null);
-  const [pinging, setPinging] = useState(false);
   const [restartResult, setRestartResult] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [unityToolResult, setUnityToolResult] = useState<string | null>(null);
@@ -95,9 +83,12 @@ export default function SettingsRoute() {
       setUnityStatus(payload.status);
     })
       .then((u) => {
-        if (cancelled) {
+        if (cancelled)
+        {
           u();
-        } else {
+        } 
+        else
+        {
           unlisten = u;
         }
       })
@@ -115,53 +106,62 @@ export default function SettingsRoute() {
 
   // #region Handlers
 
-  /** Pings the Node SDK and renders the result with elapsed milliseconds. */
-  const handlePing = async () => {
-    setPinging(true);
-    setPingResult("…");
-    const start = performance.now();
-    try {
-      const pong = await nodePing();
-      const elapsed = Math.round(performance.now() - start);
-      setPingResult(`pong=${pong} (${elapsed}ms)`);
-    } catch (err) {
-      setPingResult(`error: ${String(err)}`);
-    } finally {
-      setPinging(false);
+  const formatError = (err: unknown): string => {
+    if (err instanceof Error)
+    {
+      return err.message;
+    }
+    
+    if (typeof err === "string")
+    {
+      return err;
+    }
+    try
+    {
+      return JSON.stringify(err);
+    }
+    catch
+    {
+      return String(err);
     }
   };
 
-  /** Restarts the Node SDK child via the matching Tauri command. */
   const handleRestart = async () => {
     setRestarting(true);
     setRestartResult("restarting…");
-    try {
-      await restartNodeSdk();
+    try
+    {
+      await restartSupervisor();
       setRestartResult("ok — watch status above");
-    } catch (err) {
-      setRestartResult(`error: ${String(err)}`);
-    } finally {
+    }
+    catch (err)
+    {
+      setRestartResult(`error: ${formatError(err)}`);
+    }
+    finally
+    {
       setRestarting(false);
     }
   };
 
-  /**
-   * Calls a Unity MCP tool (`console-get-logs`) and renders a truncated
-   * preview of the JSON result.
-   */
   const handleCallUnityTool = async () => {
     setCallingUnityTool(true);
     setUnityToolResult("…");
     const start = performance.now();
-    try {
+    try
+    {
       const result = await devCallUnityTool("console-get-logs", { count: 5 });
       const elapsed = Math.round(performance.now() - start);
       const preview = JSON.stringify(result).slice(0, 240);
       setUnityToolResult(`(${elapsed}ms) ${preview}${preview.length === 240 ? "…" : ""}`);
       console.log("[unity-tool] result:", result);
-    } catch (err) {
-      setUnityToolResult(`error: ${String(err)}`);
-    } finally {
+    } 
+    catch (err)
+    {
+      setUnityToolResult(`error: ${formatError(err)}`);
+    } 
+    finally 
+    {
       setCallingUnityTool(false);
     }
   };
@@ -182,8 +182,8 @@ export default function SettingsRoute() {
         <dt className="text-slate-500">Unity</dt>
         <dd className={unityStatusClass(unityStatus)}>{unityStatus}</dd>
 
-        <dt className="text-slate-500">Node SDK</dt>
-        <dd className={nodeSdkStatusClass(nodeSdkStatus)}>{nodeSdkStatus}</dd>
+        <dt className="text-slate-500">Supervisor</dt>
+        <dd className={supervisorStatusClass(supervisorStatus)}>{supervisorStatus}</dd>
       </dl>
 
       <div className="mt-6">
@@ -193,7 +193,7 @@ export default function SettingsRoute() {
           disabled={restarting}
           className="rounded bg-slate-700 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Restart Node SDK
+          Restart Supervisor
         </button>
         {restartResult !== null && (
           <p className="mt-1 font-mono text-xs text-slate-400">{restartResult}</p>
@@ -221,26 +221,6 @@ export default function SettingsRoute() {
               </button>
               <p className="mt-1 text-xs text-slate-500">
                 Polling reverts Unity to "connected" within ~2s.
-              </p>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => void handlePing()}
-                disabled={pinging}
-                className="rounded bg-sky-700 px-3 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Ping Node SDK
-              </button>
-              {pingResult !== null && (
-                <p className="mt-1 font-mono text-xs text-slate-400">
-                  {pingResult}
-                </p>
-              )}
-              <p className="mt-1 text-xs text-slate-500">
-                Round-trips a JSON-RPC `ping`. Watch DevTools console for the
-                node heartbeat (every 5s).
               </p>
             </div>
 

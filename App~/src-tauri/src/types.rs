@@ -18,15 +18,45 @@ pub enum ConnectionStatus {
 
 // endregion
 
+// region: Install detection
+
+/// Snapshot of the local environment's readiness to run Claude Code.
+///
+/// Populated by `claude_supervisor::install_check::check_install_status`
+/// and surfaced to React via
+/// `commands::install::check_claude_install_status`. A field set to
+/// `false` (or `None` for `claude_version`) means either the dependency
+/// is missing OR the detection probe failed — the React side treats
+/// both cases identically and surfaces the appropriate next step.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeInstallStatus {
+    pub claude_installed: bool,
+    pub claude_authenticated: bool,
+    pub sdk_installed: bool,
+    pub claude_version: Option<String>,
+}
+
+// endregion
+
 // region: Permissions
 
 /// Permission policy applied to tool calls issued by the agent.
+///
+/// Mirrors the five surface-level modes the Claude Code chat exposes
+/// (`default` / `acceptEdits` / `plan` / `bypassPermissions` / `auto`).
+/// `Auto` is a UI alias for `BypassPermissions` (CLAUDE.md gotcha:
+/// "Auto permission mode: Uses bypassPermissions, NOT acceptEdits");
+/// `sdk-entry.js::resolveSdkMode` performs that mapping before
+/// passing the mode to the SDK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum PermissionMode {
-    Auto,
-    Ask,
+    Default,
+    AcceptEdits,
     Plan,
+    BypassPermissions,
+    Auto,
 }
 
 // endregion
@@ -55,6 +85,55 @@ pub struct Message {
     pub timestamp: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
+}
+
+/// A single content block inside a `LoadedMessage` — mirrors React's
+/// `Block` union so the frontend can render session history without
+/// any further translation. Tagged on the wire by `type` field
+/// (`text` / `tool-use` / `tool-result`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum LoadedBlock {
+    Text {
+        text: String,
+    },
+    ToolUse {
+        tool_use_id: String,
+        name: String,
+        input: Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: Value,
+        is_error: bool,
+    },
+}
+
+/// A single chat message reconstructed from Claude Code's JSONL
+/// session storage. Mirrors the React-side `Message` shape exactly
+/// (`{id, role, timestamp, blocks}`) so `commands::sessions::
+/// get_session_messages` can hand the array straight to
+/// `conversationStore.loadHistory`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadedMessage {
+    pub id: MessageId,
+    pub role: MessageRole,
+    pub timestamp: i64,
+    pub blocks: Vec<LoadedBlock>,
+}
+
+/// Lightweight summary of a Claude Code session, derived from the
+/// JSONL file at `<home>/.claude/projects/<encoded-cwd>/<id>.jsonl`.
+/// `title` is the first user prompt's leading line, trimmed of
+/// `<command-message>` wrappers and truncated for the sidebar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSummary {
+    pub id: String,
+    pub title: String,
+    pub last_modified: i64,
+    pub message_count: usize,
 }
 
 // endregion
@@ -150,26 +229,6 @@ pub struct UnityStatusChangedPayload {
     pub reason: Option<String>,
 }
 
-/// Lifecycle state of the bundled Node.js Agent SDK process.
-///
-/// Distinct from `ConnectionStatus` — the Node SDK has its own state machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum NodeSdkStatus {
-    Starting,
-    Running,
-    Crashed,
-}
-
-/// Payload for `node-sdk-status-changed`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NodeSdkStatusChangedPayload {
-    pub status: NodeSdkStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pid: Option<u32>,
-}
-
 /// Payload for `message-stream-chunk` — incremental token delivery for an in-flight message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -222,6 +281,128 @@ pub struct PermissionRequestedPayload {
 #[serde(rename_all = "camelCase")]
 pub struct RouteRequestedPayload {
     pub route: String,
+}
+
+/// Payload for `permission-mode-changed` — fired whenever the
+/// supervisor's permission mode is updated (echo from `sdk-entry.js`
+/// after applying a `setPermissionMode` control message; future
+/// SDK-driven cycles such as Shift+Tab in task 4.3 reuse the same
+/// channel).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionModeChangedPayload {
+    pub mode: PermissionMode,
+}
+
+/// Tagged message envelope sent by `sdk-entry.js` over stdout, then
+/// re-emitted to React via the `agent-message` Tauri event.
+///
+/// added `TextDelta` for streaming and gave
+/// `AssistantTurnComplete` a `turn_id`. `AssistantText` is kept as a
+/// legacy variant with no producer in 2.3+ — preserved so the wire
+/// shape stays additive across feature cycles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum AgentMessage {
+    Ready,
+    AssistantText { text: String },
+    TextDelta {
+        turn_id: String,
+        text: String,
+    },
+    ToolUse {
+        turn_id: String,
+        tool_use_id: String,
+        name: String,
+        input: Value,
+    },
+    ToolResult {
+        turn_id: String,
+        tool_use_id: String,
+        content: Value,
+        is_error: bool,
+    },
+    AssistantTurnComplete {
+        turn_id: String,
+    },
+    Error {
+        message: String,
+    },
+    PermissionModeChanged {
+        mode: PermissionMode,
+    },
+    HealthOk,
+    HealthFailed {
+        message: String,
+    },
+}
+
+/// Wire payload for `agent-message` — wraps an `AgentMessage` in a
+/// `{message: ...}` object so future fields (timestamps, ids) can
+/// be added without re-shaping every variant.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentMessagePayload {
+    pub message: AgentMessage,
+}
+
+/// Lifecycle state of the Claude Code supervisor.
+///
+/// `Failed` and `Crashed` are intentionally distinct: `Failed` means
+/// spawn never reached `Ready` (SDK missing, exec error, env issue —
+/// requires user action, surface FirstRunPanel-like UX); `Crashed`
+/// means a previously-Ready child died unexpectedly (recoverable via
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SupervisorStatus {
+    Idle,
+    Starting,
+    Ready,
+    Crashed,
+    Failed,
+}
+
+/// Payload for `supervisor-status-changed`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupervisorStatusChangedPayload {
+    pub status: SupervisorStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+}
+
+/// Payload for `claude-version-out-of-range` — emitted once per
+/// supervisor startup when the local `claude --version` falls outside
+/// the smoke-tested range advertised by `package.json`'s `claudeCode`
+/// field. Surfaces a non-blocking banner; the app keeps running on the
+/// detected version.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeVersionOutOfRangePayload {
+    pub detected: String,
+    pub supported: String,
+}
+
+/// Payload for `sdk-install-progress` — emitted while
+/// `npm install @anthropic-ai/claude-agent-sdk` runs. `percent: None`
+/// signals indeterminate progress (npm output isn't reliably
+/// parseable for a numeric percent); React falls back to a pulse
+/// animation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SdkInstallProgressPayload {
+    pub percent: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// Payload for `sdk-install-failed`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SdkInstallFailedPayload {
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
 }
 
 // endregion

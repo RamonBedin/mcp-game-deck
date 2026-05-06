@@ -9,23 +9,21 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AgentMessagePayload,
   AskUserRequestedPayload,
+  ClaudeVersionOutOfRangePayload,
   Message,
   MessageStreamChunkPayload,
   MessageStreamCompletePayload,
-  NodeLogPayload,
-  NodeSdkStatusChangedPayload,
+  PermissionModeChangedPayload,
   PermissionRequestedPayload,
   RouteRequestedPayload,
+  SdkInstallFailedPayload,
+  SdkInstallProgressPayload,
+  SupervisorStatusChangedPayload,
   UnityStatusChangedPayload,
 } from "./types";
 
-/**
- * Builds a typed `listen` wrapper for a given event name.
- *
- * @param eventName - Tauri event name (kebab-case, must match the Rust emitter).
- * @returns A subscription function: pass it a handler, get back a `Promise<UnlistenFn>`.
- */
 const wrap =
   <T>(eventName: string) =>
   (handler: (payload: T) => void): Promise<UnlistenFn> =>
@@ -33,53 +31,55 @@ const wrap =
 
 // #region Status events
 
-/** Subscribes to `unity-status-changed`. */
-export const onUnityStatusChanged =
-  wrap<UnityStatusChangedPayload>("unity-status-changed");
+export const onUnityStatusChanged = wrap<UnityStatusChangedPayload>("unity-status-changed");
 
-/** Subscribes to `node-sdk-status-changed`. */
-export const onNodeSdkStatusChanged =
-  wrap<NodeSdkStatusChangedPayload>("node-sdk-status-changed");
+export const onSupervisorStatusChanged = wrap<SupervisorStatusChangedPayload>("supervisor-status-changed");
+
+export const onClaudeVersionOutOfRange = wrap<ClaudeVersionOutOfRangePayload>("claude-version-out-of-range");
 
 // #endregion
 
 // #region Message events
 
-/** Subscribes to `message-received` (full, non-streamed messages). */
 export const onMessageReceived = wrap<Message>("message-received");
 
-/** Subscribes to `message-stream-chunk` (incremental streaming). */
-export const onMessageStreamChunk =
-  wrap<MessageStreamChunkPayload>("message-stream-chunk");
+export const onMessageStreamChunk = wrap<MessageStreamChunkPayload>("message-stream-chunk");
 
-/** Subscribes to `message-stream-complete` (end-of-stream marker). */
-export const onMessageStreamComplete =
-  wrap<MessageStreamCompletePayload>("message-stream-complete");
+export const onMessageStreamComplete = wrap<MessageStreamCompletePayload>("message-stream-complete");
 
 // #endregion
 
 // #region Agent prompts
 
-/** Subscribes to `ask-user-requested` (agent → user input prompt). */
-export const onAskUserRequested =
-  wrap<AskUserRequestedPayload>("ask-user-requested");
+export const onAskUserRequested = wrap<AskUserRequestedPayload>("ask-user-requested");
 
-/** Subscribes to `permission-requested` (agent → user tool-call confirmation). */
-export const onPermissionRequested =
-  wrap<PermissionRequestedPayload>("permission-requested");
-
-// #endregion
-
-// #region Diagnostics
-
-/** Group 3 stub diagnostic — Node SDK heartbeat / log lines forwarded to the DevTools console. */
-export const onNodeLog = wrap<NodeLogPayload>("node-log");
+export const onPermissionRequested = wrap<PermissionRequestedPayload>("permission-requested");
 
 // #endregion
 
 // #region Routing
 
-/** Subscribes to `route-requested` (single-instance callback → navigate). */
 export const onRouteRequested = wrap<RouteRequestedPayload>("route-requested");
+
+// #endregion
+
+// #region Install events
+
+export const onSdkInstallProgress = wrap<SdkInstallProgressPayload>("sdk-install-progress");
+
+export const onSdkInstallCompleted = (
+  handler: () => void,
+): Promise<UnlistenFn> =>
+  listen<null>("sdk-install-completed", () => handler());
+
+export const onSdkInstallFailed = wrap<SdkInstallFailedPayload>("sdk-install-failed");
+
+// #endregion
+
+// #region Agent stream
+
+export const onAgentMessage = wrap<AgentMessagePayload>("agent-message");
+
+export const onPermissionModeChanged = wrap<PermissionModeChangedPayload>("permission-mode-changed");
 
 // #endregion

@@ -1,139 +1,91 @@
 //! Conversation Tauri commands.
 //!
-//! Forward chat traffic between the React frontend and the Node Agent SDK.
-//! (conversation persistence) — the typed surface is in place so the
-//! frontend can wire its calls today.
+//! Forward chat traffic between the React frontend and the Claude
+//! Code supervisor (`claude_supervisor::ClaudeSupervisor`). Permission
+//! mode stubs (`set_permission_mode` / `get_permission_mode`) are
+//! filled in by tasks 4.2-4.3.
+//!
+//! History + clear commands were dropped in task 4.1: Claude Code's
+//! own session storage is the source of truth (Decision #6 — wired up
+//! in task 4.4) and `/clear` is the in-chat reset path.
 
-use serde_json::json;
 use tauri::State;
 
-use crate::node_supervisor::NodeSupervisor;
-use crate::types::{AppError, Message, MessageId, PermissionMode};
+use crate::claude_supervisor::ClaudeSupervisor;
+use crate::types::{AppError, PermissionMode};
 
-// region: Send / history
+// region: Send
 
-/// Forwards a chat message to the Node SDK as the `conversation/send`
-/// JSON-RPC method.
-///
-/// The actual assistant reply arrives asynchronously via a `message/received`
-/// notification (handled in `jsonrpc.rs` and re-emitted as the
-/// `message-received` Tauri event).
+/// Forwards a user message to `sdk-entry.js` over the supervisor's
+/// stdin channel. The assistant reply arrives asynchronously via the
+/// `agent-message` Tauri event (dispatched by
+/// `claude_supervisor::spawn::read_stdout` for every envelope the SDK
+/// emits — `text-delta`, `tool-use`, `tool-result`,
+/// `assistant-turn-complete`, `error`).
 ///
 /// # Arguments
 ///
 /// * `text` - User's message text.
-/// * `agent` - Optional sub-agent name to route the message through.
-/// * `supervisor` - Tauri-managed `NodeSupervisor` state.
-///
-/// # Returns
-///
-/// The message id assigned by the Node SDK, or `"ack"` if the stub hasn't
-/// implemented the full echo response shape yet (task 5.2 wires that).
+/// * `attachment_paths` - Absolute paths the user attached alongside
+///   the prompt. Always empty today; UI wiring lands in Group 5.
+/// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
 ///
 /// # Errors
 ///
-/// Returns `AppError::NodeSdkUnavailable` when the JSON-RPC request fails
-/// (child dead, timeout, serde error, or a JSON-RPC error reply).
+/// Returns `AppError::Internal` when the supervisor isn't running,
+/// the stdin writer task is closed, or the JSON encoding fails.
 #[tauri::command]
 pub async fn send_message(
     text: String,
-    agent: Option<String>,
-    supervisor: State<'_, NodeSupervisor>,
-) -> Result<MessageId, AppError> {
-    let params = json!({
-        "text": text,
-        "agent": agent,
-        "session_id": null,
-    });
-    let result = supervisor
-        .request("conversation/send", Some(params))
+    attachment_paths: Vec<String>,
+    supervisor: State<'_, ClaudeSupervisor>,
+) -> Result<(), AppError> {
+    supervisor
+        .send_input(&text, &attachment_paths)
         .await
-        .map_err(|e| AppError::NodeSdkUnavailable(e.to_string()))?;
-
-    let id = result
-        .get("message_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("ack")
-        .to_string();
-    Ok(id)
-}
-
-/// Stub: returns the recent conversation history for a session.
-///
-/// Always returns an empty list today. Real implementation lands in
-/// Feature 05 (conversation persistence).
-///
-/// # Arguments
-///
-/// * `session_id` - Session whose history to retrieve (currently ignored).
-/// * `limit` - Maximum number of messages to return (currently ignored).
-///
-/// # Returns
-///
-/// An empty `Vec<Message>`.
-#[tauri::command]
-#[allow(unused_variables)]
-pub fn get_conversation_history(session_id: String, limit: usize) -> Vec<Message> {
-    Vec::new()
-}
-
-/// Stub: clears the message history for a session.
-///
-/// No-op today. Real implementation lands in Feature 05.
-///
-/// # Arguments
-///
-/// * `session_id` - Session to clear (currently ignored).
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
-///
-/// # Errors
-///
-/// Reserved for future implementations.
-#[tauri::command]
-#[allow(unused_variables)]
-pub fn clear_conversation(session_id: String) -> Result<(), AppError> {
-    Ok(())
+        .map_err(|e| AppError::Internal(e.to_string()))
 }
 
 // endregion
 
 // region: Permission mode
 
-/// Stub: persists the agent's permission mode.
-///
-/// No-op today. Real implementation lands alongside Feature 02's
-/// permission flow.
+/// Updates the supervisor's permission mode and pushes a control
+/// message to `sdk-entry.js`'s stdin so the next `query()` round-trip
+/// applies it. Tolerates a non-running supervisor — the mode is
+/// stored and re-pushed on the next `spawn`.
 ///
 /// # Arguments
 ///
-/// * `mode` - Desired permission policy (currently ignored).
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
+/// * `mode` - New permission policy.
+/// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// Returns `AppError::Internal` when the stdin writer task is closed
+/// or the JSON encoding fails.
 #[tauri::command]
-#[allow(unused_variables)]
-pub fn set_permission_mode(mode: PermissionMode) -> Result<(), AppError> {
-    Ok(())
+pub async fn set_permission_mode(
+    mode: PermissionMode,
+    supervisor: State<'_, ClaudeSupervisor>,
+) -> Result<(), AppError> {
+    supervisor
+        .set_permission_mode(mode)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
 }
 
-/// Stub: reads the agent's permission mode.
-///
-/// Always returns `PermissionMode::Ask` today.
+/// Reads the supervisor's current permission mode.
 ///
 /// # Returns
 ///
-/// `PermissionMode::Ask` (the safe default).
+/// The latest mode set via `set_permission_mode`, or
+/// `PermissionMode::Default` on a fresh supervisor.
 #[tauri::command]
-pub fn get_permission_mode() -> PermissionMode {
-    PermissionMode::Ask
+pub fn get_permission_mode(
+    supervisor: State<'_, ClaudeSupervisor>,
+) -> PermissionMode {
+    supervisor.current_permission_mode()
 }
 
 // endregion

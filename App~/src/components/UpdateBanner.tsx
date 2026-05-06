@@ -24,7 +24,8 @@ const ENV_AVAILABLE_TRUE = "true";
 // #region Types
 
 /** Resolved update information used to render the banner. */
-interface UpdateInfo {
+interface UpdateInfo
+{
   version: string;
   releaseUrl: string | null;
 }
@@ -35,8 +36,18 @@ interface UpdateInfo {
  * Renders the update banner when the host environment indicates an update is
  * available. Returns `null` (no DOM) when there's no update or the user has
  * dismissed the banner this session.
+ *
+ * Reads three `MCP_GAME_DECK_*` environment variables once on mount — the pin
+ * stamps them at `Process.Start` and they don't change for the life of the
+ * Tauri instance, so a single load is sufficient. Any failure to read the
+ * env vars is swallowed and logged so the banner silently no-ops instead of
+ * blocking the chat UI.
+ *
+ * @returns The banner element when an update is available and not dismissed,
+ *   or `null` otherwise.
  */
-export default function UpdateBanner() {
+export default function UpdateBanner()
+{
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
@@ -48,27 +59,38 @@ export default function UpdateBanner() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadUpdateInfo() {
-      try {
+    /**
+   * Reads the three `MCP_GAME_DECK_*` environment variables in parallel and,
+   * when they signal that an update is available, populates `updateInfo` with
+   * the resolved version and (optional) release URL. Bails out early when the
+   * effect has already been cancelled by an unmount, and swallows any read
+   * failure with a console warning so the banner silently no-ops.
+   *
+   * @returns A promise that resolves once the env vars have been read and the
+   *   state has been (potentially) updated.
+   */
+    async function loadUpdateInfo()
+    {
+      try
+      {
         const [available, version, releaseUrl] = await Promise.all([
           getEnvVar(ENV_UPDATE_AVAILABLE),
           getEnvVar(ENV_LATEST_VERSION),
           getEnvVar(ENV_RELEASE_URL),
         ]);
 
-        if (cancelled) return;
-
-        if (
-          available === ENV_AVAILABLE_TRUE &&
-          version !== null &&
-          version.length > 0
-        ) {
-          setUpdateInfo({
-            version,
-            releaseUrl: releaseUrl && releaseUrl.length > 0 ? releaseUrl : null,
-          });
+        if (cancelled)
+        {
+          return;
         }
-      } catch (err) {
+
+        if (available === ENV_AVAILABLE_TRUE && version !== null && version.length > 0) 
+        {
+          setUpdateInfo({version, releaseUrl: releaseUrl && releaseUrl.length > 0 ? releaseUrl : null,});
+        }
+      }
+      catch (err)
+      {
         console.warn("[update-banner] failed to read env vars:", err);
       }
     }
@@ -82,17 +104,24 @@ export default function UpdateBanner() {
 
   // #endregion
 
-  if (updateInfo === null || dismissed) {
+  if (updateInfo === null || dismissed)
+  {
     return null;
   }
 
   // #region Handlers
 
   const handleViewRelease = async () => {
-    if (!updateInfo.releaseUrl) return;
-    try {
+    if (!updateInfo.releaseUrl)
+    {
+      return;
+    }
+    try
+    {
       await openUrl(updateInfo.releaseUrl);
-    } catch (err) {
+    }
+    catch (err)
+    {
       console.error("[update-banner] failed to open release URL:", err);
     }
   };

@@ -64,8 +64,8 @@ impl std::error::Error for ToolCallError {}
 /// Tauri managed state for the Unity TCP client.
 ///
 /// Holds the live `ConnectionStatus` behind a sync Mutex (microsecond locks,
-/// never held across await — same pattern as `NodeSupervisor::status`).
-/// Cloneable so the run loop spawned in `start()` can own its own handle.
+/// never held across await). Cloneable so the run loop spawned in `start()`
+/// can own its own handle.
 #[derive(Clone)]
 pub struct UnityClient {
     status: Arc<StdMutex<ConnectionStatus>>,

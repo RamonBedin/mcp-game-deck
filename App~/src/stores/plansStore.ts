@@ -10,7 +10,15 @@ import type { Plan, PlanMeta } from "../ipc/types";
 
 // #region State shape
 
-interface PlansState {
+/**
+ * Shape of the plans-state store backing the plans panel.
+ *
+ * Holds the lightweight metadata list used to render the plan picker plus the
+ * fully-loaded plan currently open for viewing or editing, and exposes setters
+ * so loaders can hydrate either field independently.
+ */
+interface PlansState
+{
   plans: PlanMeta[];
   currentPlan: Plan | null;
   setPlans: (plans: PlanMeta[]) => void;
@@ -21,7 +29,6 @@ interface PlansState {
 
 // #region Store
 
-/** Hook for the plans store. */
 export const usePlansStore = create<PlansState>((set) => ({
   plans: [],
   currentPlan: null,

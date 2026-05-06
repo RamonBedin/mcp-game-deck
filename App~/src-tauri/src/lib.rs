@@ -1,14 +1,14 @@
 //! Tauri application entry point.
 //!
-//! Wires up shared state (`NodeSupervisor`, `UnityClient`), spawns background
+//! Wires up shared state (`ClaudeSupervisor`, `UnityClient`), spawns background
 //! workers during `setup`, intercepts the window close event for a graceful
 //! shutdown, and registers every Tauri command exposed to the frontend.
 
 // region: Module declarations
 
+pub mod claude_supervisor;
 pub mod commands;
 pub mod events;
-pub mod node_supervisor;
 pub mod types;
 pub mod unity_client;
 
@@ -16,7 +16,7 @@ pub mod unity_client;
 
 use tauri::{AppHandle, Manager, WindowEvent};
 
-use node_supervisor::NodeSupervisor;
+use claude_supervisor::ClaudeSupervisor;
 use unity_client::UnityClient;
 
 // region: Single-instance handler
@@ -56,10 +56,10 @@ fn handle_single_instance(app: &AppHandle, args: Vec<String>, _cwd: String) {
 
 /// Builds and runs the Tauri application.
 ///
-/// Registers `NodeSupervisor` and `UnityClient` as managed state, spawns the
-/// Node SDK child process and the Unity client worker during setup, intercepts
-/// `CloseRequested` for graceful shutdown, and binds every IPC command exposed
-/// to the React frontend.
+/// Registers `ClaudeSupervisor` and `UnityClient` as managed state, spawns
+/// the Claude Code subprocess and the Unity client worker during setup,
+/// intercepts `CloseRequested` for graceful shutdown, and binds every IPC
+/// command exposed to the React frontend.
 ///
 /// Blocks until the application exits. Panics if the Tauri runtime fails to
 /// start (e.g. invalid `tauri.conf.json`).
@@ -68,21 +68,25 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(handle_single_instance))
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(NodeSupervisor::new())
+        .manage(ClaudeSupervisor::new())
         .manage(UnityClient::new())
         .setup(|app| {
             let app_handle = app.handle().clone();
 
-            let app_for_node = app_handle.clone();
+            let app_for_supervisor = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                let supervisor = app_for_node.state::<NodeSupervisor>();
-                match supervisor.spawn(app_for_node.clone()).await {
-                    Ok(pid) => println!("[node-supervisor] spawned PID {pid}"),
-                    Err(e) => eprintln!("[node-supervisor] spawn failed: {e}"),
+                let supervisor = app_for_supervisor.state::<ClaudeSupervisor>();
+                match supervisor.spawn(app_for_supervisor.clone()).await {
+                    Ok(pid) => println!("[claude-supervisor] spawned PID {pid}"),
+                    Err(e) => eprintln!("[claude-supervisor] {e}"),
                 }
             });
 
-            // Unity client — connect, heartbeat, reconnect with backoff.
+            let app_for_version_check = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                claude_supervisor::version_check::run(app_for_version_check).await;
+            });
+
             let unity = app_handle.state::<UnityClient>();
             unity.start(app_handle.clone());
 
@@ -93,7 +97,7 @@ pub fn run() {
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Some(supervisor) = app.try_state::<NodeSupervisor>() {
+                    if let Some(supervisor) = app.try_state::<ClaudeSupervisor>() {
                         supervisor.shutdown().await;
                     }
                     app.exit(0);
@@ -102,12 +106,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::connection::get_unity_status,
-            commands::connection::get_node_sdk_status,
+            commands::connection::get_supervisor_status,
             commands::connection::reconnect_unity,
-            commands::connection::restart_node_sdk,
+            commands::connection::restart_supervisor,
             commands::conversation::send_message,
-            commands::conversation::get_conversation_history,
-            commands::conversation::clear_conversation,
             commands::conversation::set_permission_mode,
             commands::conversation::get_permission_mode,
             commands::plans::list_plans,
@@ -119,12 +121,17 @@ pub fn run() {
             commands::rules::write_rule,
             commands::rules::delete_rule,
             commands::rules::toggle_rule,
+            commands::sessions::get_sessions,
+            commands::sessions::get_session_messages,
+            commands::sessions::resume_session,
+            commands::sessions::start_new_session,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::dev::dev_emit_test_event,
-            commands::dev::node_ping,
             commands::dev::dev_call_unity_tool,
             commands::env::get_env_var,
+            commands::install::check_claude_install_status,
+            commands::install::start_sdk_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -8,7 +8,6 @@
 use serde_json::{Map, Value};
 use tauri::{AppHandle, State};
 
-use crate::node_supervisor::NodeSupervisor;
 use crate::unity_client::UnityClient;
 
 // region: Event triggers
@@ -54,27 +53,6 @@ pub fn dev_emit_test_event(app: AppHandle) -> Result<(), String> {
 // endregion
 
 // region: Probes
-
-/// Pings the Node SDK child via JSON-RPC.
-///
-/// Round-trip latency on localhost is typically <50ms.
-///
-/// # Arguments
-///
-/// * `supervisor` - Tauri-managed `NodeSupervisor` state.
-///
-/// # Returns
-///
-/// The `pong` boolean from the SDK's response.
-///
-/// # Errors
-///
-/// Returns the underlying `RequestError` stringified (child dead, timeout,
-/// RPC error, etc).
-#[tauri::command]
-pub async fn node_ping(supervisor: State<'_, NodeSupervisor>) -> Result<bool, String> {
-    supervisor.ping().await.map_err(|e| e.to_string())
-}
 
 /// Forwards a `tools/call` to Unity's MCP server.
 ///

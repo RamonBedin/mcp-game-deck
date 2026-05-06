@@ -25,23 +25,39 @@ const DEFAULT_ROUTE = "/chat";
  * Reads the `--route=/path` CLI argument via `getMatches()` and returns it,
  * falling back to the default route when the argument is missing, malformed,
  * or the CLI plugin is unavailable for any reason.
+ *
+ * @returns The resolved initial route — either the value supplied via
+ *   `--route` or `DEFAULT_ROUTE` when no valid argument is present.
  */
 async function getInitialRoute(): Promise<string> {
-  try {
+  try 
+  {
     const matches = await getMatches();
     const route = matches.args.route?.value;
-    if (typeof route === "string" && route.length > 0) {
+
+    if (typeof route === "string" && route.length > 0) 
+    {
       return route;
     }
-  } catch (err) {
-    console.warn(
-      "[main] failed to read CLI args, falling back to default route:",
-      err,
-    );
+  } 
+  catch (err) 
+  {
+    console.warn("[main] failed to read CLI args, falling back to default route:", err,);
   }
+  
   return DEFAULT_ROUTE;
 }
 
+/**
+ * Application entry point.
+ *
+ * Resolves the initial route from CLI arguments, then mounts the React tree
+ * inside a `MemoryRouter` seeded with that route. Defines the route table for
+ * the four top-level panels (chat, plans, rules, settings) and redirects the
+ * index route to `/chat`.
+ *
+ * @returns A promise that resolves once the React root has been rendered.
+ */
 async function bootstrap() {
   const initialRoute = await getInitialRoute();
   ReactDOM.createRoot(document.getElementById("root")!).render(

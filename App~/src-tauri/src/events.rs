@@ -7,9 +7,10 @@
 use tauri::{AppHandle, Emitter};
 
 use crate::types::{
-    AskUserRequestedPayload, Message, MessageStreamChunkPayload, MessageStreamCompletePayload,
-    NodeSdkStatusChangedPayload, PermissionRequestedPayload, RouteRequestedPayload,
-    UnityStatusChangedPayload,
+    AgentMessagePayload, AskUserRequestedPayload, ClaudeVersionOutOfRangePayload, Message,
+    MessageStreamChunkPayload, MessageStreamCompletePayload, PermissionModeChangedPayload,
+    PermissionRequestedPayload, RouteRequestedPayload, SdkInstallFailedPayload,
+    SdkInstallProgressPayload, SupervisorStatusChangedPayload, UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -17,8 +18,8 @@ use crate::types::{
 /// Event name for `UnityStatusChangedPayload`.
 pub const EVT_UNITY_STATUS_CHANGED: &str = "unity-status-changed";
 
-/// Event name for `NodeSdkStatusChangedPayload`.
-pub const EVT_NODE_SDK_STATUS_CHANGED: &str = "node-sdk-status-changed";
+/// Event name for `SupervisorStatusChangedPayload`.
+pub const EVT_SUPERVISOR_STATUS_CHANGED: &str = "supervisor-status-changed";
 
 /// Event name for `Message` delivery (full, non-streamed messages).
 pub const EVT_MESSAGE_RECEIVED: &str = "message-received";
@@ -37,6 +38,25 @@ pub const EVT_PERMISSION_REQUESTED: &str = "permission-requested";
 
 /// Event name for `RouteRequestedPayload`.
 pub const EVT_ROUTE_REQUESTED: &str = "route-requested";
+
+/// Event name for `SdkInstallProgressPayload`.
+pub const EVT_SDK_INSTALL_PROGRESS: &str = "sdk-install-progress";
+
+/// Event name for `sdk-install-completed` (no payload — emit `()`).
+pub const EVT_SDK_INSTALL_COMPLETED: &str = "sdk-install-completed";
+
+/// Event name for `SdkInstallFailedPayload`.
+pub const EVT_SDK_INSTALL_FAILED: &str = "sdk-install-failed";
+
+/// Event name for `AgentMessagePayload` — every line `sdk-entry.js`
+pub const EVT_AGENT_MESSAGE: &str = "agent-message";
+
+/// Event name for `PermissionModeChangedPayload` — emitted when the
+/// supervisor confirms the JS side has applied a new permission mode.
+pub const EVT_PERMISSION_MODE_CHANGED: &str = "permission-mode-changed";
+
+/// Event name for `ClaudeVersionOutOfRangePayload`.
+pub const EVT_CLAUDE_VERSION_OUT_OF_RANGE: &str = "claude-version-out-of-range";
 
 // endregion
 
@@ -59,22 +79,22 @@ pub fn emit_unity_status_changed(
     app.emit(EVT_UNITY_STATUS_CHANGED, payload)
 }
 
-/// Broadcasts a Node.js Agent SDK lifecycle change to the frontend.
+/// Broadcasts a Claude Code supervisor lifecycle change to the frontend.
 ///
 /// # Arguments
 ///
 /// * `app` - Tauri application handle used to emit the event.
-/// * `payload` - New SDK status plus the OS process id when known.
+/// * `payload` - New supervisor status plus the OS process id when known.
 ///
 /// # Errors
 ///
 /// Returns `tauri::Error` when the underlying emitter fails.
 #[allow(dead_code)]
-pub fn emit_node_sdk_status_changed(
+pub fn emit_supervisor_status_changed(
     app: &AppHandle,
-    payload: NodeSdkStatusChangedPayload,
+    payload: SupervisorStatusChangedPayload,
 ) -> tauri::Result<()> {
-    app.emit(EVT_NODE_SDK_STATUS_CHANGED, payload)
+    app.emit(EVT_SUPERVISOR_STATUS_CHANGED, payload)
 }
 
 /// Delivers a complete (non-streamed) message to the frontend.
@@ -182,6 +202,114 @@ pub fn emit_route_requested(
     payload: RouteRequestedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_ROUTE_REQUESTED, payload)
+}
+
+/// Streams a single stdout line from the running `npm install`.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - Indeterminate percent + the latest stdout line.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_sdk_install_progress(
+    app: &AppHandle,
+    payload: SdkInstallProgressPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_SDK_INSTALL_PROGRESS, payload)
+}
+
+/// Signals successful `npm install` completion. No payload.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_sdk_install_completed(app: &AppHandle) -> tauri::Result<()> {
+    app.emit(EVT_SDK_INSTALL_COMPLETED, ())
+}
+
+/// Signals a failed `npm install`, with the trailing stderr lines
+/// and exit code.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - Failure message (last few stderr lines) plus
+///   optional exit code.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_sdk_install_failed(
+    app: &AppHandle,
+    payload: SdkInstallFailedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_SDK_INSTALL_FAILED, payload)
+}
+
+/// Re-emits a typed `AgentMessage` to the React side for DevTools
+/// debugging. The same message also drives status transitions and
+/// `message-received` emits when applicable — see
+/// `claude_supervisor::spawn::read_stdout`.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - The wrapped `AgentMessage` envelope.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_agent_message(
+    app: &AppHandle,
+    payload: AgentMessagePayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_AGENT_MESSAGE, payload)
+}
+
+/// Broadcasts a permission-mode change to the frontend. Driven by
+/// `sdk-entry.js`'s echo after applying a `setPermissionMode` control
+/// message — see `claude_supervisor::spawn::read_stdout` for the
+/// `AgentMessage::PermissionModeChanged` translation.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - The new permission mode.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_permission_mode_changed(
+    app: &AppHandle,
+    payload: PermissionModeChangedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_PERMISSION_MODE_CHANGED, payload)
+}
+
+/// Broadcasts a Claude Code version-out-of-range warning to the
+/// frontend. Fires at most once per supervisor startup — see
+/// `claude_supervisor::version_check::run`.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - Detected version plus the supported range string.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_claude_version_out_of_range(
+    app: &AppHandle,
+    payload: ClaudeVersionOutOfRangePayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_CLAUDE_VERSION_OUT_OF_RANGE, payload)
 }
 
 // endregion
