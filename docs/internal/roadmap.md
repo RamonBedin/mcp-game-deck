@@ -39,8 +39,8 @@ The 41 tool audits already exist (`.claude/reports/audits/`). They are not throw
 | 1 | External app (Tauri + React) bundled in package as `App~/` | `01-external-app-spec.md` + `01-external-app-tasks.md` | ✅ done (Apr 2026) — Node-side target updated by ADR-001 |
 | 2 | **Claude Code Supervisor** — spawn `claude` via Agent SDK; replaces echo stub | `02-claude-code-supervisor.md` + `02-claude-code-supervisor-spec.md` + `02-claude-code-supervisor-tasks.md` | 🟡 immediate — trio ready, branch `feature/02-claude-code-supervisor` |
 | 3 | ~~Slash commands customizable by user~~ | — | ❌ removed by ADR-001 (Claude Code reads `.claude/commands/` and `.claude/skills/` natively) |
-| 4 | Interactive plan mode — agent can ask user before finishing plan | `04-interactive-plan-mode.md` | ⏳ pending — needs revision under ADR-001 (medium) |
-| 5 | Permission system fix (auto / plan / ask actually respected) | `05-permission-system-fix.md` | ⏳ pending — mostly superseded by Claude Code's permission system |
+| 4 | Interactive Approvals & Clarifying Questions (absorbs former F05) | `04-interactive-approvals.md` + `-spec.md` + `-tasks.md` | ⏳ design locked — 17 tasks ready to execute |
+| ~~5~~ | ~~Permission system fix~~ | — | ❌ absorbed by F04 (Apr 2026); see `04-interactive-approvals.md` |
 | 6 | Plans CRUD with markdown storage in `ProjectSettings/GameDeck/plans/` | `06-plans-crud.md` | ⏳ pending — needs revision under ADR-001 (small) |
 | 7 | Editor pin status (replaces chat window inside Unity) | `07-editor-status-pin.md` + `07-editor-status-pin-spec.md` + `07-editor-status-pin-tasks.md` | ✅ done (Apr 2026) — merged to `develop/v2.0` |
 | 8 | Rules page (user-defined behavior constraints) | `08-rules-page.md` | ⏳ pending — needs revision under ADR-001 (medium) |
@@ -229,6 +229,6 @@ Don't let the roadmap silently drift.
 
 **Immediate:** **Feature 02 (Claude Code Supervisor)** on branch `feature/02-claude-code-supervisor`. Replaces the F01 echo stub with a real Claude Code subprocess via `@anthropic-ai/claude-agent-sdk`. The full trio (`02-claude-code-supervisor.md` design root, `-spec.md` executable spec, `-tasks.md` 24 numbered tasks across 7 groups) is ready as of 2026-04-29. Decision #3 was revised after re-checking the subagent MCP bug — Anthropic appears to have fixed it (release notes + updated docs), so specialists ship as agents (their original design) with empirical validation in Group 3. The pre-existing `Cannot find module 'agent-sdk-stub.js'` errors that F07 left in the terminal are F02 territory and disappear once Group 2 lands.
 
-**Next after 02:** Features 04 (interactive plan mode), 05 (permission surface), 06 (plans CRUD), 08 (rules), 09 (design hand-off) in roadmap order — each needing the small revision noted in their headers before execution. F04/F05 sit on top of F02's Agent SDK plumbing; F06/F08 surface as skills (Claude Code reads them natively).
+**Next after 02:** Feature 04 (interactive approvals & clarifying questions — absorbs former F05), then 06 (plans CRUD), 08 (rules), 09 (design hand-off) in roadmap order. F04 sits on top of F02's Agent SDK plumbing via the SDK's `canUseTool` callback (one callback handles both permission requests and `AskUserQuestion` clarifying questions, with a unified `RequestCard` UI); F06/F08 surface as skills (Claude Code reads them natively).
 
 **Tool consolidation:** paused until v2.0 ships. The Animation review draft and GameObject review (with escalations) sit in `.claude/reports/reviews/` waiting for v2.2.1 to pick them up.

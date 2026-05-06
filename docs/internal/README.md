@@ -9,14 +9,12 @@ docs/internal/
 ├── README.md              ← you are here
 ├── roadmap.md             ← v1.2 / v2.0 / v2.1 milestones, what goes where
 ├── v2-architecture.md     ← cross-cutting architectural decisions for v2.0
-├── v2-features/           ← one doc per feature, structured the same way
-│   ├── 01-external-app.md
-│   ├── 02-orchestrator-agent.md
-│   ├── 03-slash-commands.md
-│   ├── 04-interactive-plan-mode.md
-│   ├── 05-permission-system-fix.md
+├── v2-features/           ← one doc per feature; agreed features expand to root + `-spec.md` + `-tasks.md`
+│   ├── 01-external-app*           ← shipped (Apr 2026)
+│   ├── 02-claude-code-supervisor* ← shipped (Apr 2026)
+│   ├── 04-interactive-approvals*  ← design locked (absorbs former F05)
 │   ├── 06-plans-crud.md
-│   ├── 07-editor-status-pin.md
+│   ├── 07-editor-status-pin*      ← shipped (Apr 2026)
 │   ├── 08-rules-page.md
 │   └── 09-design-handoff.md
 └── decisions/             ← architectural decision records (ADRs) when made
