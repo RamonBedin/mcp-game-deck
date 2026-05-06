@@ -8,10 +8,9 @@ use tauri::{AppHandle, Emitter};
 
 use crate::types::{
     AgentMessagePayload, AskUserRequestedPayload, ClaudeVersionOutOfRangePayload, Message,
-    MessageStreamChunkPayload, MessageStreamCompletePayload, NodeSdkStatusChangedPayload,
-    PermissionModeChangedPayload, PermissionRequestedPayload, RouteRequestedPayload,
-    SdkInstallFailedPayload, SdkInstallProgressPayload, SupervisorStatusChangedPayload,
-    UnityStatusChangedPayload,
+    MessageStreamChunkPayload, MessageStreamCompletePayload, PermissionModeChangedPayload,
+    PermissionRequestedPayload, RouteRequestedPayload, SdkInstallFailedPayload,
+    SdkInstallProgressPayload, SupervisorStatusChangedPayload, UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -19,12 +18,7 @@ use crate::types::{
 /// Event name for `UnityStatusChangedPayload`.
 pub const EVT_UNITY_STATUS_CHANGED: &str = "unity-status-changed";
 
-/// kept while `node_supervisor/jsonrpc.rs` still emits it internally.
-/// Removed alongside `node_supervisor/`
-pub const EVT_NODE_SDK_STATUS_CHANGED: &str = "node-sdk-status-changed";
-
-/// Event name for `SupervisorStatusChangedPayload` — replaces
-/// `node-sdk-status-changed` from F01.
+/// Event name for `SupervisorStatusChangedPayload`.
 pub const EVT_SUPERVISOR_STATUS_CHANGED: &str = "supervisor-status-changed";
 
 /// Event name for `Message` delivery (full, non-streamed messages).
@@ -83,24 +77,6 @@ pub fn emit_unity_status_changed(
     payload: UnityStatusChangedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_UNITY_STATUS_CHANGED, payload)
-}
-
-/// Broadcasts a Node.js Agent SDK lifecycle change to the frontend.
-///
-/// # Arguments
-///
-/// * `app` - Tauri application handle used to emit the event.
-/// * `payload` - New SDK status plus the OS process id when known.
-///
-/// # Errors
-///
-/// Returns `tauri::Error` when the underlying emitter fails.
-#[allow(dead_code)]
-pub fn emit_node_sdk_status_changed(
-    app: &AppHandle,
-    payload: NodeSdkStatusChangedPayload,
-) -> tauri::Result<()> {
-    app.emit(EVT_NODE_SDK_STATUS_CHANGED, payload)
 }
 
 /// Broadcasts a Claude Code supervisor lifecycle change to the frontend.

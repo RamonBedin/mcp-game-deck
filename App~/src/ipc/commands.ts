@@ -119,8 +119,6 @@ export const getEnvVar = (name: string): Promise<string | null> => invoke("get_e
 
 export const devEmitTestEvent = (): Promise<void> => invoke("dev_emit_test_event");
 
-export const nodePing = (): Promise<boolean> => invoke("node_ping");
-
 export const devCallUnityTool = (
   name: string,
   args?: Record<string, unknown>,

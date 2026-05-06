@@ -229,26 +229,6 @@ pub struct UnityStatusChangedPayload {
     pub reason: Option<String>,
 }
 
-/// Lifecycle state of the bundled Node.js Agent SDK process.
-///
-/// Distinct from `ConnectionStatus` — the Node SDK has its own state machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum NodeSdkStatus {
-    Starting,
-    Running,
-    Crashed,
-}
-
-/// Payload for `node-sdk-status-changed`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NodeSdkStatusChangedPayload {
-    pub status: NodeSdkStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pid: Option<u32>,
-}
-
 /// Payload for `message-stream-chunk` — incremental token delivery for an in-flight message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

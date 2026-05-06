@@ -238,16 +238,6 @@ export interface PermissionRequestedPayload
 }
 
 /**
- * Diagnostic — used by the Group 3 stub. The real Node SDK will emit
- * typed events instead (message-received, ask-user-requested, etc).
- */
-export interface NodeLogPayload
-{
-  level: "info" | "warn" | "error";
-  text: string;
-}
-
-/**
  * Payload for `route-requested` — single-instance callback asking the running
  * window to navigate after a re-launch carrying a `--route=/path` CLI arg.
  */

@@ -1,6 +1,6 @@
 //! Tauri application entry point.
 //!
-//! Wires up shared state (`NodeSupervisor`, `UnityClient`), spawns background
+//! Wires up shared state (`ClaudeSupervisor`, `UnityClient`), spawns background
 //! workers during `setup`, intercepts the window close event for a graceful
 //! shutdown, and registers every Tauri command exposed to the frontend.
 
@@ -9,7 +9,6 @@
 pub mod claude_supervisor;
 pub mod commands;
 pub mod events;
-pub mod node_supervisor;
 pub mod types;
 pub mod unity_client;
 
@@ -57,10 +56,10 @@ fn handle_single_instance(app: &AppHandle, args: Vec<String>, _cwd: String) {
 
 /// Builds and runs the Tauri application.
 ///
-/// Registers `NodeSupervisor` and `UnityClient` as managed state, spawns the
-/// Node SDK child process and the Unity client worker during setup, intercepts
-/// `CloseRequested` for graceful shutdown, and binds every IPC command exposed
-/// to the React frontend.
+/// Registers `ClaudeSupervisor` and `UnityClient` as managed state, spawns
+/// the Claude Code subprocess and the Unity client worker during setup,
+/// intercepts `CloseRequested` for graceful shutdown, and binds every IPC
+/// command exposed to the React frontend.
 ///
 /// Blocks until the application exits. Panics if the Tauri runtime fails to
 /// start (e.g. invalid `tauri.conf.json`).
@@ -129,7 +128,6 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::dev::dev_emit_test_event,
-            commands::dev::node_ping,
             commands::dev::dev_call_unity_tool,
             commands::env::get_env_var,
             commands::install::check_claude_install_status,

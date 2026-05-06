@@ -13,7 +13,7 @@ import ClaudeVersionWarningBanner from "./components/ClaudeVersionWarningBanner"
 import FirstRunPanel, {FirstRunCheckingScreen, isInstallReady,} from "./components/FirstRunPanel";
 import UpdateBanner from "./components/UpdateBanner";
 import {checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus,} from "./ipc/commands";
-import { onNodeLog, onRouteRequested, onSupervisorStatusChanged } from "./ipc/events";
+import { onRouteRequested, onSupervisorStatusChanged } from "./ipc/events";
 import type { ClaudeInstallStatus } from "./ipc/types";
 import { useConnectionStore } from "./stores/connectionStore";
 
@@ -156,41 +156,6 @@ export default function App()
       unlisten?.();
     };
   }, [setSupervisorStatus]);
-
-  // Forward Node SDK log notifications to the DevTools console. Lives at
-  // the layout root so it survives route changes.
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    onNodeLog((payload) => {
-      if (cancelled)
-      {
-        return;
-      }
-
-      const fn = payload.level === "error" ? console.error : payload.level === "warn" ? console.warn : console.log;
-      fn("[node]", payload.text);
-    })
-      .then((u) => {
-        if (cancelled)
-        {
-          u();
-        }
-        else
-        {
-          unlisten = u;
-        }
-      })
-      .catch((err) => {
-        console.error("[app] failed to subscribe to node-log:", err);
-      });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
 
   // Navigate the running window when a re-launched instance carries a
   // --route= CLI argument; the single-instance callback (Rust side) emits

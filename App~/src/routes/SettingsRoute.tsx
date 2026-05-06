@@ -3,15 +3,13 @@
  *
  * Surfaces the live Unity / supervisor status, the active theme, a
  * "Restart Supervisor" button, and (in dev builds only) buttons to
- * emit a test status event, ping the Node SDK, and call a Unity MCP
- * tool.
+ * emit a test status event and call a Unity MCP tool.
  */
 
 import { useEffect, useState } from "react";
 import {
   devCallUnityTool,
   devEmitTestEvent,
-  nodePing,
   restartSupervisor,
 } from "../ipc/commands";
 import { onUnityStatusChanged } from "../ipc/events";
@@ -61,8 +59,6 @@ export default function SettingsRoute() {
 
   // #region Local state
 
-  const [pingResult, setPingResult] = useState<string | null>(null);
-  const [pinging, setPinging] = useState(false);
   const [restartResult, setRestartResult] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [unityToolResult, setUnityToolResult] = useState<string | null>(null);
@@ -127,26 +123,6 @@ export default function SettingsRoute() {
     catch
     {
       return String(err);
-    }
-  };
-
-  const handlePing = async () => {
-    setPinging(true);
-    setPingResult("…");
-    const start = performance.now();
-    try
-    {
-      const pong = await nodePing();
-      const elapsed = Math.round(performance.now() - start);
-      setPingResult(`pong=${pong} (${elapsed}ms)`);
-    } 
-    catch (err) 
-    {
-      setPingResult(`error: ${formatError(err)}`);
-    } 
-    finally 
-    {
-      setPinging(false);
     }
   };
 
@@ -245,26 +221,6 @@ export default function SettingsRoute() {
               </button>
               <p className="mt-1 text-xs text-slate-500">
                 Polling reverts Unity to "connected" within ~2s.
-              </p>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => void handlePing()}
-                disabled={pinging}
-                className="rounded bg-sky-700 px-3 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Ping Node SDK
-              </button>
-              {pingResult !== null && (
-                <p className="mt-1 font-mono text-xs text-slate-400">
-                  {pingResult}
-                </p>
-              )}
-              <p className="mt-1 text-xs text-slate-500">
-                Round-trips a JSON-RPC `ping`. Watch DevTools console for the
-                node heartbeat (every 5s).
               </p>
             </div>
 

@@ -239,10 +239,8 @@ async fn detect_claude_authenticated() -> bool {
 ///
 /// Path is anchored at `CARGO_MANIFEST_DIR` (= `App~/src-tauri/` at compile
 /// time), walked up one level to `App~/`, then joined with the runtime
-/// subtree. Same dev-only resolution caveat as
-/// `node_supervisor::spawn::resolve_stub_script`: production binary
-/// placement may need a different anchor; that is a Feature 02 task 7.x
-/// concern, not a 1.1 one.
+/// subtree. Dev-only resolution: production binary placement may need a
+/// different anchor; out of scope for the install detection probe itself.
 async fn detect_sdk_installed() -> bool {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let app_dir = match manifest.parent() {

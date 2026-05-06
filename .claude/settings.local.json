@@ -17,7 +17,9 @@
       "Bash(cmd *)",
       "Bash(claude --version)",
       "Bash(where.exe claude *)",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "Bash(pwsh *)",
+      "Bash(powershell.exe *)"
     ]
   }
 }

@@ -15,7 +15,6 @@ import type {
   Message,
   MessageStreamChunkPayload,
   MessageStreamCompletePayload,
-  NodeLogPayload,
   PermissionModeChangedPayload,
   PermissionRequestedPayload,
   RouteRequestedPayload,
@@ -55,12 +54,6 @@ export const onMessageStreamComplete = wrap<MessageStreamCompletePayload>("messa
 export const onAskUserRequested = wrap<AskUserRequestedPayload>("ask-user-requested");
 
 export const onPermissionRequested = wrap<PermissionRequestedPayload>("permission-requested");
-
-// #endregion
-
-// #region Diagnostics
-
-export const onNodeLog = wrap<NodeLogPayload>("node-log");
 
 // #endregion
 

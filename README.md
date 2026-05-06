@@ -310,6 +310,17 @@ mcp-game-deck/
 
 ---
 
+## Third-Party Dependencies
+
+MCP Game Deck integrates with proprietary software that is **not bundled** with this package and is governed by separate terms:
+
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — Anthropic's CLI agent. Required at runtime for both the integrated Chat UI (via the Agent SDK) and direct CLI usage. Subject to [Anthropic's Usage Policy](https://www.anthropic.com/legal/aup) and [Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms).
+- **[@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)** — Used by the Chat UI to drive Claude Code from a Node.js process. Same Anthropic terms apply.
+
+The MIT License of this repository (see below) covers **only** the source code authored here. Users are responsible for installing Claude Code separately, maintaining their own Anthropic API authentication, and complying with Anthropic's terms.
+
+---
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
