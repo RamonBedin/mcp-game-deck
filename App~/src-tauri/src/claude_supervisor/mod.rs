@@ -11,6 +11,7 @@ pub mod paths;
 pub mod runtime_setup;
 pub mod sdk_install;
 pub mod spawn;
+pub mod windows_hygiene;
 
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;

@@ -144,6 +144,8 @@ pub fn spawn_node_child(
         );
     }
 
+    crate::claude_supervisor::windows_hygiene::apply(&mut cmd);
+
     cmd.spawn()
 }
 

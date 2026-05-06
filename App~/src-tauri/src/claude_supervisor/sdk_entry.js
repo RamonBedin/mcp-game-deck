@@ -21,6 +21,12 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 
+// region: stdio hygiene
+
+process.stdin.setEncoding("utf8");
+
+// endregion
+
 // region: stdout protocol
 
 /**
@@ -565,6 +571,12 @@ async function handleInput(text, attachments)
   const activeBlocks = new Map();
   try
   {
+    // NOTE: when F08 (Rules Page) starts injecting system prompts,
+    // long content should reach the SDK via `appendSystemPromptFile`
+    // (a path), not `appendSystemPrompt` (an inline string). Inline
+    // strings round-trip through the SDK → claude CLI handoff and
+    // bump into Windows' ~32KB CreateProcess command-line ceiling on
+    // long rule sets; the file-path form sidesteps it entirely.
     const queryOptions = {
       cwd: projectPath,
       includePartialMessages: true,
