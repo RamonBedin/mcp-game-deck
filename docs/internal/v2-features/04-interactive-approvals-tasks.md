@@ -24,7 +24,7 @@
 | 2.2 | Rust command — `respond_to_request(requestId, decision)` writes to stdin | S | ✅ | 2026-05-06 | + `withGlobalTauri: true` enabled in `tauri.conf.json` for DevTools probing; `write_stdin_line` extracted as shared helper on `ClaudeSupervisor` |
 | 2.3 | TS bindings — replace stub types, add respondToRequest, extend Block union | S | ✅ | 2026-05-06 | F01 stubs (`AskUserType`, old payloads) replaced; events.ts F01 dead code left for post-F04 housekeeping. **Group 2 closed (3/3).** |
 | 3.1 | react-markdown dep + markdown-renderers.tsx with Tailwind component overrides | S | ✅ | 2026-05-06 | v9 API adaptation: code renderer split into `pre` + `code` overrides (v9 removed the `inline` prop). Inline detection via `language-*` className regex + newline heuristic. Edge case (fenced single-line without language hint renders as inline pill) accepted — doesn't occur with Claude's actual output. |
-| 3.2 | RequestCard base — chrome, markdown body, state visuals (pending/answered/interrupted/auto-allowed) | M | ⏳ | | |
+| 3.2 | RequestCard base — chrome, markdown body, state visuals (pending/answered/interrupted/auto-allowed) | M | ✅ | 2026-05-06 | Wrapper plain `<div>` (prose classes removed — redundant without @tailwindcss/typography); auto-allowed early-return before chrome (defensive duplicate of BlockView 3.5 inline render); emoji icons with aria-hidden until F09 swaps to lucide |
 | 3.3 | PermissionRequestCard variant — Allow / Allow Always / Deny actions | S | ⏳ | | |
 | 3.4 | QuestionCard variant — 1-N stacked questions with single/multi/free-text response types | M | ⏳ | | |
 | 3.5 | Block integration — conversationStore "request" branch + ChatRoute BlockView routing | S | ⏳ | | |
