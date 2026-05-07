@@ -1,5 +1,8 @@
+import ReactMarkdown from "react-markdown";
+
 import type { PermissionRequestedPayload } from "../../ipc/types";
 
+import { markdownRenderers } from "./markdown-renderers";
 import { RequestCard, type RequestCardState } from "./RequestCard";
 
 const INPUT_PREVIEW_LIMIT = 800;
@@ -81,6 +84,9 @@ export function PermissionRequestCard(props: PermissionRequestCardProps)
   const { payload, state, outcome, onDecision } = props;
   const isPending = state === "pending";
   const bodyMarkdown = formatPermissionBody(payload);
+  const body = (
+    <ReactMarkdown components={markdownRenderers}>{bodyMarkdown}</ReactMarkdown>
+  );
   const caption = state === "answered" && outcome !== undefined ? OUTCOME_LABEL[outcome] : null;
   const label = state === "auto-allowed" ? payload.toolName : "Permission required";
 
@@ -119,7 +125,7 @@ export function PermissionRequestCard(props: PermissionRequestCardProps)
     <RequestCard
       variant="permission"
       label={label}
-      bodyMarkdown={bodyMarkdown}
+      body={body}
       agentId={payload.agentId}
       state={state}
       footer={footer}

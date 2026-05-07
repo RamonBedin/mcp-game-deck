@@ -1,7 +1,4 @@
 import type { ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
-
-import { markdownRenderers } from "./markdown-renderers";
 
 /**
  * Visual lifecycle of a request card. Drives the chrome opacity and
@@ -45,7 +42,7 @@ export interface RequestCardProps
 {
   variant: RequestCardVariant;
   label: string;
-  bodyMarkdown: string;
+  body: ReactNode;
   agentId: string | null;
   state: RequestCardState;
   footer: ReactNode;
@@ -67,7 +64,7 @@ export interface RequestCardProps
  */
 export function RequestCard(props: RequestCardProps)
 {
-  const { variant, label, bodyMarkdown, agentId, state, footer } = props;
+  const { variant, label, body, agentId, state, footer } = props;
 
   if (state === "auto-allowed")
   {
@@ -103,11 +100,7 @@ export function RequestCard(props: RequestCardProps)
           </span>
         )}
       </div>
-      <div>
-        <ReactMarkdown components={markdownRenderers}>
-          {bodyMarkdown}
-        </ReactMarkdown>
-      </div>
+      <div>{body}</div>
       <div className="mt-3 flex flex-wrap gap-2 justify-end">{footer}</div>
       {state === "interrupted" && (
         <div className="text-xs text-slate-500 mt-2">
