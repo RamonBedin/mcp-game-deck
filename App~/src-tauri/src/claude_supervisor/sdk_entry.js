@@ -539,12 +539,31 @@ function makeTurnId()
  * callback (which fires synchronously from inside the SDK during
  * `query()` execution) can stamp every emitted request envelope with
  * the same `turnId` as the surrounding text/tool-use blocks. A single
- * mutable slot is safe because `handleInput` is awaited in the stdin
- * for-await loop — only one round-trip runs at a time.
+ * mutable slot is safe because `handleInput` calls are serialized
+ * through the {@link inputQueue} Promise chain in the stdin loop —
+ * only one round-trip runs at a time.
  *
  * @type {string | null}
  */
 let currentTurnId = null;
+
+/**
+ * Promise chain used to serialize successive `handleInput` calls
+ * without blocking the stdin `for await` loop. Each new `input`
+ * message is appended to the chain via `.then()`; control messages
+ * (`respond-to-request`, `setPermissionMode`, etc.) bypass the chain
+ * and are processed immediately.
+ *
+ * Why this matters: `handleInput` blocks until `query()` finishes,
+ * which itself blocks while `canUseToolCallback` awaits the Promise
+ * stored in {@link pending}. That Promise is only resolved when a
+ * `respond-to-request` line arrives on stdin — which the loop must
+ * still be free to read. `await handleInput(…)` directly inside the
+ * loop deadlocks the whole supervisor.
+ *
+ * @type {Promise<void>}
+ */
+let inputQueue = Promise.resolve();
 
 /**
  * Builds the `mcpServers` config passed to `query()` when the host
@@ -908,7 +927,12 @@ for await (const line of rl)
   if (parsed?.type === "input" && typeof parsed.text === "string")
   {
     const attachments = Array.isArray(parsed.attachments) ? parsed.attachments.filter((p) => typeof p === "string") : [];
-    await handleInput(parsed.text, attachments);
+    inputQueue = inputQueue
+      .then(() => handleInput(parsed.text, attachments))
+      .catch((err) => {
+        debug("input handler error:", err);
+        emitError(err instanceof Error ? err.message : String(err));
+      });
   }
   else if (parsed?.type === "setPermissionMode" && typeof parsed.mode === "string")
   {
@@ -936,6 +960,38 @@ for await (const line of rl)
   else if (parsed?.type === "healthCheck")
   {
     void runHealthCheck();
+  }
+  else if (parsed?.type === "respond-to-request" && typeof parsed.requestId === "string")
+  {
+    const entry = pending.get(parsed.requestId);
+
+    if (entry === undefined)
+    {
+      debug(`[canUseTool] received response for unknown requestId ${parsed.requestId} — ignoring`);
+      continue;
+    }
+
+    const decision = parsed.decision;
+    const actualKind = decision?.kind;
+
+    if (actualKind !== entry.requestType)
+    {
+      pending.delete(parsed.requestId);
+      debug(`[canUseTool] decision kind mismatch for ${parsed.requestId}: expected ${entry.requestType}, got ${actualKind}`);
+      entry.reject(new Error(`Decision kind mismatch: expected ${entry.requestType}, got ${actualKind}`));
+      continue;
+    }
+
+    pending.delete(parsed.requestId);
+
+    if (entry.requestType === "question")
+    {
+      entry.resolve(decision.answer);
+    }
+    else
+    {
+      entry.resolve({ outcome: decision.outcome });
+    }
   }
 }
 

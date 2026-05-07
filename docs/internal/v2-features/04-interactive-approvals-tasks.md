@@ -18,10 +18,10 @@
 |---|------|------|--------|------|-------|
 | 1.1 | `canUseTool` callback skeleton in sdk-entry.js — pending Map + dispatch | S | ✅ | 2026-05-06 | Schema fix: `updatedInput` required on `behavior:"allow"` |
 | 1.2 | Emit branches — ask-user-requested + permission-requested + request-resolved | S | ✅ | 2026-05-06 | Used existing `emit()` helper (matches F02 envelope `{"message":{...}}`) |
-| 1.3 | `respond-to-request` stdin handler — resolve awaited promises | S | ⏳ | | |
+| 1.3 | `respond-to-request` stdin handler — resolve awaited promises | S | ✅ | 2026-05-06 | + deadlock fix: `handleInput` serialized via `inputQueue` Promise chain (was blocking `for await` loop, preventing `respond-to-request` from being read while `canUseTool` awaited resolution) |
 | 1.4 | In-session "Allow Always" cache — keyed by toolName + stable input hash | S | ⏳ | | |
 | 2.1 | Rust types — AgentMessage variants + DecisionPayload + Block "request" variant | S | ✅ | 2026-05-06 | + match arm extension in `spawn.rs::read_stdout` (compile fix) |
-| 2.2 | Rust command — `respond_to_request(requestId, decision)` writes to stdin | S | ⏳ | | |
+| 2.2 | Rust command — `respond_to_request(requestId, decision)` writes to stdin | S | ✅ | 2026-05-06 | + `withGlobalTauri: true` enabled in `tauri.conf.json` for DevTools probing; `write_stdin_line` extracted as shared helper on `ClaudeSupervisor` |
 | 2.3 | TS bindings — replace stub types, add respondToRequest, extend Block union | S | ⏳ | | |
 | 3.1 | react-markdown dep + markdown-renderers.tsx with Tailwind component overrides | S | ⏳ | | |
 | 3.2 | RequestCard base — chrome, markdown body, state visuals (pending/answered/interrupted/auto-allowed) | M | ⏳ | | |
