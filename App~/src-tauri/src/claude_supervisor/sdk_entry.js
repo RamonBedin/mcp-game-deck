@@ -193,20 +193,27 @@ function emitPermissionRequested(requestId, turnId, agentId, toolName, input, bl
 
 /**
  * Emits a `request-resolved` envelope: the awaited `canUseTool`
- * promise resolved (either via user response or, after task 1.4 lands,
- * via the in-session Allow Always cache short-circuit). Lets the host
- * transition the matching card to its terminal visual state.
+ * promise resolved (either via user response or via the in-session
+ * Allow Always cache short-circuit). Lets the host transition the
+ * matching card to its terminal visual state.
  *
  * @param {string} requestId - SDK's `toolUseID` for this invocation.
  * @param {"allow" | "allow-always" | "deny" | "auto-allowed"} outcome
  *   - The terminal decision applied to the request.
  * @param {object | null | undefined} answer - When the request was a
  *   question, the `AskUserQuestionOutput` payload; else null.
+ * @param {string | null | undefined} toolName - Populated specifically
+ *   on `outcome === "auto-allowed"` so the host can synthesize a
+ *   compact block in the chat (task 3.5) without having seen a prior
+ *   `permission-requested`. Null/undefined for other outcomes.
+ * @param {string | null | undefined} turnId - Same as `toolName` —
+ *   present on `auto-allowed` to attach the synthetic block to the
+ *   correct turn.
  * @returns {void}
  */
-function emitRequestResolved(requestId, outcome, answer)
+function emitRequestResolved(requestId, outcome, answer, toolName, turnId)
 {
-  emit({ type: "request-resolved", requestId, outcome, answer: answer ?? null });
+  emit({ type: "request-resolved", requestId, outcome, answer: answer ?? null, toolName: toolName ?? null, turnId: turnId ?? null });
 }
 
 /**
@@ -477,6 +484,45 @@ debug("boot", JSON.stringify({
 /** @typedef {import("@anthropic-ai/claude-agent-sdk").PermissionResult} PermissionResult */
 
 const pending = new Map();
+const allowAlwaysCache = new Set();
+
+/**
+ * Deterministic JSON serialization with recursively sorted object keys.
+ * Used to build cache keys whose value depends on the *content* of an
+ * input, not its incidental property order. Arrays preserve order
+ * (positional semantics matter in tool inputs).
+ *
+ * @param {unknown} value - Any JSON-serializable value.
+ * @returns {string} Canonical JSON string.
+ */
+function stableJSON(value)
+{
+  if (value === null || typeof value !== "object")
+  {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value))
+  {
+    return "[" + value.map(stableJSON).join(",") + "]";
+  }
+
+  const keys = Object.keys(value).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableJSON(value[k])).join(",") + "}";
+}
+
+/**
+ * Builds the Allow Always cache key for a (toolName, input) pair.
+ *
+ * @param {string} toolName - SDK tool name being gated.
+ * @param {unknown} input - Tool input that would be passed to the call.
+ * @returns {string} Key suitable for `allowAlwaysCache.has` /
+ *   `allowAlwaysCache.add`.
+ */
+function cacheKey(toolName, input)
+{
+  return `${toolName}:${stableJSON(input)}`;
+}
 
 /**
  * Single dispatcher for both kinds of user-input requests Claude Code
@@ -506,8 +552,16 @@ async function canUseToolCallback(toolName, input, opts)
     return { behavior: "allow", updatedInput: answer };
   }
 
+  const key = cacheKey(toolName, input);
+
+  if (allowAlwaysCache.has(key))
+  {
+    emitRequestResolved(requestId, "auto-allowed", null, toolName, turnId);
+    return { behavior: "allow", updatedInput: input };
+  }
+
   emitPermissionRequested(requestId, turnId, agentId, toolName, input, opts.blockedPath ?? null, opts.decisionReason ?? null,);
-  const decision = await new Promise((resolve, reject) => { pending.set(requestId, { resolve, reject, requestType: "permission" });});
+  const decision = await new Promise((resolve, reject) => { pending.set(requestId, { resolve, reject, requestType: "permission", toolName, input });});
   emitRequestResolved(requestId, decision.outcome);
 
   if (decision.outcome === "deny")
@@ -990,6 +1044,11 @@ for await (const line of rl)
     }
     else
     {
+      if (decision.outcome === "allow-always")
+      {
+        allowAlwaysCache.add(cacheKey(entry.toolName, entry.input));
+      }
+      
       entry.resolve({ outcome: decision.outcome });
     }
   }

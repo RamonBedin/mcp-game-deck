@@ -269,6 +269,25 @@ export interface SdkInstallFailedPayload
 }
 
 /**
+ * Payload for the `request-resolved` agent message — the canUseTool
+ * promise resolved either via user click (allow / allow-always /
+ * deny), via the in-session Allow Always cache short-circuit
+ * (`auto-allowed`), or via a question-answer round-trip. `toolName`
+ * and `turnId` are populated specifically on `auto-allowed` so the
+ * React store can synthesize a compact "Auto-allowed: <toolName>"
+ * block (task 3.5) without having seen a prior `permission-requested`
+ * — the cache short-circuit means no card was ever rendered.
+ */
+export interface RequestResolvedPayload
+{
+  requestId: string;
+  outcome: "allow" | "allow-always" | "deny" | "auto-allowed";
+  answer: unknown;
+  toolName: string | null;
+  turnId: string | null;
+}
+
+/**
  * Tagged message envelope emitted by `sdk-entry.js` and re-emitted
  * to React via the `agent-message` Tauri event.
  *
@@ -287,7 +306,8 @@ export type AgentMessage =
   | { type: "error"; message: string }
   | { type: "permission-mode-changed"; mode: PermissionMode }
   | { type: "health-ok" }
-  | { type: "health-failed"; message: string };
+  | { type: "health-failed"; message: string }
+  | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: unknown; toolName: string | null; turnId: string | null };
 
 /** Wire payload for `agent-message`. */
 export interface AgentMessagePayload

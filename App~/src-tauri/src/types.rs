@@ -350,6 +350,8 @@ pub enum AgentMessage {
         request_id: String,
         outcome: String,
         answer: Option<Value>,
+        tool_name: Option<String>,
+        turn_id: Option<String>,
     },
     HealthOk,
     HealthFailed {
