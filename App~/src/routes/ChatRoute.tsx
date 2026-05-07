@@ -10,13 +10,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import PermissionModeToggle from "../components/PermissionModeToggle";
+import { PermissionRequestCard } from "../components/requests/PermissionRequestCard";
+import { QuestionCard } from "../components/requests/QuestionCard";
 import SessionList from "../components/SessionList";
 import ToolResultBlock from "../components/ToolResultBlock";
 import ToolUseBlock from "../components/ToolUseBlock";
 import { useFileDragDrop } from "../hooks/useFileDragDrop";
-import { setPermissionMode as setPermissionModeCommand } from "../ipc/commands";
+import { respondToRequest, setPermissionMode as setPermissionModeCommand,} from "../ipc/commands";
 import { onAgentMessage } from "../ipc/events";
-import type { Block, MessageRole, PermissionMode } from "../ipc/types";
+import type { AskUserQuestionOutput, AskUserRequestedPayload, Block, MessageRole, PermissionMode, PermissionRequestedPayload,} from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
 // #region Helpers
@@ -60,6 +62,8 @@ const basenameOf = (filePath: string): string => {
  */
 function BlockView({ block }: { block: Block })
 {
+  const markRequestAnswered = useConversationStore((s) => s.markRequestAnswered,);
+
   switch (block.type)
   {
     case "text":
@@ -74,6 +78,57 @@ function BlockView({ block }: { block: Block })
       return (
         <ToolResultBlock content={block.content} isError={block.isError} />
       );
+    case "request": {
+      if (block.state === "auto-allowed")
+      {
+        const payload = block.payload as PermissionRequestedPayload;
+        return (
+          <div className="text-xs text-slate-500 italic my-2">
+            Auto-allowed: {payload.toolName}
+          </div>
+        );
+      }
+
+      if (block.subtype === "permission")
+      {
+        const payload = block.payload as PermissionRequestedPayload;
+        const handleDecision = (
+          outcome: "allow" | "allow-always" | "deny",
+        ) =>
+        {
+          markRequestAnswered(block.requestId, undefined, outcome);
+          void respondToRequest(block.requestId, {
+            kind: "permission",
+            outcome,
+          });
+        };
+        return (
+          <PermissionRequestCard
+            payload={payload}
+            state={block.state}
+            outcome={
+              block.outcome === "auto-allowed" ? undefined : block.outcome
+            }
+            onDecision={handleDecision}
+          />
+        );
+      }
+
+      const payload = block.payload as AskUserRequestedPayload;
+      const handleQuestionSubmit = (answer: AskUserQuestionOutput) =>
+      {
+        markRequestAnswered(block.requestId, answer);
+        void respondToRequest(block.requestId, { kind: "question", answer });
+      };
+      return (
+        <QuestionCard
+          payload={payload}
+          state={block.state}
+          onSubmit={handleQuestionSubmit}
+          previousAnswer={block.answer}
+        />
+      );
+    }
   }
 }
 
@@ -92,6 +147,9 @@ export default function ChatRoute() {
   const appendToolResultBlock = useConversationStore((s) => s.appendToolResultBlock,);
   const completeTurn = useConversationStore((s) => s.completeTurn);
   const appendErrorMessage = useConversationStore((s) => s.appendErrorMessage);
+  const appendRequestBlock = useConversationStore((s) => s.appendRequestBlock);
+  const appendAutoAllowedBlock = useConversationStore((s) => s.appendAutoAllowedBlock,);
+  const markRequestAnswered = useConversationStore((s) => s.markRequestAnswered,);
   const permissionMode = useConversationStore((s) => s.permissionMode);
   const setPermissionMode = useConversationStore((s) => s.setPermissionMode);
 
@@ -152,6 +210,54 @@ export default function ChatRoute() {
         case "error":
           appendErrorMessage(m.message);
           break;
+        case "permission-requested":
+          appendRequestBlock(m.turnId, {
+            type: "request",
+            requestId: m.requestId,
+            subtype: "permission",
+            payload: {
+              requestId: m.requestId,
+              turnId: m.turnId,
+              agentId: m.agentId,
+              toolName: m.toolName,
+              input: m.input,
+              blockedPath: m.blockedPath,
+              decisionReason: m.decisionReason,
+            },
+            state: "pending",
+          });
+          break;
+        case "ask-user-requested":
+          appendRequestBlock(m.turnId, {
+            type: "request",
+            requestId: m.requestId,
+            subtype: "question",
+            payload: {
+              requestId: m.requestId,
+              turnId: m.turnId,
+              agentId: m.agentId,
+              input: m.input,
+            },
+            state: "pending",
+          });
+          break;
+        case "request-resolved":
+          if (m.outcome === "auto-allowed")
+          {
+            if (m.turnId !== null && m.toolName !== null)
+            {
+              appendAutoAllowedBlock(m.turnId, m.requestId, m.toolName);
+            }
+          }
+          else
+          {
+            markRequestAnswered(
+              m.requestId,
+              m.answer ?? undefined,
+              m.outcome,
+            );
+          }
+          break;
         case "ready":
         case "assistant-text":
           break;
@@ -181,6 +287,9 @@ export default function ChatRoute() {
     appendToolResultBlock,
     completeTurn,
     appendErrorMessage,
+    appendRequestBlock,
+    appendAutoAllowedBlock,
+    markRequestAnswered,
   ]);
 
   // Auto-anchor the scroll to the bottom on every new message.
@@ -258,7 +367,10 @@ export default function ChatRoute() {
                 </div>
                 <div className="space-y-2">
                   {m.blocks.map((b, i) => (
-                    <BlockView key={i} block={b} />
+                    <BlockView
+                      key={b.type === "request" ? b.requestId : i}
+                      block={b}
+                    />
                   ))}
                 </div>
               </div>

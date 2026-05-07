@@ -253,23 +253,22 @@ export interface PermissionRequestedPayload
 }
 
 /**
- * One answer slot in an `AskUserQuestionOutput`. `selectedOptions`
- * holds the labels the user picked; `freeTextResponse` is set when
- * the user typed instead of selecting (free-text fallback).
- */
-export interface AskUserQuestionAnswer
-{
-  selectedOptions: string[];
-  freeTextResponse?: string;
-}
-
-/**
- * Output shape `AskUserQuestion` returns to the SDK. One entry per
- * question in the originating `AskUserQuestionInput`.
+ * Output shape returned to the SDK after the user answers an
+ * `AskUserQuestion`. Mirrors `AskUserQuestionOutput` from
+ * `@anthropic-ai/claude-agent-sdk` (TypeScript reference, April 2026).
+ *
+ * - `questions` echoes `AskUserQuestionInput.questions` verbatim so
+ *   the SDK can re-attach the original schema to the answers.
+ * - `answers` is keyed by `question.question` (the prompt string
+ *   itself) and the value is the selected label. Multi-select
+ *   questions concatenate the labels with `", "`. Free-text
+ *   responses (when the user picked an "Other"-conventioned option
+ *   and typed) carry the typed string instead of any label.
  */
 export interface AskUserQuestionOutput
 {
-  answers: AskUserQuestionAnswer[];
+  questions: AskUserQuestion[];
+  answers: Record<string, string>;
 }
 
 /**

@@ -79,8 +79,6 @@ export function QuestionCard(props: QuestionCardProps)
   const [selectedOptions, setSelectedOptions] = useState<string[][]>(() => questions.map(() => []),);
   const [freeText, setFreeText] = useState<string[]>(() => questions.map(() => ""),);
   const showAnsweredView = state === "answered" && previousAnswer !== undefined;
-  const effectiveSelected = showAnsweredView ? previousAnswer.answers.map((a) => a.selectedOptions) : selectedOptions;
-  const effectiveFreeText = showAnsweredView ? previousAnswer.answers.map((a) => a.freeTextResponse ?? "") : freeText;
 
   const toggleOption = (qIdx: number, label: string, multiSelect: boolean) =>
   {
@@ -126,20 +124,28 @@ export function QuestionCard(props: QuestionCardProps)
 
   const handleSubmit = () =>
   {
-    const answer: AskUserQuestionOutput = {
-      answers: questions.map((_, idx) =>
+    const answers: Record<string, string> = {};
+
+    questions.forEach((q, idx) =>
+    {
+      const free = freeText[idx]?.trim();
+      const selected = selectedOptions[idx] ?? [];
+
+      if (isFreeTextActive(idx) && free !== undefined && free.length > 0)
       {
-        const free = freeText[idx]?.trim();
+        answers[q.question] = free;
+      }
+      else if (selected.length > 0)
+      {
+        answers[q.question] = selected.join(", ");
+      }
+      else
+      {
+        answers[q.question] = "";
+      }
+    });
 
-        if (isFreeTextActive(idx) && free !== undefined && free.length > 0)
-        {
-          return { selectedOptions: [], freeTextResponse: free };
-        }
-
-        return { selectedOptions: selectedOptions[idx] };
-      }),
-    };
-
+    const answer: AskUserQuestionOutput = { questions, answers };
     onSubmit(answer);
   };
 
@@ -147,11 +153,12 @@ export function QuestionCard(props: QuestionCardProps)
     <div>
       {questions.map((q, idx) =>
       {
-        const selectedForQ = effectiveSelected[idx] ?? [];
-        const freeTextForQ = effectiveFreeText[idx] ?? "";
+        const selectedForQ = selectedOptions[idx] ?? [];
+        const freeTextForQ = freeText[idx] ?? "";
         const freeTextOpt = q.options.find(isFreeTextOption);
-        const showFreeText =
-          freeTextOpt !== undefined && selectedForQ.includes(freeTextOpt.label);
+        const showFreeText = freeTextOpt !== undefined && selectedForQ.includes(freeTextOpt.label);
+
+        const previousAnswerStr = showAnsweredView ? previousAnswer.answers[q.question] ?? "" : null;
 
         return (
           <div
@@ -166,47 +173,53 @@ export function QuestionCard(props: QuestionCardProps)
             <ReactMarkdown components={markdownRenderers}>
               {q.question}
             </ReactMarkdown>
-            <div className="mt-2 grid grid-cols-1 gap-1.5">
-              {q.options.map((opt) =>
-              {
-                const isSelected = selectedForQ.includes(opt.label);
-                return (
-                  <label
-                    key={opt.label}
-                    className="flex items-start gap-2 rounded p-1.5 hover:bg-slate-800/40 cursor-pointer"
-                  >
-                    <input
-                      type={q.multiSelect ? "checkbox" : "radio"}
-                      name={`question-${idx}`}
-                      checked={isSelected}
-                      onChange={() =>
-                        toggleOption(idx, opt.label, q.multiSelect)
-                      }
-                      disabled={!isPending}
-                      className="mt-1"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-slate-200">{opt.label}</div>
-                      {opt.description && (
-                        <ReactMarkdown components={markdownRenderers}>
-                          {opt.description}
-                        </ReactMarkdown>
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
-              {showFreeText && (
-                <input
-                  type="text"
-                  value={freeTextForQ}
-                  onChange={(e) => setFreeTextAt(idx, e.target.value)}
-                  placeholder="Type your custom answer..."
-                  disabled={!isPending}
-                  className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-100 disabled:opacity-50"
-                />
-              )}
-            </div>
+            {showAnsweredView ? (
+              <div className="mt-2 text-sm text-slate-300 italic">
+                {previousAnswerStr ?? "(no answer)"}
+              </div>
+            ) : (
+              <div className="mt-2 grid grid-cols-1 gap-1.5">
+                {q.options.map((opt) =>
+                {
+                  const isSelected = selectedForQ.includes(opt.label);
+                  return (
+                    <label
+                      key={opt.label}
+                      className="flex items-start gap-2 rounded p-1.5 hover:bg-slate-800/40 cursor-pointer"
+                    >
+                      <input
+                        type={q.multiSelect ? "checkbox" : "radio"}
+                        name={`question-${idx}`}
+                        checked={isSelected}
+                        onChange={() =>
+                          toggleOption(idx, opt.label, q.multiSelect)
+                        }
+                        disabled={!isPending}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-slate-200">{opt.label}</div>
+                        {opt.description && (
+                          <ReactMarkdown components={markdownRenderers}>
+                            {opt.description}
+                          </ReactMarkdown>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+                {showFreeText && (
+                  <input
+                    type="text"
+                    value={freeTextForQ}
+                    onChange={(e) => setFreeTextAt(idx, e.target.value)}
+                    placeholder="Type your custom answer..."
+                    disabled={!isPending}
+                    className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-100 disabled:opacity-50"
+                  />
+                )}
+              </div>
+            )}
           </div>
         );
       })}
