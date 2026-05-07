@@ -71,7 +71,8 @@ export type MessageId = string;
 export type Block =
   | { type: "text"; text: string }
   | { type: "tool-use"; toolUseId: string; name: string; input: unknown }
-  | { type: "tool-result"; toolUseId: string; content: unknown; isError: boolean };
+  | { type: "tool-result"; toolUseId: string; content: unknown; isError: boolean }
+  | { type: "request"; requestId: string; subtype: "permission" | "question"; payload: PermissionRequestedPayload | AskUserRequestedPayload; state: "pending" | "answered" | "interrupted" | "auto-allowed"; answer?: AskUserQuestionOutput; outcome?: "allow" | "allow-always" | "deny" | "auto-allowed" };
 
 /**
  * A single chat message exchanged with the agent. Content lives in
@@ -217,25 +218,69 @@ export interface MessageStreamCompletePayload
   messageId: MessageId;
 }
 
-/** Shape of the answer the agent expects from the user. */
-export type AskUserType = "single" | "multi" | "free-text";
-
-/** Payload for `ask-user-requested`. */
-export interface AskUserRequestedPayload
+/**
+ * One question inside an `AskUserQuestionInput`. Mirrors the SDK's
+ * `@anthropic-ai/claude-agent-sdk` shape so the React side can render
+ * the question card without translation.
+ */
+export interface AskUserQuestion
 {
-  questionId: string;
+  header?: string;
   question: string;
-  options?: string[];
-  type: AskUserType;
+  multiSelect: boolean;
+  options: Array<{ label: string; description?: string }>;
 }
 
-/** Payload for `permission-requested`. */
+/** Payload for the `ask-user-requested` agent message. */
+export interface AskUserRequestedPayload
+{
+  requestId: string;
+  turnId: string;
+  agentId: string | null;
+  input: { questions: AskUserQuestion[] };
+}
+
+/** Payload for the `permission-requested` agent message. */
 export interface PermissionRequestedPayload
 {
   requestId: string;
-  tool: string;
-  params: unknown;
+  turnId: string;
+  agentId: string | null;
+  toolName: string;
+  input: unknown;
+  blockedPath: string | null;
+  decisionReason: string | null;
 }
+
+/**
+ * One answer slot in an `AskUserQuestionOutput`. `selectedOptions`
+ * holds the labels the user picked; `freeTextResponse` is set when
+ * the user typed instead of selecting (free-text fallback).
+ */
+export interface AskUserQuestionAnswer
+{
+  selectedOptions: string[];
+  freeTextResponse?: string;
+}
+
+/**
+ * Output shape `AskUserQuestion` returns to the SDK. One entry per
+ * question in the originating `AskUserQuestionInput`.
+ */
+export interface AskUserQuestionOutput
+{
+  answers: AskUserQuestionAnswer[];
+}
+
+/**
+ * Payload for the `respond_to_request` Tauri command — mirrors the
+ * Rust `DecisionPayload` enum shape. Discriminated by `kind`:
+ * permission outcomes carry an `outcome`; question responses carry
+ * the structured `answer`.
+ */
+export type DecisionPayload =
+  | { kind: "permission"; outcome: "allow" | "allow-always" | "deny" }
+  | { kind: "question"; answer: AskUserQuestionOutput };
 
 /**
  * Payload for `route-requested` — single-instance callback asking the running
@@ -282,7 +327,7 @@ export interface RequestResolvedPayload
 {
   requestId: string;
   outcome: "allow" | "allow-always" | "deny" | "auto-allowed";
-  answer: unknown;
+  answer: AskUserQuestionOutput | null;
   toolName: string | null;
   turnId: string | null;
 }
@@ -307,7 +352,9 @@ export type AgentMessage =
   | { type: "permission-mode-changed"; mode: PermissionMode }
   | { type: "health-ok" }
   | { type: "health-failed"; message: string }
-  | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: unknown; toolName: string | null; turnId: string | null };
+  | { type: "ask-user-requested"; requestId: string; turnId: string; agentId: string | null; input: { questions: AskUserQuestion[] } }
+  | { type: "permission-requested"; requestId: string; turnId: string; agentId: string | null; toolName: string; input: unknown; blockedPath: string | null; decisionReason: string | null }
+  | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: AskUserQuestionOutput | null; toolName: string | null; turnId: string | null };
 
 /** Wire payload for `agent-message`. */
 export interface AgentMessagePayload

@@ -22,7 +22,7 @@
 | 1.4 | In-session "Allow Always" cache — keyed by toolName + stable input hash | S | ✅ | 2026-05-06 | + wire extension: `RequestResolved` variant gains `toolName`/`turnId` (Rust + TS pulled forward from 2.3) for auto-allowed synthetic blocks. **Group 1 closed (4/4).** |
 | 2.1 | Rust types — AgentMessage variants + DecisionPayload + Block "request" variant | S | ✅ | 2026-05-06 | + match arm extension in `spawn.rs::read_stdout` (compile fix) |
 | 2.2 | Rust command — `respond_to_request(requestId, decision)` writes to stdin | S | ✅ | 2026-05-06 | + `withGlobalTauri: true` enabled in `tauri.conf.json` for DevTools probing; `write_stdin_line` extracted as shared helper on `ClaudeSupervisor` |
-| 2.3 | TS bindings — replace stub types, add respondToRequest, extend Block union | S | ⏳ | | |
+| 2.3 | TS bindings — replace stub types, add respondToRequest, extend Block union | S | ✅ | 2026-05-06 | F01 stubs (`AskUserType`, old payloads) replaced; events.ts F01 dead code left for post-F04 housekeeping. **Group 2 closed (3/3).** |
 | 3.1 | react-markdown dep + markdown-renderers.tsx with Tailwind component overrides | S | ⏳ | | |
 | 3.2 | RequestCard base — chrome, markdown body, state visuals (pending/answered/interrupted/auto-allowed) | M | ⏳ | | |
 | 3.3 | PermissionRequestCard variant — Allow / Allow Always / Deny actions | S | ⏳ | | |
