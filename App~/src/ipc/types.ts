@@ -109,11 +109,18 @@ export interface SessionSummary
 
 // #region Plans
 
-/** Lightweight metadata for a plan file (used in list views). */
+/**
+ * Lightweight metadata for a plan file (used in list views).
+ *
+ * `description` is convenience-extracted from the file's YAML
+ * frontmatter so the list view doesn't have to read every plan's full
+ * body. `null` when absent, blank, or unparseable.
+ */
 export interface PlanMeta
 {
   name: string;
   lastModified: number;
+  description: string | null;
 }
 
 /**
@@ -123,9 +130,17 @@ export interface PlanMeta
  */
 export type PlanFrontmatter = Record<string, unknown>;
 
-/** Full contents of a plan, including its parsed frontmatter and body. */
-export interface Plan extends PlanMeta
+/**
+ * Full contents of a plan, including its parsed frontmatter and body.
+ *
+ * Mirrors Rust's `Plan` struct shape: independent of `PlanMeta` because
+ * `description` is a list-view convenience, while a full read returns
+ * the entire `frontmatter` map for callers that want it.
+ */
+export interface Plan
 {
+  name: string;
+  lastModified: number;
   content: string;
   frontmatter: PlanFrontmatter;
 }

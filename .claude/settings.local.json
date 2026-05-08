@@ -19,7 +19,8 @@
       "Bash(where.exe claude *)",
       "Bash(cargo test *)",
       "Bash(pwsh *)",
-      "Bash(powershell.exe *)"
+      "Bash(powershell.exe *)",
+      "Bash(cargo build *)"
     ]
   }
 }

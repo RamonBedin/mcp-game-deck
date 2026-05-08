@@ -141,11 +141,17 @@ pub struct SessionSummary {
 // region: Plans
 
 /// Lightweight metadata for a plan file (used in list views).
+///
+/// `description` is convenience-extracted from the file's YAML
+/// frontmatter so the list view doesn't have to read every plan's full
+/// body. Falls back to `None` when the field is absent, blank, or the
+/// frontmatter is malformed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanMeta {
     pub name: String,
     pub last_modified: i64,
+    pub description: Option<String>,
 }
 
 /// Free-form frontmatter map for plan documents.
