@@ -12,12 +12,13 @@ docs/internal/
 ├── v2-features/           ← one doc per feature; agreed features expand to root + `-spec.md` + `-tasks.md`
 │   ├── 01-external-app*           ← shipped (Apr 2026)
 │   ├── 02-claude-code-supervisor* ← shipped (Apr 2026)
-│   ├── 04-interactive-approvals*  ← design locked (absorbs former F05)
-│   ├── 06-plans-crud.md
+│   ├── 04-interactive-approvals*  ← shipped (Apr 2026), absorbs former F05
+│   ├── 06-plans-crud*             ← design locked May 2026, trio ready
 │   ├── 07-editor-status-pin*      ← shipped (Apr 2026)
 │   ├── 08-rules-page.md
 │   └── 09-design-handoff.md
-└── decisions/             ← architectural decision records (ADRs) when made
+├── architecture/          ← canonical architectural decision records (ADR-001 lives here)
+└── decisions/             ← earlier ADR convention; coexists with architecture/
 ```
 
 ## Conventions
@@ -34,7 +35,7 @@ docs/internal/
 8. **Milestone** — v1.2 / v2.0 / v2.1
 9. **Open questions** — unresolved design questions
 
-**ADR convention** — when a cross-cutting decision is made (e.g. "we picked Tauri over Electron"), write a short note in `decisions/` named `NNN-short-title.md`. Even one paragraph is fine. The point is recording WHY a choice was made so we don't re-debate it later.
+**ADR convention** — when a cross-cutting decision is made (e.g. "we picked Tauri over Electron"), write a short note in `decisions/` named `NNN-short-title.md`, or a longer one in `architecture/ADR-NNN-<title>.md` for big strategic shifts. Even one paragraph is fine for the short form. The point is recording WHY a choice was made so we don't re-debate it later. The two folders coexist for historical reasons; both are valid.
 
 ## Living docs
 
