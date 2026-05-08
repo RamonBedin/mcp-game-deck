@@ -16,6 +16,7 @@ import {checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus,} from "./
 import { onRouteRequested, onSupervisorStatusChanged } from "./ipc/events";
 import type { ClaudeInstallStatus } from "./ipc/types";
 import { useConnectionStore } from "./stores/connectionStore";
+import { useConversationStore } from "./stores/conversationStore";
 
 // #region Constants
 
@@ -138,6 +139,11 @@ export default function App()
       }
 
       setSupervisorStatus(payload.status);
+
+      if (payload.status === "crashed" || payload.status === "failed")
+      {
+        useConversationStore.getState().markAllPendingRequestsInterrupted();
+      }
     })
       .then((u) => {
         if (cancelled)

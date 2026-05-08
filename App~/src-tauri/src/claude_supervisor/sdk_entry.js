@@ -152,6 +152,71 @@ function emitHealthFailed(message)
 }
 
 /**
+ * Emits an `ask-user-requested` envelope: Claude is calling the
+ * built-in `AskUserQuestion` tool with one or more clarifying
+ * questions. The host renders a question card; the user's answer
+ * round-trips back via a `respond-to-request` stdin line (task 1.3).
+ *
+ * @param {string} requestId - SDK's `toolUseID` for this invocation.
+ * @param {string | null} turnId - Stable id of the current turn.
+ * @param {string | null} agentId - Subagent id when the call originates
+ *   from a delegated context, else null.
+ * @param {object} input - Raw `AskUserQuestionInput` from the SDK.
+ * @returns {void}
+ */
+function emitAskUserRequested(requestId, turnId, agentId, input)
+{
+  emit({ type: "ask-user-requested", requestId, turnId, agentId, input });
+}
+
+/**
+ * Emits a `permission-requested` envelope: Claude wants to call a tool
+ * that isn't auto-approved under the current `permissionMode`. The
+ * host renders a permission card; the user's choice round-trips back
+ * via a `respond-to-request` stdin line (task 1.3).
+ *
+ * @param {string} requestId - SDK's `toolUseID` for this invocation.
+ * @param {string | null} turnId - Stable id of the current turn.
+ * @param {string | null} agentId - Subagent id when the call originates
+ *   from a delegated context, else null.
+ * @param {string} toolName - Name of the tool the SDK is gating.
+ * @param {unknown} input - The tool input that would be passed to the call.
+ * @param {string | null} blockedPath - Filesystem path the tool would
+ *   touch, when the SDK supplied it; else null.
+ * @param {string | null} decisionReason - SDK's reason hint, when supplied; else null.
+ * @returns {void}
+ */
+function emitPermissionRequested(requestId, turnId, agentId, toolName, input, blockedPath, decisionReason)
+{
+  emit({ type: "permission-requested", requestId, turnId, agentId, toolName, input, blockedPath, decisionReason });
+}
+
+/**
+ * Emits a `request-resolved` envelope: the awaited `canUseTool`
+ * promise resolved (either via user response or via the in-session
+ * Allow Always cache short-circuit). Lets the host transition the
+ * matching card to its terminal visual state.
+ *
+ * @param {string} requestId - SDK's `toolUseID` for this invocation.
+ * @param {"allow" | "allow-always" | "deny" | "auto-allowed"} outcome
+ *   - The terminal decision applied to the request.
+ * @param {object | null | undefined} answer - When the request was a
+ *   question, the `AskUserQuestionOutput` payload; else null.
+ * @param {string | null | undefined} toolName - Populated specifically
+ *   on `outcome === "auto-allowed"` so the host can synthesize a
+ *   compact block in the chat (task 3.5) without having seen a prior
+ *   `permission-requested`. Null/undefined for other outcomes.
+ * @param {string | null | undefined} turnId - Same as `toolName` —
+ *   present on `auto-allowed` to attach the synthetic block to the
+ *   correct turn.
+ * @returns {void}
+ */
+function emitRequestResolved(requestId, outcome, answer, toolName, turnId)
+{
+  emit({ type: "request-resolved", requestId, outcome, answer: answer ?? null, toolName: toolName ?? null, turnId: turnId ?? null });
+}
+
+/**
  * Writes a debug line to stderr, prefixed with `[sdk-entry]`. Non-string args
  * are JSON-stringified so structured payloads remain inspectable in the host
  * log.
@@ -413,6 +478,162 @@ debug("boot", JSON.stringify({
 
 // endregion
 
+// region: canUseTool callback
+
+/** @typedef {import("@anthropic-ai/claude-agent-sdk").CanUseTool} CanUseTool */
+/** @typedef {import("@anthropic-ai/claude-agent-sdk").PermissionResult} PermissionResult */
+
+const pending = new Map();
+const allowAlwaysCache = new Set();
+
+/**
+ * Deterministic JSON serialization with recursively sorted object keys.
+ * Used to build cache keys whose value depends on the *content* of an
+ * input, not its incidental property order. Arrays preserve order
+ * (positional semantics matter in tool inputs).
+ *
+ * @param {unknown} value - Any JSON-serializable value.
+ * @returns {string} Canonical JSON string.
+ */
+function stableJSON(value)
+{
+  if (value === null || typeof value !== "object")
+  {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value))
+  {
+    return "[" + value.map(stableJSON).join(",") + "]";
+  }
+
+  const keys = Object.keys(value).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableJSON(value[k])).join(",") + "}";
+}
+
+/**
+ * Builds the Allow Always cache key for a (toolName, input) pair.
+ *
+ * @param {string} toolName - SDK tool name being gated.
+ * @param {unknown} input - Tool input that would be passed to the call.
+ * @returns {string} Key suitable for `allowAlwaysCache.has` /
+ *   `allowAlwaysCache.add`.
+ */
+function cacheKey(toolName, input)
+{
+  return `${toolName}:${stableJSON(input)}`;
+}
+
+/**
+ * Whether a given option already qualifies as a free-text fallback
+ * under React's `isFreeTextOption` heuristic
+ * label matches `/^other\b/i` OR description contains the
+ * literal substring `"free text"`. Used to skip auto-injection in
+ * {@link augmentAskUserQuestionInput} when Claude already provided
+ * an Other-style option — avoids double rendering.
+ *
+ * @param {{label: string, description?: string}} opt - Single option entry.
+ * @returns {boolean} True when React's heuristic would treat this as
+ *   a free-text fallback already.
+ */
+function isAlreadyFreeText(opt)
+{
+  return /^other\b/i.test(opt.label) || (opt.description ?? "").includes("free text");
+}
+
+/**
+ * Auto-injects an `"Other (specify)"` option into every question that
+ * doesn't already have a free-text fallback. Mirrors the behavior of
+ * Claude Code CLI's internal AskUserQuestion system prompt ("Users
+ * will always be able to select 'Other' to provide custom text
+ * input") which the SDK does NOT inject automatically — SDK is
+ * deliberately raw, leaving free-text policy to the host.
+ *
+ * The injected option's `label` and `description` both match React's
+ * `isFreeTextOption` heuristic so `QuestionCard` renders the text
+ * input without further changes.
+ *
+ * @param {{questions: Array<object>}} input - The original
+ *   `AskUserQuestionInput` from the SDK.
+ * @returns {{questions: Array<object>}} Augmented input with Other
+ *   options added where missing.
+ */
+function augmentAskUserQuestionInput(input)
+{
+  return {
+    ...input,
+    questions: input.questions.map((q) =>
+    {
+      if (q.options.some(isAlreadyFreeText))
+      {
+        return q;
+      }
+
+      return {
+        ...q,
+        options: [
+          ...q.options,
+          {
+            label: "Other (specify)",
+            description: "Provide a custom answer as free text.",
+          },
+        ],
+      };
+    }),
+  };
+}
+
+/**
+ * Single dispatcher for both kinds of user-input requests Claude Code
+ * emits to its host: permission prompts for tool calls in `default`
+ * mode, and clarifying questions via the built-in `AskUserQuestion`
+ * tool. Branches on `toolName`; React renders each variant with its
+ * own card UI (Group 3).
+ *
+ * Task 1.1 wires the skeleton only — both branches log a marker to
+ * stderr and resolve immediately with an `allow` placeholder so the
+ * SDK does not stall while wire emit (1.2) and stdin response
+ * handling (1.3) are still being built.
+ *
+ * @type {CanUseTool}
+ */
+async function canUseToolCallback(toolName, input, opts)
+{
+  const requestId = opts.toolUseID;
+  const turnId = currentTurnId;
+  const agentId = opts.agentID ?? null;
+
+  if (toolName === "AskUserQuestion")
+  {
+    const augmentedInput = augmentAskUserQuestionInput(input);
+    emitAskUserRequested(requestId, turnId, agentId, augmentedInput);
+    const answer = await new Promise((resolve, reject) => { pending.set(requestId, { resolve, reject, requestType: "question" });});
+    emitRequestResolved(requestId, "allow", answer);
+    const sanitizedAnswer = { ...answer, questions: input.questions };
+    return { behavior: "allow", updatedInput: sanitizedAnswer };
+  }
+
+  const key = cacheKey(toolName, input);
+
+  if (allowAlwaysCache.has(key))
+  {
+    emitRequestResolved(requestId, "auto-allowed", null, toolName, turnId);
+    return { behavior: "allow", updatedInput: input };
+  }
+
+  emitPermissionRequested(requestId, turnId, agentId, toolName, input, opts.blockedPath ?? null, opts.decisionReason ?? null,);
+  const decision = await new Promise((resolve, reject) => { pending.set(requestId, { resolve, reject, requestType: "permission", toolName, input });});
+  emitRequestResolved(requestId, decision.outcome);
+
+  if (decision.outcome === "deny")
+  {
+    return { behavior: "deny", message: "User denied via Tauri UI", interrupt: false };
+  }
+  return { behavior: "allow", updatedInput: input };
+}
+
+// endregion
+
 // region: input → query() round-trip
 
 /**
@@ -427,6 +648,37 @@ function makeTurnId()
   const rand = Math.random().toString(36).slice(2, 8);
   return `asst-${Date.now()}-${rand}`;
 }
+
+/**
+ * Set at the start of each `handleInput` call so the `canUseTool`
+ * callback (which fires synchronously from inside the SDK during
+ * `query()` execution) can stamp every emitted request envelope with
+ * the same `turnId` as the surrounding text/tool-use blocks. A single
+ * mutable slot is safe because `handleInput` calls are serialized
+ * through the {@link inputQueue} Promise chain in the stdin loop —
+ * only one round-trip runs at a time.
+ *
+ * @type {string | null}
+ */
+let currentTurnId = null;
+
+/**
+ * Promise chain used to serialize successive `handleInput` calls
+ * without blocking the stdin `for await` loop. Each new `input`
+ * message is appended to the chain via `.then()`; control messages
+ * (`respond-to-request`, `setPermissionMode`, etc.) bypass the chain
+ * and are processed immediately.
+ *
+ * Why this matters: `handleInput` blocks until `query()` finishes,
+ * which itself blocks while `canUseToolCallback` awaits the Promise
+ * stored in {@link pending}. That Promise is only resolved when a
+ * `respond-to-request` line arrives on stdin — which the loop must
+ * still be free to read. `await handleInput(…)` directly inside the
+ * loop deadlocks the whole supervisor.
+ *
+ * @type {Promise<void>}
+ */
+let inputQueue = Promise.resolve();
 
 /**
  * Builds the `mcpServers` config passed to `query()` when the host
@@ -568,6 +820,7 @@ function buildAdditionalDirectories()
 async function handleInput(text, attachments)
 {
   const turnId = makeTurnId();
+  currentTurnId = turnId;
   const activeBlocks = new Map();
   try
   {
@@ -584,6 +837,7 @@ async function handleInput(text, attachments)
       mcpServers: buildMcpServers(),
       plugins: buildPlugins(),
       additionalDirectories: buildAdditionalDirectories(),
+      canUseTool: canUseToolCallback,
     };
 
     if (pendingResumeSessionId !== null)
@@ -788,7 +1042,12 @@ for await (const line of rl)
   if (parsed?.type === "input" && typeof parsed.text === "string")
   {
     const attachments = Array.isArray(parsed.attachments) ? parsed.attachments.filter((p) => typeof p === "string") : [];
-    await handleInput(parsed.text, attachments);
+    inputQueue = inputQueue
+      .then(() => handleInput(parsed.text, attachments))
+      .catch((err) => {
+        debug("input handler error:", err);
+        emitError(err instanceof Error ? err.message : String(err));
+      });
   }
   else if (parsed?.type === "setPermissionMode" && typeof parsed.mode === "string")
   {
@@ -816,6 +1075,43 @@ for await (const line of rl)
   else if (parsed?.type === "healthCheck")
   {
     void runHealthCheck();
+  }
+  else if (parsed?.type === "respond-to-request" && typeof parsed.requestId === "string")
+  {
+    const entry = pending.get(parsed.requestId);
+
+    if (entry === undefined)
+    {
+      debug(`[canUseTool] received response for unknown requestId ${parsed.requestId} — ignoring`);
+      continue;
+    }
+
+    const decision = parsed.decision;
+    const actualKind = decision?.kind;
+
+    if (actualKind !== entry.requestType)
+    {
+      pending.delete(parsed.requestId);
+      debug(`[canUseTool] decision kind mismatch for ${parsed.requestId}: expected ${entry.requestType}, got ${actualKind}`);
+      entry.reject(new Error(`Decision kind mismatch: expected ${entry.requestType}, got ${actualKind}`));
+      continue;
+    }
+
+    pending.delete(parsed.requestId);
+
+    if (entry.requestType === "question")
+    {
+      entry.resolve(decision.answer);
+    }
+    else
+    {
+      if (decision.outcome === "allow-always")
+      {
+        allowAlwaysCache.add(cacheKey(entry.toolName, entry.input));
+      }
+      
+      entry.resolve({ outcome: decision.outcome });
+    }
   }
 }
 

@@ -9,10 +9,12 @@
  * the New Session button clears both pieces of state.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getSessionMessages, getSessions, resumeSession, startNewSession, } from "../ipc/commands";
 import type { SessionSummary } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
+
+const HIDDEN_SESSION_TITLES = new Set(["__health__"]);
 
 // #region Helpers
 
@@ -75,6 +77,8 @@ export default function SessionList()
   const [busy, setBusy] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
+  const autoResumedRef = useRef(false);
+
   // #region Effects
 
   useEffect(() => {
@@ -83,7 +87,8 @@ export default function SessionList()
       .then((list) => {
         if (!cancelled)
         {
-          setSessions(list);
+          const visible = list.filter((s) => !HIDDEN_SESSION_TITLES.has(s.title));
+          setSessions(visible);
         }
 
       })
@@ -94,6 +99,28 @@ export default function SessionList()
       cancelled = true;
     };
   }, [refreshTick]);
+
+  useEffect(() => {
+    if (autoResumedRef.current)
+    {
+      return;
+    }
+
+    if (currentSessionId !== null)
+    {
+      autoResumedRef.current = true;
+      return;
+    }
+
+    if (sessions.length === 0)
+    {
+      return;
+    }
+
+    const mostRecent = sessions.reduce((acc, s) => s.lastModified > acc.lastModified ? s : acc,);
+    autoResumedRef.current = true;
+    void handleResume(mostRecent.id);
+  }, [sessions]);
 
   // #endregion
 

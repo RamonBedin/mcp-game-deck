@@ -331,6 +331,28 @@ pub enum AgentMessage {
     PermissionModeChanged {
         mode: PermissionMode,
     },
+    AskUserRequested {
+        request_id: String,
+        turn_id: String,
+        agent_id: Option<String>,
+        input: Value,
+    },
+    PermissionRequested {
+        request_id: String,
+        turn_id: String,
+        agent_id: Option<String>,
+        tool_name: String,
+        input: Value,
+        blocked_path: Option<String>,
+        decision_reason: Option<String>,
+    },
+    RequestResolved {
+        request_id: String,
+        outcome: String,
+        answer: Option<Value>,
+        tool_name: Option<String>,
+        turn_id: Option<String>,
+    },
     HealthOk,
     HealthFailed {
         message: String,
@@ -407,6 +429,39 @@ pub struct SdkInstallFailedPayload {
 
 // endregion
 
+// region: canUseTool decisions
+
+/// User-side outcome for a permission card. Wire format is kebab-case
+/// (`"allow"` / `"allow-always"` / `"deny"`) so the JSON line
+/// `sdk-entry.js`'s stdin handler decodes (task 1.3) maps cleanly to
+/// this enum.
+///
+/// `auto-allowed` is intentionally absent — that outcome is synthesized
+/// inside the supervisor on Allow Always cache hits (task 1.4) and is
+/// never sent from the host into the supervisor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PermissionOutcome {
+    Allow,
+    AllowAlways,
+    Deny,
+}
+
+/// Payload of `respond_to_request` (task 2.2) — the user's response
+/// to a permission card or a question card. Discriminated by `kind`
+/// (`"permission"` carries an outcome, `"question"` carries an
+/// `AskUserQuestionOutput`-shaped answer). Routed to the supervisor
+/// via stdin and dispatched in `sdk-entry.js`'s
+/// `respond-to-request` branch (task 1.3).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DecisionPayload {
+    Permission { outcome: PermissionOutcome },
+    Question { answer: Value },
+}
+
+// endregion
+
 // region: Errors
 
 /// Tagged error type sent to the frontend.
@@ -441,3 +496,21 @@ impl std::fmt::Display for AppError {
 impl std::error::Error for AppError {}
 
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ask_user_requested_serializes_kebab() {
+        let m = AgentMessage::AskUserRequested {
+            request_id: "tu_123".into(),
+            turn_id: "t_1".into(),
+            agent_id: None,
+            input: serde_json::json!({ "questions": [] }),
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(json.contains("\"type\":\"ask-user-requested\""));
+        assert!(json.contains("\"requestId\":\"tu_123\""));
+    }
+}

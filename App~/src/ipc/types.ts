@@ -71,7 +71,8 @@ export type MessageId = string;
 export type Block =
   | { type: "text"; text: string }
   | { type: "tool-use"; toolUseId: string; name: string; input: unknown }
-  | { type: "tool-result"; toolUseId: string; content: unknown; isError: boolean };
+  | { type: "tool-result"; toolUseId: string; content: unknown; isError: boolean }
+  | { type: "request"; requestId: string; subtype: "permission" | "question"; payload: PermissionRequestedPayload | AskUserRequestedPayload; state: "pending" | "answered" | "interrupted" | "auto-allowed"; answer?: AskUserQuestionOutput; outcome?: "allow" | "allow-always" | "deny" | "auto-allowed" };
 
 /**
  * A single chat message exchanged with the agent. Content lives in
@@ -217,25 +218,68 @@ export interface MessageStreamCompletePayload
   messageId: MessageId;
 }
 
-/** Shape of the answer the agent expects from the user. */
-export type AskUserType = "single" | "multi" | "free-text";
-
-/** Payload for `ask-user-requested`. */
-export interface AskUserRequestedPayload
+/**
+ * One question inside an `AskUserQuestionInput`. Mirrors the SDK's
+ * `@anthropic-ai/claude-agent-sdk` shape so the React side can render
+ * the question card without translation.
+ */
+export interface AskUserQuestion
 {
-  questionId: string;
+  header?: string;
   question: string;
-  options?: string[];
-  type: AskUserType;
+  multiSelect: boolean;
+  options: Array<{ label: string; description?: string }>;
 }
 
-/** Payload for `permission-requested`. */
+/** Payload for the `ask-user-requested` agent message. */
+export interface AskUserRequestedPayload
+{
+  requestId: string;
+  turnId: string;
+  agentId: string | null;
+  input: { questions: AskUserQuestion[] };
+}
+
+/** Payload for the `permission-requested` agent message. */
 export interface PermissionRequestedPayload
 {
   requestId: string;
-  tool: string;
-  params: unknown;
+  turnId: string;
+  agentId: string | null;
+  toolName: string;
+  input: unknown;
+  blockedPath: string | null;
+  decisionReason: string | null;
 }
+
+/**
+ * Output shape returned to the SDK after the user answers an
+ * `AskUserQuestion`. Mirrors `AskUserQuestionOutput` from
+ * `@anthropic-ai/claude-agent-sdk` (TypeScript reference, April 2026).
+ *
+ * - `questions` echoes `AskUserQuestionInput.questions` verbatim so
+ *   the SDK can re-attach the original schema to the answers.
+ * - `answers` is keyed by `question.question` (the prompt string
+ *   itself) and the value is the selected label. Multi-select
+ *   questions concatenate the labels with `", "`. Free-text
+ *   responses (when the user picked an "Other"-conventioned option
+ *   and typed) carry the typed string instead of any label.
+ */
+export interface AskUserQuestionOutput
+{
+  questions: AskUserQuestion[];
+  answers: Record<string, string>;
+}
+
+/**
+ * Payload for the `respond_to_request` Tauri command — mirrors the
+ * Rust `DecisionPayload` enum shape. Discriminated by `kind`:
+ * permission outcomes carry an `outcome`; question responses carry
+ * the structured `answer`.
+ */
+export type DecisionPayload =
+  | { kind: "permission"; outcome: "allow" | "allow-always" | "deny" }
+  | { kind: "question"; answer: AskUserQuestionOutput };
 
 /**
  * Payload for `route-requested` — single-instance callback asking the running
@@ -269,6 +313,25 @@ export interface SdkInstallFailedPayload
 }
 
 /**
+ * Payload for the `request-resolved` agent message — the canUseTool
+ * promise resolved either via user click (allow / allow-always /
+ * deny), via the in-session Allow Always cache short-circuit
+ * (`auto-allowed`), or via a question-answer round-trip. `toolName`
+ * and `turnId` are populated specifically on `auto-allowed` so the
+ * React store can synthesize a compact "Auto-allowed: <toolName>"
+ * block (task 3.5) without having seen a prior `permission-requested`
+ * — the cache short-circuit means no card was ever rendered.
+ */
+export interface RequestResolvedPayload
+{
+  requestId: string;
+  outcome: "allow" | "allow-always" | "deny" | "auto-allowed";
+  answer: AskUserQuestionOutput | null;
+  toolName: string | null;
+  turnId: string | null;
+}
+
+/**
  * Tagged message envelope emitted by `sdk-entry.js` and re-emitted
  * to React via the `agent-message` Tauri event.
  *
@@ -287,7 +350,10 @@ export type AgentMessage =
   | { type: "error"; message: string }
   | { type: "permission-mode-changed"; mode: PermissionMode }
   | { type: "health-ok" }
-  | { type: "health-failed"; message: string };
+  | { type: "health-failed"; message: string }
+  | { type: "ask-user-requested"; requestId: string; turnId: string; agentId: string | null; input: { questions: AskUserQuestion[] } }
+  | { type: "permission-requested"; requestId: string; turnId: string; agentId: string | null; toolName: string; input: unknown; blockedPath: string | null; decisionReason: string | null }
+  | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: AskUserQuestionOutput | null; toolName: string | null; turnId: string | null };
 
 /** Wire payload for `agent-message`. */
 export interface AgentMessagePayload

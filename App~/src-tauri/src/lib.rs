@@ -112,6 +112,7 @@ pub fn run() {
             commands::conversation::send_message,
             commands::conversation::set_permission_mode,
             commands::conversation::get_permission_mode,
+            commands::requests::respond_to_request,
             commands::plans::list_plans,
             commands::plans::read_plan,
             commands::plans::write_plan,

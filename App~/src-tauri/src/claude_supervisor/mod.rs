@@ -163,6 +163,30 @@ impl ClaudeSupervisor {
         self.push_permission_mode_line(mode).await
     }
 
+    /// Writes a single newline-delimited JSON line to the supervisor's
+    /// stdin via the writer task. Hard-fails with
+    /// `SendError::NotRunning` when no child is alive — callers that
+    /// prefer soft-success (permission-mode / resume-session sync,
+    /// re-pushed on next spawn) match on
+    /// `Err(SendError::NotRunning) => Ok(())`.
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - Already-serialized JSON line, no trailing newline
+    ///   (the writer task appends one).
+    ///
+    /// # Errors
+    ///
+    /// `SendError::NotRunning` when the supervisor has no child.
+    /// `SendError::WriterClosed` when the stdin writer task has exited
+    /// (typically because the child died).
+    pub async fn write_stdin_line(&self, line: &str) -> Result<(), SendError> {
+        let s = self.state.lock().await;
+        let tx = s.stdin_tx.as_ref().ok_or(SendError::NotRunning)?;
+        tx.send(line.to_string()).map_err(|_| SendError::WriterClosed)?;
+        Ok(())
+    }
+
     /// Internal — serializes a `setPermissionMode` JSON line and
     /// pushes it onto the stdin writer's mpsc channel. Soft-success
     /// when the supervisor isn't running (no child to talk to).
@@ -175,13 +199,10 @@ impl ClaudeSupervisor {
             "mode": mode,
         }))
         .map_err(SendError::Serde)?;
-        let s = self.state.lock().await;
-        let tx = match s.stdin_tx.as_ref() {
-            Some(tx) => tx,
-            None => return Ok(()),
-        };
-        tx.send(line).map_err(|_| SendError::WriterClosed)?;
-        Ok(())
+        match self.write_stdin_line(&line).await {
+            Ok(()) | Err(SendError::NotRunning) => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 
     /// Returns the session id the supervisor is configured to resume
@@ -241,13 +262,10 @@ impl ClaudeSupervisor {
             }),
         };
         let line = serde_json::to_string(&payload).map_err(SendError::Serde)?;
-        let s = self.state.lock().await;
-        let tx = match s.stdin_tx.as_ref() {
-            Some(tx) => tx,
-            None => return Ok(()),
-        };
-        tx.send(line).map_err(|_| SendError::WriterClosed)?;
-        Ok(())
+        match self.write_stdin_line(&line).await {
+            Ok(()) | Err(SendError::NotRunning) => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 
     /// Launches `sdk-entry.js` as a Node child, wires stdin/stdout/
@@ -413,10 +431,7 @@ impl ClaudeSupervisor {
             "attachments": attachments,
         }))
         .map_err(SendError::Serde)?;
-        let s = self.state.lock().await;
-        let tx = s.stdin_tx.as_ref().ok_or(SendError::NotRunning)?;
-        tx.send(line).map_err(|_| SendError::WriterClosed)?;
-        Ok(())
+        self.write_stdin_line(&line).await
     }
 
     /// Tears down the running Claude Code subprocess and resets the

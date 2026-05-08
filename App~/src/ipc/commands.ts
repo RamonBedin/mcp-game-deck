@@ -18,6 +18,7 @@ import type {
   AppSettingsPatch,
   ClaudeInstallStatus,
   ConnectionStatus,
+  DecisionPayload,
   Message,
   PermissionMode,
   Plan,
@@ -60,6 +61,18 @@ export const setPermissionMode = (mode: PermissionMode): Promise<void> =>
 
 export const getPermissionMode = (): Promise<PermissionMode> =>
   invoke("get_permission_mode");
+
+/**
+ * Forwards the user's permission / question card response to the
+ * supervisor. The Tauri command (task 2.2) writes a
+ * `respond-to-request` JSON line on `sdk-entry.js`'s stdin; the
+ * stdin handler (task 1.3) resolves the awaited `canUseTool`
+ * promise and the conversation continues.
+ */
+export const respondToRequest = (
+  requestId: string,
+  decision: DecisionPayload,
+): Promise<void> => invoke("respond_to_request", { requestId, decision });
 
 // #endregion
 

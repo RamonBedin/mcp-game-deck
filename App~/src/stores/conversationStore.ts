@@ -15,7 +15,7 @@
 
 import { create } from "zustand";
 import { sendMessage as sendMessageCommand } from "../ipc/commands";
-import type { Block, Message, PermissionMode } from "../ipc/types";
+import type { AskUserQuestionOutput, Block, Message, PermissionMode, PermissionRequestedPayload, } from "../ipc/types";
 
 // #region State shape
 
@@ -37,6 +37,11 @@ interface ConversationState
   appendToolResultBlock: (turnId: string, toolUseId: string, content: unknown, isError: boolean,) => void;
   completeTurn: (turnId: string) => void;
   appendErrorMessage: (text: string) => void;
+  appendRequestBlock: (turnId: string, block: Extract<Block, { type: "request" }>,) => void;
+  appendAutoAllowedBlock: (turnId: string, requestId: string, toolName: string,) => void;
+  markRequestAnswered: (requestId: string, answer?: AskUserQuestionOutput, outcome?: "allow" | "allow-always" | "deny" | "auto-allowed",) => void;
+  markRequestInterrupted: (requestId: string) => void;
+  markAllPendingRequestsInterrupted: () => void;
   clearMessages: () => void;
   loadHistory: (messages: Message[]) => void;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -92,6 +97,20 @@ const pushBlockToTurn = (messages: Message[], turnId: string, block: Block,): Me
     },
   ];
 };
+
+const updateRequestBlock = (
+  messages: Message[],
+  requestId: string,
+  updater: (
+    block: Extract<Block, { type: "request" }>,
+  ) => Extract<Block, { type: "request" }>,
+): Message[] =>
+  messages.map((msg) => ({
+    ...msg,
+    blocks: msg.blocks.map((b) =>
+      b.type === "request" && b.requestId === requestId ? updater(b) : b,
+    ),
+  }));
 
 // #endregion
 
@@ -164,6 +183,58 @@ export const useConversationStore = create<ConversationState>((set) => ({
           blocks: [{ type: "text", text: `error: ${text}` }],
         },
       ],
+    })),
+  appendRequestBlock: (turnId, block) =>
+    set((state) => ({
+      messages: pushBlockToTurn(state.messages, turnId, block),
+    })),
+  appendAutoAllowedBlock: (turnId, requestId, toolName) =>
+    set((state) => {
+      const payload: PermissionRequestedPayload = {
+        requestId,
+        turnId,
+        agentId: null,
+        toolName,
+        input: undefined,
+        blockedPath: null,
+        decisionReason: null,
+      };
+      return {
+        messages: pushBlockToTurn(state.messages, turnId, {
+          type: "request",
+          requestId,
+          subtype: "permission",
+          payload,
+          state: "auto-allowed",
+        }),
+      };
+    }),
+  markRequestAnswered: (requestId, answer, outcome) =>
+    set((state) => ({
+      messages: updateRequestBlock(state.messages, requestId, (block) => ({
+        ...block,
+        state: "answered",
+        answer,
+        outcome,
+      })),
+    })),
+  markRequestInterrupted: (requestId) =>
+    set((state) => ({
+      messages: updateRequestBlock(state.messages, requestId, (block) => ({
+        ...block,
+        state: "interrupted",
+      })),
+    })),
+  markAllPendingRequestsInterrupted: () =>
+    set((state) => ({
+      messages: state.messages.map((msg) => ({
+        ...msg,
+        blocks: msg.blocks.map((b) =>
+          b.type === "request" && b.state === "pending"
+            ? { ...b, state: "interrupted" as const }
+            : b,
+        ),
+      })),
     })),
   clearMessages: () => set({ messages: [] }),
   loadHistory: (messages) => set({ messages }),

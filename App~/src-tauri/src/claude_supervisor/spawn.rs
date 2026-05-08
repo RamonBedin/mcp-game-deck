@@ -235,6 +235,9 @@ pub async fn read_stdout(
             | AgentMessage::ToolResult { .. }
             | AgentMessage::AssistantTurnComplete { .. }
             | AgentMessage::AssistantText { .. }
+            | AgentMessage::AskUserRequested { .. }
+            | AgentMessage::PermissionRequested { .. }
+            | AgentMessage::RequestResolved { .. }
             | AgentMessage::Error { .. } => {
             }
         }
