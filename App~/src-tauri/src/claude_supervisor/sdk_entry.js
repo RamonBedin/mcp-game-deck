@@ -525,6 +525,65 @@ function cacheKey(toolName, input)
 }
 
 /**
+ * Whether a given option already qualifies as a free-text fallback
+ * under React's `isFreeTextOption` heuristic
+ * label matches `/^other\b/i` OR description contains the
+ * literal substring `"free text"`. Used to skip auto-injection in
+ * {@link augmentAskUserQuestionInput} when Claude already provided
+ * an Other-style option — avoids double rendering.
+ *
+ * @param {{label: string, description?: string}} opt - Single option entry.
+ * @returns {boolean} True when React's heuristic would treat this as
+ *   a free-text fallback already.
+ */
+function isAlreadyFreeText(opt)
+{
+  return /^other\b/i.test(opt.label) || (opt.description ?? "").includes("free text");
+}
+
+/**
+ * Auto-injects an `"Other (specify)"` option into every question that
+ * doesn't already have a free-text fallback. Mirrors the behavior of
+ * Claude Code CLI's internal AskUserQuestion system prompt ("Users
+ * will always be able to select 'Other' to provide custom text
+ * input") which the SDK does NOT inject automatically — SDK is
+ * deliberately raw, leaving free-text policy to the host.
+ *
+ * The injected option's `label` and `description` both match React's
+ * `isFreeTextOption` heuristic so `QuestionCard` renders the text
+ * input without further changes.
+ *
+ * @param {{questions: Array<object>}} input - The original
+ *   `AskUserQuestionInput` from the SDK.
+ * @returns {{questions: Array<object>}} Augmented input with Other
+ *   options added where missing.
+ */
+function augmentAskUserQuestionInput(input)
+{
+  return {
+    ...input,
+    questions: input.questions.map((q) =>
+    {
+      if (q.options.some(isAlreadyFreeText))
+      {
+        return q;
+      }
+
+      return {
+        ...q,
+        options: [
+          ...q.options,
+          {
+            label: "Other (specify)",
+            description: "Provide a custom answer as free text.",
+          },
+        ],
+      };
+    }),
+  };
+}
+
+/**
  * Single dispatcher for both kinds of user-input requests Claude Code
  * emits to its host: permission prompts for tool calls in `default`
  * mode, and clarifying questions via the built-in `AskUserQuestion`
@@ -546,10 +605,12 @@ async function canUseToolCallback(toolName, input, opts)
 
   if (toolName === "AskUserQuestion")
   {
-    emitAskUserRequested(requestId, turnId, agentId, input);
+    const augmentedInput = augmentAskUserQuestionInput(input);
+    emitAskUserRequested(requestId, turnId, agentId, augmentedInput);
     const answer = await new Promise((resolve, reject) => { pending.set(requestId, { resolve, reject, requestType: "question" });});
     emitRequestResolved(requestId, "allow", answer);
-    return { behavior: "allow", updatedInput: answer };
+    const sanitizedAnswer = { ...answer, questions: input.questions };
+    return { behavior: "allow", updatedInput: sanitizedAnswer };
   }
 
   const key = cacheKey(toolName, input);
