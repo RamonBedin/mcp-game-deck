@@ -1,13 +1,12 @@
 //! Plans Tauri commands.
 //!
-//! Real `list_plans`
+//! Real `list_plans` and `read_plan`; `write_plan` / `delete_plan` are
+//! still stubs (real impls land in tasks 1.3 / 1.4).
 
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
-
-use serde_yaml::Value as YamlValue;
 
 use crate::commands::settings::get_settings;
 use crate::types::{AppError, Plan, PlanFrontmatter, PlanMeta};
@@ -54,37 +53,85 @@ fn ensure_plans_dir(dir: &Path) -> std::io::Result<()> {
 
 // endregion
 
-// region: Internal — frontmatter (mini-extractor for 1.1)
+// region: Internal — name validation
 
-/// Extracts the optional `description` field from a markdown file's
-/// YAML frontmatter.
+/// Validates a plan name against the kebab-case rule shared by the
+/// chat skills and the React tab: lowercase ASCII letters, digits, and
+/// hyphens only; must start with a letter or digit; 1-64 characters.
 ///
-/// Frontmatter must open at byte 0 with `---\n` (or `---\r\n`) and
-/// close on a line containing only `---`. Anything malformed (missing
-/// delimiters, invalid YAML, missing or non-string `description`,
-/// blank `description`) returns `None` without erroring — list-view
-/// convenience, not a contract.
-fn extract_description(raw: &str) -> Option<String> {
-    let raw = raw.strip_prefix('\u{FEFF}').unwrap_or(raw);
-    let body = raw
-        .strip_prefix("---\n")
-        .or_else(|| raw.strip_prefix("---\r\n"))?;
-    let end = body
-        .find("\n---\n")
-        .or_else(|| body.find("\n---\r\n"))?;
-    let yaml = &body[..end];
-    let parsed: YamlValue = serde_yaml::from_str(yaml).ok()?;
-    match parsed.get("description")? {
-        YamlValue::String(s) => {
-            let trimmed = s.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        }
-        _ => None,
+/// Hand-coded char-by-char (no `regex` dep) — the rule is trivial and
+/// `regex` would balloon the dep tree for an anchored ASCII match.
+fn validate_plan_name(name: &str) -> Result<(), AppError> {
+    if name.is_empty() || name.len() > 64 {
+        return Err(AppError::InvalidInput(
+            "Plan name must be 1-64 characters.".into(),
+        ));
     }
+    let mut chars = name.chars();
+    let first = chars.next().expect("non-empty checked above");
+    if !(first.is_ascii_lowercase() || first.is_ascii_digit()) {
+        return Err(AppError::InvalidInput(
+            "Plan name must start with a lowercase letter or digit.".into(),
+        ));
+    }
+    for c in chars {
+        if !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+            return Err(AppError::InvalidInput(
+                "Plan name may only contain lowercase letters, digits, and hyphens.".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+// endregion
+
+// region: Internal — frontmatter
+
+/// Splits a markdown file's optional YAML frontmatter from its body.
+///
+/// Returns `(frontmatter_map, body)`. Three cases:
+///
+/// 1. **No opening delimiter** (after optional BOM strip): returns
+///    `({}, raw_without_BOM)`; the whole input is the body.
+/// 2. **Opening delimiter present but YAML malformed or non-mapping**:
+///    returns `({}, body_after_close)` — graceful so the Plans tab can
+///    still surface the body for editing.
+///    **Opening delimiter that never closes**: returns `({}, raw)` —
+///    treated as if there is no frontmatter, so a half-typed file in
+///    the editor doesn't lose its content.
+/// 3. **Valid YAML mapping between delimiters**: returns `(map, body)`.
+///
+/// Frontmatter parses into `serde_json::Map<String, Value>` (the
+/// `PlanFrontmatter` alias) by deserializing YAML directly into
+/// `serde_json::Value` — YAML is effectively a superset of JSON, so
+/// any standard frontmatter round-trips. Edge YAML features that don't
+/// map to JSON (non-string keys, timestamps, etc.) fall back to `{}`.
+fn parse_frontmatter(raw: &str) -> (PlanFrontmatter, String) {
+    let raw = raw.strip_prefix('\u{FEFF}').unwrap_or(raw);
+
+    let after_open = match raw
+        .strip_prefix("---\n")
+        .or_else(|| raw.strip_prefix("---\r\n"))
+    {
+        Some(rest) => rest,
+        None => return (PlanFrontmatter::new(), raw.to_string()),
+    };
+
+    let (yaml, body) = if let Some(end) = after_open.find("\n---\n") {
+        (&after_open[..end], &after_open[end + "\n---\n".len()..])
+    } else if let Some(end) = after_open.find("\n---\r\n") {
+        (&after_open[..end], &after_open[end + "\n---\r\n".len()..])
+    } else {
+        return (PlanFrontmatter::new(), raw.to_string());
+    };
+
+    let frontmatter: PlanFrontmatter = match serde_yaml::from_str::<serde_json::Value>(yaml) {
+        Ok(serde_json::Value::Object(map)) => map,
+        _ => PlanFrontmatter::new(),
+    };
+
+    (frontmatter, body.to_string())
 }
 
 // endregion
@@ -152,7 +199,13 @@ pub fn list_plans() -> Vec<PlanMeta> {
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
             let raw = fs::read_to_string(&path).unwrap_or_default();
-            let description = extract_description(&raw);
+            let (frontmatter, _body) = parse_frontmatter(&raw);
+            let description = frontmatter
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
             Some(PlanMeta {
                 name,
                 last_modified,
@@ -167,32 +220,81 @@ pub fn list_plans() -> Vec<PlanMeta> {
 
 // endregion
 
-// region: Read / write — STUBS (real impls land in tasks 1.2 / 1.3 / 1.4)
+// region: Read
 
-/// Stub: reads a plan by name.
+/// Reads a plan by name from the pinned Unity project's plans dir.
 ///
-/// Returns a fixed placeholder `Plan` today.
+/// Validates the name format, then reads
+/// `<UNITY_PROJECT_PATH>/ProjectSettings/GameDeck/plans/<name>.md` and
+/// splits the optional YAML frontmatter from the body. Malformed YAML
+/// is tolerated: `frontmatter` falls back to an empty map and the body
+/// still surfaces so the Plans tab can edit and resave.
 ///
 /// # Arguments
 ///
-/// * `name` - Plan filename without extension.
+/// * `name` - Plan filename without extension; must match the
+///   kebab-case rule enforced by `validate_plan_name`.
 ///
 /// # Returns
 ///
-/// A placeholder `Plan` whose body explains that real CRUD lands in Feature 06.
+/// The plan's `name`, mtime (`last_modified`), `content` (body without
+/// the `---` delimiters), and `frontmatter` map.
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// - `InvalidInput` when `name` violates the kebab-case rule.
+/// - `FileNotFound` when no Unity project is pinned, or when the file
+///   does not exist on disk.
+/// - `PermissionDenied` when the OS rejects the read.
+/// - `Internal` for any other IO error or filesystem stat failure.
 #[tauri::command]
 pub fn read_plan(name: String) -> Result<Plan, AppError> {
+    validate_plan_name(&name)?;
+
+    let dir = plans_dir().ok_or_else(|| {
+        AppError::FileNotFound(format!(
+            "Plan '{name}' not found: no Unity project pinned"
+        ))
+    })?;
+
+    let path = dir.join(format!("{name}.md"));
+
+    let metadata = fs::metadata(&path).map_err(|e| match e.kind() {
+        ErrorKind::NotFound => AppError::FileNotFound(format!("Plan '{name}' not found")),
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot stat plan '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to stat plan '{name}': {e}")),
+    })?;
+
+    let last_modified = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let raw = fs::read_to_string(&path).map_err(|e| match e.kind() {
+        ErrorKind::NotFound => AppError::FileNotFound(format!("Plan '{name}' not found")),
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot read plan '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to read plan '{name}': {e}")),
+    })?;
+
+    let (frontmatter, content) = parse_frontmatter(&raw);
+
     Ok(Plan {
         name,
-        last_modified: 0,
-        content: "# Stub plan\n\nReal plans CRUD lands in Feature 06.".to_string(),
-        frontmatter: PlanFrontmatter::new(),
+        last_modified,
+        content,
+        frontmatter,
     })
 }
+
+// endregion
+
+// region: Write / delete — STUBS (real impls land in tasks 1.3 / 1.4)
 
 /// Stub: writes a plan to disk.
 ///
@@ -238,3 +340,155 @@ pub fn delete_plan(name: String) -> Result<(), AppError> {
 }
 
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_frontmatter_no_delimiters() {
+        let (fm, body) = parse_frontmatter("# Just a heading\n\nbody");
+        assert!(fm.is_empty());
+        assert_eq!(body, "# Just a heading\n\nbody");
+    }
+
+    #[test]
+    fn parse_frontmatter_empty_input() {
+        let (fm, body) = parse_frontmatter("");
+        assert!(fm.is_empty());
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn parse_frontmatter_valid_yaml_single_key() {
+        let raw = "---\ndescription: hello world\n---\n# Body";
+        let (fm, body) = parse_frontmatter(raw);
+        assert_eq!(
+            fm.get("description").and_then(|v| v.as_str()),
+            Some("hello world")
+        );
+        assert_eq!(body, "# Body");
+    }
+
+    #[test]
+    fn parse_frontmatter_valid_yaml_multiple_keys() {
+        let raw = "---\ndescription: foo\ntags:\n  - a\n  - b\n---\nbody";
+        let (fm, body) = parse_frontmatter(raw);
+        assert_eq!(fm.get("description").and_then(|v| v.as_str()), Some("foo"));
+        assert!(fm.get("tags").and_then(|v| v.as_array()).is_some());
+        assert_eq!(body, "body");
+    }
+
+    #[test]
+    fn parse_frontmatter_malformed_yaml_keeps_body() {
+        let raw = "---\n\t: : :\n---\nbody after malformed";
+        let (fm, body) = parse_frontmatter(raw);
+        assert!(fm.is_empty());
+        assert_eq!(body, "body after malformed");
+    }
+
+    #[test]
+    fn parse_frontmatter_non_mapping_yaml_falls_back() {
+        let raw = "---\n- foo\n- bar\n---\nbody";
+        let (fm, body) = parse_frontmatter(raw);
+        assert!(fm.is_empty());
+        assert_eq!(body, "body");
+    }
+
+    #[test]
+    fn parse_frontmatter_unclosed_delimiter_keeps_full_raw_as_body() {
+        let raw = "---\ndescription: foo\nno closing delimiter here";
+        let (fm, body) = parse_frontmatter(raw);
+        assert!(fm.is_empty());
+        assert_eq!(body, raw);
+    }
+
+    #[test]
+    fn parse_frontmatter_strips_bom() {
+        let raw = "\u{FEFF}---\ndescription: foo\n---\nbody";
+        let (fm, body) = parse_frontmatter(raw);
+        assert_eq!(fm.get("description").and_then(|v| v.as_str()), Some("foo"));
+        assert_eq!(body, "body");
+    }
+
+    #[test]
+    fn parse_frontmatter_crlf_line_endings() {
+        let raw = "---\r\ndescription: foo\r\n---\r\nbody";
+        let (fm, body) = parse_frontmatter(raw);
+        assert_eq!(fm.get("description").and_then(|v| v.as_str()), Some("foo"));
+        assert_eq!(body, "body");
+    }
+
+    #[test]
+    fn validate_plan_name_accepts_kebab_case() {
+        assert!(validate_plan_name("setup-2d-roguelike").is_ok());
+        assert!(validate_plan_name("a").is_ok());
+        assert!(validate_plan_name("123").is_ok());
+        assert!(validate_plan_name("9-lives").is_ok());
+    }
+
+    #[test]
+    fn validate_plan_name_rejects_empty() {
+        assert!(matches!(
+            validate_plan_name(""),
+            Err(AppError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn validate_plan_name_rejects_too_long() {
+        let long: String = "a".repeat(65);
+        assert!(matches!(
+            validate_plan_name(&long),
+            Err(AppError::InvalidInput(_))
+        ));
+        let exact: String = "a".repeat(64);
+        assert!(validate_plan_name(&exact).is_ok());
+    }
+
+    #[test]
+    fn validate_plan_name_rejects_uppercase() {
+        assert!(matches!(
+            validate_plan_name("MyPlan"),
+            Err(AppError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn validate_plan_name_rejects_spaces() {
+        assert!(matches!(
+            validate_plan_name("my plan"),
+            Err(AppError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn validate_plan_name_rejects_special_chars() {
+        assert!(matches!(
+            validate_plan_name("my-plan!"),
+            Err(AppError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn validate_plan_name_rejects_leading_hyphen() {
+        assert!(matches!(
+            validate_plan_name("-leading"),
+            Err(AppError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn validate_plan_name_rejects_non_ascii() {
+        assert!(matches!(
+            validate_plan_name("plà"),
+            Err(AppError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn read_plan_rejects_invalid_name() {
+        let err = read_plan("Has Spaces".to_string()).unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)));
+    }
+}
