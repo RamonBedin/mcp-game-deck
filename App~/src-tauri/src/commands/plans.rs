@@ -1,7 +1,7 @@
 //! Plans Tauri commands.
 //!
-//! Real `list_plans` and `read_plan`; `write_plan` / `delete_plan` are
-//! still stubs (real impls land in tasks 1.3 / 1.4).
+//! Real `list_plans`, `read_plan`, and `write_plan`; `delete_plan` is
+//! still a stub (real impl lands in task 1.4).
 
 use std::fs;
 use std::io::ErrorKind;
@@ -132,6 +132,48 @@ fn parse_frontmatter(raw: &str) -> (PlanFrontmatter, String) {
     };
 
     (frontmatter, body.to_string())
+}
+
+// endregion
+
+// region: Internal — name collision
+
+/// Returns the next free `<base>.md` slot under the plans dir, falling
+/// back through `<base>-2.md`, `<base>-3.md`, ..., `<base>-99.md`.
+///
+/// Returns `None` when no Unity project resolves OR when all 99 slots
+/// are occupied. Caller decides which case to surface.
+///
+/// the helper to land alongside the atomic write logic so the React
+/// "+ New plan" path in task 2.4 has it ready. The `dead_code` attribute
+/// will come off in the PR that consumes it.
+#[allow(dead_code)]
+fn find_available_name(base: &str) -> Option<String> {
+    let dir = plans_dir()?;
+    next_available_suffix(base, |candidate| {
+        dir.join(format!("{candidate}.md")).exists()
+    })
+}
+
+/// Pure suffix-ladder logic: tries `base`, then `base-2`, ..., `base-99`,
+/// returning the first name for which `exists` returns `false`. Returns
+/// `None` if all 99 candidates are taken.
+///
+/// Filesystem-free by design — `exists` is injected so the ladder can be
+/// unit-tested without a real plans dir. The dash separator is part of
+/// the contract: matches `/save-plan`'s skill-side suffix scheme so
+/// chat-path and UI-path collisions surface identically named files.
+fn next_available_suffix(base: &str, exists: impl Fn(&str) -> bool) -> Option<String> {
+    if !exists(base) {
+        return Some(base.to_string());
+    }
+    for n in 2..=99 {
+        let candidate = format!("{base}-{n}");
+        if !exists(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 // endregion
@@ -294,29 +336,81 @@ pub fn read_plan(name: String) -> Result<Plan, AppError> {
 
 // endregion
 
-// region: Write / delete — STUBS (real impls land in tasks 1.3 / 1.4)
+// region: Write
 
-/// Stub: writes a plan to disk.
+/// Writes a plan to disk atomically.
 ///
-/// No-op today. Real implementation lands in Feature 06.
+/// Validates the name format, ensures the plans directory exists, then
+/// writes `content` to `<name>.md.tmp` and renames it over `<name>.md`.
+/// The tmp-then-rename two-step survives partial-write crashes: a
+/// crashed write leaves a `.md.tmp` zombie that `list_plans` ignores
+/// (filter is `extension == "md"` exact, not `.md.*`).
+///
+/// **Overwrite semantics:** the existing `<name>.md` is replaced
+/// without backup. Auto-suffix is the `/save-plan` skill's job, not
+/// this command's — the React Plans tab Save button writes back to the
+/// same name on purpose.
 ///
 /// # Arguments
 ///
-/// * `name` - Plan filename without extension (currently ignored).
-/// * `content` - Markdown body to persist (currently ignored).
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
+/// * `name` - Plan filename without extension; must match the
+///   kebab-case rule enforced by `validate_plan_name`.
+/// * `content` - Full markdown body (frontmatter included if any).
+///   Written verbatim.
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// - `InvalidInput` when `name` violates the kebab-case rule.
+/// - `FileNotFound` when no Unity project is pinned (caller can't save
+///   without a destination root). Mirrors `read_plan`'s symmetry so
+///   the React side handles both with one error path.
+/// - `PermissionDenied` when the OS rejects the write or rename.
+/// - `Internal` when ensuring the plans dir fails, or any other IO
+///   error during write/rename. Best-effort cleanup of the `.md.tmp`
+///   leftover runs on rename failure.
 #[tauri::command]
-#[allow(unused_variables)]
 pub fn write_plan(name: String, content: String) -> Result<(), AppError> {
+    validate_plan_name(&name)?;
+
+    let dir = plans_dir().ok_or_else(|| {
+        AppError::FileNotFound(format!(
+            "Cannot save plan '{name}': no Unity project pinned"
+        ))
+    })?;
+
+    ensure_plans_dir(&dir).map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to ensure plans dir at {}: {e}",
+            dir.display()
+        ))
+    })?;
+
+    let final_path = dir.join(format!("{name}.md"));
+    let tmp_path = dir.join(format!("{name}.md.tmp"));
+
+    fs::write(&tmp_path, &content).map_err(|e| match e.kind() {
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot write plan '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to write plan '{name}': {e}")),
+    })?;
+
+    fs::rename(&tmp_path, &final_path).map_err(|e| {
+        let _ = fs::remove_file(&tmp_path);
+        match e.kind() {
+            ErrorKind::PermissionDenied => {
+                AppError::PermissionDenied(format!("Cannot write plan '{name}'"))
+            }
+            _ => AppError::Internal(format!("Failed to write plan '{name}': {e}")),
+        }
+    })?;
+
     Ok(())
 }
+
+// endregion
+
+// region: Delete — STUB (real impl lands in task 1.4)
 
 /// Stub: deletes a plan.
 ///
@@ -490,5 +584,46 @@ mod tests {
     fn read_plan_rejects_invalid_name() {
         let err = read_plan("Has Spaces".to_string()).unwrap_err();
         assert!(matches!(err, AppError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn next_available_suffix_returns_base_when_free() {
+        let result = next_available_suffix("foo", |_| false);
+        assert_eq!(result, Some("foo".to_string()));
+    }
+
+    #[test]
+    fn next_available_suffix_skips_taken_base() {
+        let result = next_available_suffix("foo", |name| name == "foo");
+        assert_eq!(result, Some("foo-2".to_string()));
+    }
+
+    #[test]
+    fn next_available_suffix_skips_multiple_taken() {
+        let taken = ["foo", "foo-2", "foo-3"];
+        let result = next_available_suffix("foo", |name| taken.contains(&name));
+        assert_eq!(result, Some("foo-4".to_string()));
+    }
+
+    #[test]
+    fn next_available_suffix_returns_none_when_all_99_taken() {
+        let result = next_available_suffix("foo", |_| true);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn next_available_suffix_uses_dash_separator_not_underscore() {
+        let result = next_available_suffix("foo", |name| name == "foo");
+        let candidate = result.expect("base taken, suffix expected");
+        assert!(
+            candidate.contains('-') && !candidate.contains('_'),
+            "expected dash separator, got: {candidate}"
+        );
+    }
+
+    #[test]
+    fn next_available_suffix_returns_99_when_only_99_free() {
+        let result = next_available_suffix("foo", |name| name != "foo-99");
+        assert_eq!(result, Some("foo-99".to_string()));
     }
 }
