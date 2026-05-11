@@ -474,6 +474,10 @@ const BUILTIN_COMMANDS = new Set([
   "clear", "help", "cost", "permissions", "agents", "init",
   "login", "logout", "model", "review", "security-review",
   "status", "exit",
+  "update-config", "debug", "simplify", "batch",
+  "fewer-permission-prompts", "loop", "schedule", "claude-api",
+  "compact", "context", "heapdump", "extra-usage", "usage",
+  "insights", "team-onboarding",
 ]);
 
 /**

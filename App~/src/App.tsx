@@ -12,6 +12,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import ClaudeVersionWarningBanner from "./components/ClaudeVersionWarningBanner";
 import FirstRunPanel, {FirstRunCheckingScreen, isInstallReady,} from "./components/FirstRunPanel";
 import UpdateBanner from "./components/UpdateBanner";
+import { useCatalogSubscription } from "./hooks/useCatalogSubscription";
 import { usePlansSubscription } from "./hooks/usePlansSubscription";
 import {checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus,} from "./ipc/commands";
 import { onRouteRequested, onSupervisorStatusChanged } from "./ipc/events";
@@ -48,6 +49,7 @@ export default function App()
   const [installStatus, setInstallStatus] = useState<ClaudeInstallStatus | null>(null);
 
   usePlansSubscription();
+  useCatalogSubscription();
 
   // #region Effects
 
