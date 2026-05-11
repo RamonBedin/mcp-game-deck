@@ -881,6 +881,18 @@ async function handleInput(text, attachments)
 
     for await (const msg of q)
     {
+      if ((msg?.type === "system" && msg?.subtype === "init") || msg?.type === "result")
+      {
+        if (typeof msg.session_id === "string" && msg.session_id.length > 0)
+        {
+          if (msg.session_id !== pendingResumeSessionId)
+          {
+            pendingResumeSessionId = msg.session_id;
+            debug("captured session_id:", msg.session_id);
+          }
+        }
+      }
+
       if (msg?.type === "stream_event")
       {
         handleStreamEvent(msg.event, turnId, activeBlocks);
