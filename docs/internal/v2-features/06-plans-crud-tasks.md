@@ -11,7 +11,7 @@
 | 1 | 1.1 — `list_plans` real implementation | ✅ done | — |
 | 1 | 1.2 — `read_plan` real implementation | ✅ done | — |
 | 1 | 1.3 — `write_plan` real implementation | ✅ done | — |
-| 1 | 1.4 — `delete_plan` real implementation | ⏳ pending | — |
+| 1 | 1.4 — `delete_plan` real implementation | ✅ done | — |
 | 1 | 1.5 — Plans dir file watcher → `plans-changed` event | ⏳ pending | — |
 | 2 | 2.1 — `plansStore` + `plans-changed` subscription | ⏳ pending | — |
 | 2 | 2.2 — `PlansList` component (left column) | ⏳ pending | — |

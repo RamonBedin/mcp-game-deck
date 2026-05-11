@@ -1,7 +1,6 @@
 //! Plans Tauri commands.
 //!
-//! Real `list_plans`, `read_plan`, and `write_plan`; `delete_plan` is
-//! still a stub (real impl lands in task 1.4).
+//! Real `list_plans`, `read_plan`, `write_plan`, and `delete_plan`.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -410,26 +409,48 @@ pub fn write_plan(name: String, content: String) -> Result<(), AppError> {
 
 // endregion
 
-// region: Delete — STUB (real impl lands in task 1.4)
+// region: Delete
 
-/// Stub: deletes a plan.
+/// Deletes a plan by name from the pinned Unity project's plans dir.
 ///
-/// No-op today. Real implementation lands in Feature 06.
+/// Validates the name format, resolves the plans directory, and calls
+/// `fs::remove_file`. Does not create the plans dir on the way in: if
+/// the dir is missing, the underlying `NotFound` surfaces naturally
+/// (creating an empty dir just to delete a file inside it would be
+/// nonsense).
 ///
 /// # Arguments
 ///
-/// * `name` - Plan filename without extension (currently ignored).
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
+/// * `name` - Plan filename without extension; must match the
+///   kebab-case rule enforced by `validate_plan_name`.
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// - `InvalidInput` when `name` violates the kebab-case rule.
+/// - `FileNotFound` when no Unity project is pinned, or when the file
+///   does not exist on disk.
+/// - `PermissionDenied` when the OS rejects the unlink.
+/// - `Internal` for any other IO error.
 #[tauri::command]
-#[allow(unused_variables)]
 pub fn delete_plan(name: String) -> Result<(), AppError> {
+    validate_plan_name(&name)?;
+
+    let dir = plans_dir().ok_or_else(|| {
+        AppError::FileNotFound(format!(
+            "Cannot delete plan '{name}': no Unity project pinned"
+        ))
+    })?;
+
+    let path = dir.join(format!("{name}.md"));
+
+    fs::remove_file(&path).map_err(|e| match e.kind() {
+        ErrorKind::NotFound => AppError::FileNotFound(format!("Plan '{name}' not found")),
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot delete plan '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to delete plan '{name}': {e}")),
+    })?;
+
     Ok(())
 }
 
@@ -583,6 +604,12 @@ mod tests {
     #[test]
     fn read_plan_rejects_invalid_name() {
         let err = read_plan("Has Spaces".to_string()).unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn delete_plan_rejects_invalid_name() {
+        let err = delete_plan("Has Spaces".to_string()).unwrap_err();
         assert!(matches!(err, AppError::InvalidInput(_)));
     }
 
