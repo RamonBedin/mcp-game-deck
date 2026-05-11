@@ -14,7 +14,7 @@
 | 1 | 1.4 — `delete_plan` real implementation | ✅ done | — |
 | 1 | 1.5 — Plans dir file watcher → `plans-changed` event | ✅ done | — |
 | 2 | 2.1 — `plansStore` + `plans-changed` subscription | ✅ done | — |
-| 2 | 2.2 — `PlansList` component (left column) | ⏳ pending | — |
+| 2 | 2.2 — `PlansList` component (left column) | ✅ done | — |
 | 2 | 2.3 — `PlanPane` + `PlanViewer` + `PlanEditor` | ⏳ pending | — |
 | 2 | 2.4 — Wire `PlansRoute` 2-col layout + actions | ⏳ pending | — |
 | 3 | 3.1 — `Plugin~/skills/save-plan/SKILL.md` | ⏳ pending | — |
@@ -920,3 +920,7 @@ Refs: 06-plans-crud-tasks.md (task 7.1), 06-plans-crud-spec.md
 - **Cross-platform:** v2.0 is Windows-validated. `notify` works on macOS/Linux out of the box; smoke comes when first non-Windows user reports.
 - **Order:** Group 1 → 2 → 3 → 4 → 5 → 6 → 7 is the dependency-clean order. Within Group 1, tasks 1.1 / 1.2 / 1.3 / 1.4 / 1.5 can interleave freely; Group 2 depends on Group 1 fully landed; Group 4 must land before 5/6.
 - **Skill iteration:** the two skills in Group 3 will likely need refinement after seeing them used. Treat 3.1 and 3.2 as "first cut" — fixes during Group 7 smoke are expected and welcome.
+
+## Follow-ups discovered during implementation
+
+- **Inconsistency: `last_modified` units across stores.** `PlanMeta.last_modified` is emitted in seconds (`Duration::as_secs()` in `App~/src-tauri/src/commands/plans.rs`), while `SessionSummary.last_modified` is emitted in milliseconds (`Duration::as_millis()` in `App~/src-tauri/src/commands/sessions.rs`). React-side formatters compensate per consumer (`SessionList.formatRelative` treats input as millis; `PlansList.formatRelative` multiplies by 1000 internally). Normalize to one unit (probably millis, since that matches `Date.now()` math) in a cleanup commit; touches `plans.rs`, the `PlanMeta` shape in `types.rs`/`types.ts`, and `PlansList.formatRelative`. Discovered during F06 task 2.2.
