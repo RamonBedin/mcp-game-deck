@@ -9,6 +9,7 @@
 pub mod claude_supervisor;
 pub mod commands;
 pub mod events;
+pub mod plans_watcher;
 pub mod types;
 pub mod unity_client;
 
@@ -17,6 +18,7 @@ pub mod unity_client;
 use tauri::{AppHandle, Manager, WindowEvent};
 
 use claude_supervisor::ClaudeSupervisor;
+use plans_watcher::PlansWatcher;
 use unity_client::UnityClient;
 
 // region: Single-instance handler
@@ -70,6 +72,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(ClaudeSupervisor::new())
         .manage(UnityClient::new())
+        .manage(PlansWatcher::new())
         .setup(|app| {
             let app_handle = app.handle().clone();
 
@@ -87,6 +90,12 @@ pub fn run() {
                 claude_supervisor::version_check::run(app_for_version_check).await;
             });
 
+            let app_for_watcher = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let watcher = app_for_watcher.state::<PlansWatcher>();
+                watcher.start(app_for_watcher.clone()).await;
+            });
+
             let unity = app_handle.state::<UnityClient>();
             unity.start(app_handle.clone());
 
@@ -99,6 +108,9 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     if let Some(supervisor) = app.try_state::<ClaudeSupervisor>() {
                         supervisor.shutdown().await;
+                    }
+                    if let Some(watcher) = app.try_state::<PlansWatcher>() {
+                        watcher.stop().await;
                     }
                     app.exit(0);
                 });

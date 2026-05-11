@@ -169,6 +169,34 @@ pub struct Plan {
     pub frontmatter: PlanFrontmatter,
 }
 
+/// Kind of filesystem change emitted by `plans-changed`.
+///
+/// Synthesized in `plans_watcher::classify_event` by comparing the
+/// in-memory set of known names against `path.exists()` at delivery
+/// time — `notify-debouncer-mini` collapses native event kinds into
+/// `DebouncedEventKind::Any`, so the create/modify/delete distinction
+/// is reconstructed rather than carried from the OS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PlansChangedKind {
+    Created,
+    Modified,
+    Deleted,
+}
+
+/// Payload for `plans-changed` — emitted by the plans-directory file
+/// watcher whenever a `.md` file is created, modified, or deleted.
+///
+/// `name` is the file stem (no `.md` extension); `None` if the watcher
+/// can't extract a name (e.g. non-UTF8 path).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlansChangedPayload {
+    pub kind: PlansChangedKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
 // endregion
 
 // region: Rules
@@ -518,5 +546,16 @@ mod tests {
         let json = serde_json::to_string(&m).unwrap();
         assert!(json.contains("\"type\":\"ask-user-requested\""));
         assert!(json.contains("\"requestId\":\"tu_123\""));
+    }
+
+    #[test]
+    fn plans_changed_payload_serializes_kebab_kind() {
+        let p = PlansChangedPayload {
+            kind: PlansChangedKind::Created,
+            name: Some("foo".into()),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("\"kind\":\"created\""));
+        assert!(json.contains("\"name\":\"foo\""));
     }
 }

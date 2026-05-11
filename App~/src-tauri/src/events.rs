@@ -9,8 +9,9 @@ use tauri::{AppHandle, Emitter};
 use crate::types::{
     AgentMessagePayload, AskUserRequestedPayload, ClaudeVersionOutOfRangePayload, Message,
     MessageStreamChunkPayload, MessageStreamCompletePayload, PermissionModeChangedPayload,
-    PermissionRequestedPayload, RouteRequestedPayload, SdkInstallFailedPayload,
-    SdkInstallProgressPayload, SupervisorStatusChangedPayload, UnityStatusChangedPayload,
+    PermissionRequestedPayload, PlansChangedPayload, RouteRequestedPayload,
+    SdkInstallFailedPayload, SdkInstallProgressPayload, SupervisorStatusChangedPayload,
+    UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -57,6 +58,10 @@ pub const EVT_PERMISSION_MODE_CHANGED: &str = "permission-mode-changed";
 
 /// Event name for `ClaudeVersionOutOfRangePayload`.
 pub const EVT_CLAUDE_VERSION_OUT_OF_RANGE: &str = "claude-version-out-of-range";
+
+/// Event name for `PlansChangedPayload` — emitted by the plans dir
+/// file watcher (see `plans_watcher::run_watcher_loop`).
+pub const EVT_PLANS_CHANGED: &str = "plans-changed";
 
 // endregion
 
@@ -310,6 +315,23 @@ pub fn emit_claude_version_out_of_range(
     payload: ClaudeVersionOutOfRangePayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_CLAUDE_VERSION_OUT_OF_RANGE, payload)
+}
+
+/// Broadcasts a plans-directory filesystem change to the frontend.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - Synthesized kind plus the affected plan name (no `.md`).
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_plans_changed(
+    app: &AppHandle,
+    payload: PlansChangedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_PLANS_CHANGED, payload)
 }
 
 // endregion

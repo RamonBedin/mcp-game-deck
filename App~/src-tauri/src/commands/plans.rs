@@ -36,13 +36,13 @@ pub(super) fn try_resolve_project_root() -> Option<PathBuf> {
 
 /// Returns the absolute path to the plans directory for the current
 /// project, or `None` when no project root resolves.
-pub(super) fn plans_dir() -> Option<PathBuf> {
+pub(crate) fn plans_dir() -> Option<PathBuf> {
     try_resolve_project_root().map(|root| root.join(PLANS_SUBDIR))
 }
 
 /// Creates the plans directory if missing. Idempotent: suppresses
 /// `AlreadyExists`; surfaces other IO errors to the caller.
-fn ensure_plans_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn ensure_plans_dir(dir: &Path) -> std::io::Result<()> {
     match fs::create_dir_all(dir) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(()),
