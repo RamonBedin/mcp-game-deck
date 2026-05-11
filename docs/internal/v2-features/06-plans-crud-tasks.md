@@ -13,7 +13,7 @@
 | 1 | 1.3 — `write_plan` real implementation | ✅ done | — |
 | 1 | 1.4 — `delete_plan` real implementation | ✅ done | — |
 | 1 | 1.5 — Plans dir file watcher → `plans-changed` event | ✅ done | — |
-| 2 | 2.1 — `plansStore` + `plans-changed` subscription | ⏳ pending | — |
+| 2 | 2.1 — `plansStore` + `plans-changed` subscription | ✅ done | — |
 | 2 | 2.2 — `PlansList` component (left column) | ⏳ pending | — |
 | 2 | 2.3 — `PlanPane` + `PlanViewer` + `PlanEditor` | ⏳ pending | — |
 | 2 | 2.4 — Wire `PlansRoute` 2-col layout + actions | ⏳ pending | — |
