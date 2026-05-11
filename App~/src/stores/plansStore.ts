@@ -47,6 +47,7 @@ interface PlansState
   selectPlan: (name: string) => Promise<void>;
   enterEdit: () => void;
   cancelEdit: () => void;
+  setEditDraft: (next: string) => void;
   saveEdit: () => Promise<void>;
   deletePlan: (name: string) => Promise<void>;
   createNewPlan: (name: string, content: string) => Promise<void>;
@@ -133,6 +134,7 @@ export const usePlansStore = create<PlansState>((set, get) => ({
       editDraft: null,
       editError: null,
     }),
+  setEditDraft: (next) => set({ editDraft: next }),
   saveEdit: async () => {
     const { currentPlan, editDraft } = get();
     if (currentPlan === null || editDraft === null)

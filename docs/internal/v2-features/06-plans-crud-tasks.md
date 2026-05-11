@@ -16,7 +16,7 @@
 | 2 | 2.1 — `plansStore` + `plans-changed` subscription | ✅ done | — |
 | 2 | 2.2 — `PlansList` component (left column) | ✅ done | — |
 | 2 | 2.3 — `PlanPane` + `PlanViewer` + `PlanEditor` | ✅ done | — |
-| 2 | 2.4 — Wire `PlansRoute` 2-col layout + actions | ⏳ pending | — |
+| 2 | 2.4 — Wire `PlansRoute` 2-col layout + actions | ✅ done | — |
 | 3 | 3.1 — `Plugin~/skills/save-plan/SKILL.md` | ⏳ pending | — |
 | 3 | 3.2 — `Plugin~/skills/plan-execute/SKILL.md` | ⏳ pending | — |
 | 4 | 4.1 — `system/init` capture in `sdk-entry.js` → `CatalogReady` | ⏳ pending | — |
@@ -924,3 +924,5 @@ Refs: 06-plans-crud-tasks.md (task 7.1), 06-plans-crud-spec.md
 ## Follow-ups discovered during implementation
 
 - **Inconsistency: `last_modified` units across stores.** `PlanMeta.last_modified` is emitted in seconds (`Duration::as_secs()` in `App~/src-tauri/src/commands/plans.rs`), while `SessionSummary.last_modified` is emitted in milliseconds (`Duration::as_millis()` in `App~/src-tauri/src/commands/sessions.rs`). React-side formatters compensate per consumer (`SessionList.formatRelative` treats input as millis; `PlansList.formatRelative` multiplies by 1000 internally). Normalize to one unit (probably millis, since that matches `Date.now()` math) in a cleanup commit; touches `plans.rs`, the `PlanMeta` shape in `types.rs`/`types.ts`, and `PlansList.formatRelative`. Discovered during F06 task 2.2.
+
+- **UX gap: unsaved edits silently dropped on "+ New plan".** When the user is in `editMode === true` with an unsaved `editDraft` and clicks "+ New plan" → fills name → Create, the success path calls `selectPlan(newName)` which resets `editMode = false` and clears the draft. The in-progress edits are lost without any confirmation. Accepted as v2.0 behavior because the spec doesn't mandate a guard; F09 polish should add a "Discard unsaved edits?" prompt before allowing the form to open (or before the post-create `selectPlan` runs) when `editMode === true && editDraft !== currentPlan?.content`. Discovered during F06 task 2.4.
