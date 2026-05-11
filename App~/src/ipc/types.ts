@@ -167,6 +167,52 @@ export interface PlansChangedPayload
 
 // #endregion
 
+// #region Catalog
+
+/**
+ * Source classification for a slash command, mirrored from Rust for
+ * the slash dropdown . Built-ins are Claude Code's
+ * first-party commands; user-commands live under
+ * `ProjectSettings/GameDeck/commands/`; plugin commands come from
+ * this package (`mcp-game-deck:` prefix); third-party covers any
+ * other namespaced prefix.
+ */
+export type CommandSource =
+  | "built-in"
+  | "user-command"
+  | "plugin"
+  | "third-party";
+
+/**
+ * Source classification for an agent, mirrored from Rust for the `@`
+ * picker (F06 group 6). Same prefix scheme as `CommandSource` minus
+ * the `user-command` variant.
+ */
+export type AgentSource = "built-in" | "plugin" | "third-party";
+
+/**
+ * One entry in the `catalog-ready` agent message's `commands` array.
+ * `argumentHint` mirrors a SKILL.md's `argument-hint` frontmatter
+ * field; omitted from the wire when the command takes no argument.
+ */
+export interface CatalogCommand
+{
+  name: string;
+  description: string;
+  argumentHint?: string;
+  source: CommandSource;
+}
+
+/** One entry in the `catalog-ready` agent message's `agents` array. */
+export interface CatalogAgent
+{
+  name: string;
+  description: string;
+  source: AgentSource;
+}
+
+// #endregion
+
 // #region Rules
 
 /** Lightweight metadata for a rule file (used in list views). */
@@ -388,7 +434,8 @@ export type AgentMessage =
   | { type: "health-failed"; message: string }
   | { type: "ask-user-requested"; requestId: string; turnId: string; agentId: string | null; input: { questions: AskUserQuestion[] } }
   | { type: "permission-requested"; requestId: string; turnId: string; agentId: string | null; toolName: string; input: unknown; blockedPath: string | null; decisionReason: string | null }
-  | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: AskUserQuestionOutput | null; toolName: string | null; turnId: string | null };
+  | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: AskUserQuestionOutput | null; toolName: string | null; turnId: string | null }
+  | { type: "catalog-ready"; commands: CatalogCommand[]; agents: CatalogAgent[] };
 
 /** Wire payload for `agent-message`. */
 export interface AgentMessagePayload

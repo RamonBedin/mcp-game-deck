@@ -199,6 +199,60 @@ pub struct PlansChangedPayload {
 
 // endregion
 
+// region: Catalog
+
+/// Source classification for a slash command, mirrored to React for
+/// the slash dropdown  Built-ins are the Claude Code
+/// CLI's first-party commands; user-commands live under the project's
+/// `ProjectSettings/GameDeck/commands/`; plugin commands come from
+/// this package (`mcp-game-deck:` prefix); third-party covers any
+/// other namespaced prefix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CommandSource {
+    BuiltIn,
+    UserCommand,
+    Plugin,
+    ThirdParty,
+}
+
+/// Source classification for an agent (subagent), mirrored to React
+/// for the `@` picker (F06 group 6). Same prefix scheme as
+/// `CommandSource` minus the `user-command` variant — agents don't
+/// have a per-project user-authored equivalent today.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentSource {
+    BuiltIn,
+    Plugin,
+    ThirdParty,
+}
+
+/// One entry in the `catalog-ready` agent message's `commands` array.
+///
+/// `argument_hint` is optional and omitted from the wire when absent;
+/// it mirrors the `argument-hint` field of a SKILL.md frontmatter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogCommand {
+    pub name: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub argument_hint: Option<String>,
+    pub source: CommandSource,
+}
+
+/// One entry in the `catalog-ready` agent message's `agents` array.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogAgent {
+    pub name: String,
+    pub description: String,
+    pub source: AgentSource,
+}
+
+// endregion
+
 // region: Rules
 
 /// Lightweight metadata for a rule file (used in list views).
@@ -391,6 +445,10 @@ pub enum AgentMessage {
     HealthFailed {
         message: String,
     },
+    CatalogReady {
+        commands: Vec<CatalogCommand>,
+        agents: Vec<CatalogAgent>,
+    },
 }
 
 /// Wire payload for `agent-message` — wraps an `AgentMessage` in a
@@ -557,5 +615,27 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("\"kind\":\"created\""));
         assert!(json.contains("\"name\":\"foo\""));
+    }
+
+    #[test]
+    fn catalog_ready_serializes_kebab() {
+        let m = AgentMessage::CatalogReady {
+            commands: vec![CatalogCommand {
+                name: "save-plan".into(),
+                description: "Save a plan.".into(),
+                argument_hint: Some("[plan-name]".into()),
+                source: CommandSource::Plugin,
+            }],
+            agents: vec![CatalogAgent {
+                name: "my-agent".into(),
+                description: "Test agent.".into(),
+                source: AgentSource::BuiltIn,
+            }],
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(json.contains("\"type\":\"catalog-ready\""));
+        assert!(json.contains("\"source\":\"plugin\""));
+        assert!(json.contains("\"source\":\"built-in\""));
+        assert!(json.contains("\"argumentHint\":\"[plan-name]\""));
     }
 }

@@ -238,6 +238,7 @@ pub async fn read_stdout(
             | AgentMessage::AskUserRequested { .. }
             | AgentMessage::PermissionRequested { .. }
             | AgentMessage::RequestResolved { .. }
+            | AgentMessage::CatalogReady { .. }
             | AgentMessage::Error { .. } => {
             }
         }
