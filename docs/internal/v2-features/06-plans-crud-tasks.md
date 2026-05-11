@@ -15,7 +15,7 @@
 | 1 | 1.5 — Plans dir file watcher → `plans-changed` event | ✅ done | — |
 | 2 | 2.1 — `plansStore` + `plans-changed` subscription | ✅ done | — |
 | 2 | 2.2 — `PlansList` component (left column) | ✅ done | — |
-| 2 | 2.3 — `PlanPane` + `PlanViewer` + `PlanEditor` | ⏳ pending | — |
+| 2 | 2.3 — `PlanPane` + `PlanViewer` + `PlanEditor` | ✅ done | — |
 | 2 | 2.4 — Wire `PlansRoute` 2-col layout + actions | ⏳ pending | — |
 | 3 | 3.1 — `Plugin~/skills/save-plan/SKILL.md` | ⏳ pending | — |
 | 3 | 3.2 — `Plugin~/skills/plan-execute/SKILL.md` | ⏳ pending | — |
