@@ -35,6 +35,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CatalogCommand } from "../ipc/types";
+import { findActiveTrigger } from "./triggerDetection";
 
 // #region Types
 
@@ -107,37 +108,19 @@ const INACTIVE_STATE: SlashAutocompleteState = {
  */
 export function computeSlashAutocompleteState(value: string, cursorPosition: number, commands: CatalogCommand[],): SlashAutocompleteState
 {
-  const slashIndex = value.lastIndexOf("/", cursorPosition - 1);
-
-  if (slashIndex < 0)
+  const match = findActiveTrigger(value, cursorPosition, "/");
+  if (match === null)
   {
     return INACTIVE_STATE;
   }
 
-  if (slashIndex > 0)
-  {
-    const prevChar = value[slashIndex - 1];
-
-    if (!/\s/.test(prevChar))
-    {
-      return INACTIVE_STATE;
-    }
-  }
-
-  const query = value.substring(slashIndex + 1, cursorPosition);
-
-  if (/\s/.test(query))
-  {
-    return INACTIVE_STATE;
-  }
-
-  const candidates = filterAndSortCandidates(commands, query);
+  const candidates = filterAndSortCandidates(commands, match.query);
 
   return {
     active: true,
-    query,
+    query: match.query,
     candidates,
-    range: [slashIndex, cursorPosition],
+    range: [match.triggerStart, cursorPosition],
   };
 }
 
