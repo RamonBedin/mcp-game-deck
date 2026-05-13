@@ -40,12 +40,16 @@
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, SyntheticEvent } from "react";
+import { useAgents } from "../hooks/useAgents";
+import { applyAtSelection, useAtAutocomplete } from "../hooks/useAtAutocomplete";
 import { useCommands } from "../hooks/useCommands";
 import { useFileDragDrop } from "../hooks/useFileDragDrop";
+import { useProjectFiles } from "../hooks/useProjectFiles";
 import { applySlashSelection, useSlashAutocomplete, } from "../hooks/useSlashAutocomplete";
 import { setPermissionMode as setPermissionModeCommand } from "../ipc/commands";
 import type { PermissionMode } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
+import AtDropdown from "./AtDropdown";
 import PermissionModeToggle from "./PermissionModeToggle";
 import SlashDropdown from "./SlashDropdown";
 
@@ -59,9 +63,9 @@ const PERMISSION_MODE_CYCLE: PermissionMode[] = [
   "auto",
 ];
 
-const SLASH_ROW_HEIGHT_PX = 28;
-const SLASH_PANEL_MAX_HEIGHT_PX = 280;
-const SLASH_PANEL_GAP_PX = 4;
+const DROPDOWN_ROW_HEIGHT_PX = 28;
+const DROPDOWN_PANEL_MAX_HEIGHT_PX = 280;
+const DROPDOWN_PANEL_GAP_PX = 4;
 
 const nextPermissionMode = (current: PermissionMode): PermissionMode => {
   const idx = PERMISSION_MODE_CYCLE.indexOf(current);
@@ -100,6 +104,10 @@ export default function ChatInput()
 
   const commands = useCommands();
   const slash = useSlashAutocomplete(input, cursorPosition, commands);
+
+  const agents = useAgents();
+  const { files } = useProjectFiles();
+  const at = useAtAutocomplete(input, cursorPosition, agents, files);
 
   // #region Drag-drop
 
@@ -186,6 +194,25 @@ export default function ChatInput()
     setCursorPosition(result.newCursor);
   };
 
+  const applyAtByIndex = (index: number) => {
+    if (at.range === null)
+    {
+      return;
+    }
+
+    const candidate = at.candidates[index];
+
+    if (candidate === undefined)
+    {
+      return;
+    }
+
+    const result = applyAtSelection(input, at.range, candidate);
+    pendingCursorRef.current = result.newCursor;
+    setInput(result.newValue);
+    setCursorPosition(result.newCursor);
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (slash.active)
     {
@@ -225,6 +252,44 @@ export default function ChatInput()
       }
     }
 
+    if (at.active)
+    {
+      if (e.key === "ArrowDown")
+      {
+        e.preventDefault();
+        at.next();
+        return;
+      }
+
+      if (e.key === "ArrowUp")
+      {
+        e.preventDefault();
+        at.prev();
+        return;
+      }
+
+      if (e.key === "Enter")
+      {
+        e.preventDefault();
+        applyAtByIndex(at.selectedIndex);
+        return;
+      }
+
+      if (e.key === "Tab" && !e.shiftKey)
+      {
+        e.preventDefault();
+        applyAtByIndex(at.selectedIndex);
+        return;
+      }
+
+      if (e.key === "Escape")
+      {
+        e.preventDefault();
+        at.cancel();
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey)
     {
       e.preventDefault();
@@ -250,7 +315,7 @@ export default function ChatInput()
 
   // #region Anchor
 
-  const computeSlashAnchor = (): { top: number; left: number } => {
+  const computeDropdownAnchor = (candidatesLen: number): { top: number; left: number } => {
     const ta = textareaRef.current;
 
     if (ta === null)
@@ -259,9 +324,12 @@ export default function ChatInput()
     }
 
     const rect = ta.getBoundingClientRect();
-    const estimatedHeight = Math.min(SLASH_PANEL_MAX_HEIGHT_PX, slash.candidates.length * SLASH_ROW_HEIGHT_PX + SLASH_PANEL_GAP_PX,);
+    const estimatedHeight = Math.min(
+      DROPDOWN_PANEL_MAX_HEIGHT_PX,
+      candidatesLen * DROPDOWN_ROW_HEIGHT_PX + DROPDOWN_PANEL_GAP_PX,
+    );
     return {
-      top: rect.top - estimatedHeight - SLASH_PANEL_GAP_PX,
+      top: rect.top - estimatedHeight - DROPDOWN_PANEL_GAP_PX,
       left: rect.left,
     };
   };
@@ -329,9 +397,19 @@ export default function ChatInput()
         <SlashDropdown
           candidates={slash.candidates}
           selectedIndex={slash.selectedIndex}
-          anchor={computeSlashAnchor()}
+          anchor={computeDropdownAnchor(slash.candidates.length)}
           onSelect={(i) => applySlashByIndex(i)}
           onClose={() => slash.cancel()}
+        />
+      )}
+
+      {!slash.active && at.active && (
+        <AtDropdown
+          candidates={at.candidates}
+          selectedIndex={at.selectedIndex}
+          anchor={computeDropdownAnchor(at.candidates.length)}
+          onSelect={(i) => applyAtByIndex(i)}
+          onClose={() => at.cancel()}
         />
       )}
     </form>
