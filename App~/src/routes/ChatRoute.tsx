@@ -1,24 +1,25 @@
 /**
  * Chat route — message list + composer.
  *
- * Subscribes to `agent-message` for streamed assistant replies (text
- * deltas, turn-complete markers, errors), auto-scrolls to the bottom
- * on every new message, and submits user input on Enter (Shift+Enter
- * inserts a newline).
+ * Owns the agent-message subscription that streams the supervisor's
+ * output into `conversationStore` (text deltas, tool calls, tool
+ * results, turn-complete markers, request cards, errors) and the
+ * scroll anchor that pins the view to the latest message. The
+ * composer (textarea, attachments, autocomplete, key handlers) is
+ * extracted into {@link ChatInput} so this route stays focused on
+ * messages + store wiring.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent } from "react";
-import PermissionModeToggle from "../components/PermissionModeToggle";
+import { useEffect, useRef } from "react";
+import ChatInput from "../components/ChatInput";
 import { PermissionRequestCard } from "../components/requests/PermissionRequestCard";
 import { QuestionCard } from "../components/requests/QuestionCard";
 import SessionList from "../components/SessionList";
 import ToolResultBlock from "../components/ToolResultBlock";
 import ToolUseBlock from "../components/ToolUseBlock";
-import { useFileDragDrop } from "../hooks/useFileDragDrop";
-import { respondToRequest, setPermissionMode as setPermissionModeCommand,} from "../ipc/commands";
+import { respondToRequest } from "../ipc/commands";
 import { onAgentMessage } from "../ipc/events";
-import type { AskUserQuestionOutput, AskUserRequestedPayload, Block, MessageRole, PermissionMode, PermissionRequestedPayload,} from "../ipc/types";
+import type { AskUserQuestionOutput, AskUserRequestedPayload, Block, MessageRole, PermissionRequestedPayload, } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
 // #region Helpers
@@ -32,25 +33,6 @@ const roleColor = (role: MessageRole): string => {
     case "system":
       return "text-amber-400";
   }
-};
-
-const PERMISSION_MODE_CYCLE: PermissionMode[] = [
-  "default",
-  "acceptEdits",
-  "plan",
-  "bypassPermissions",
-  "auto",
-];
-
-const nextPermissionMode = (current: PermissionMode): PermissionMode => {
-  const idx = PERMISSION_MODE_CYCLE.indexOf(current);
-  const next = (idx + 1) % PERMISSION_MODE_CYCLE.length;
-  return PERMISSION_MODE_CYCLE[next];
-};
-
-const basenameOf = (filePath: string): string => {
-  const idx = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
-  return idx >= 0 ? filePath.slice(idx + 1) : filePath;
 };
 
 /**
@@ -141,7 +123,6 @@ function BlockView({ block }: { block: Block })
  */
 export default function ChatRoute() {
   const messages = useConversationStore((s) => s.messages);
-  const sendMessage = useConversationStore((s) => s.sendMessage);
   const appendDelta = useConversationStore((s) => s.appendDelta);
   const appendToolUseBlock = useConversationStore((s) => s.appendToolUseBlock);
   const appendToolResultBlock = useConversationStore((s) => s.appendToolResultBlock,);
@@ -150,32 +131,8 @@ export default function ChatRoute() {
   const appendRequestBlock = useConversationStore((s) => s.appendRequestBlock);
   const appendAutoAllowedBlock = useConversationStore((s) => s.appendAutoAllowedBlock,);
   const markRequestAnswered = useConversationStore((s) => s.markRequestAnswered,);
-  const permissionMode = useConversationStore((s) => s.permissionMode);
-  const setPermissionMode = useConversationStore((s) => s.setPermissionMode);
 
-  const [input, setInput] = useState("");
-  const [pendingAttachments, setPendingAttachments] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  const handleFilesDropped = useCallback((paths: string[]) => {
-    setPendingAttachments((prev) => {
-      const merged = [...prev];
-      for (const p of paths)
-      {
-        if (!merged.includes(p))
-        {
-          merged.push(p);
-        }
-      }
-      return merged;
-    });
-  }, []);
-
-  const { isDragging } = useFileDragDrop(handleFilesDropped);
-
-  const removeAttachment = (target: string) => {
-    setPendingAttachments((prev) => prev.filter((p) => p !== target));
-  };
 
   // #region Effects
 
@@ -299,48 +256,6 @@ export default function ChatRoute() {
 
   // #endregion
 
-  // #region Handlers
-
-  const submit = () => {
-    if (!input.trim() && pendingAttachments.length === 0)
-    {
-      return;
-    }
-
-    void sendMessage(input, pendingAttachments);
-    setInput("");
-    setPendingAttachments([]);
-  };
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    submit();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey)
-    {
-      e.preventDefault();
-      submit();
-      return;
-    }
-
-    if (e.key === "Tab" && e.shiftKey)
-    {
-      e.preventDefault();
-      const next = nextPermissionMode(permissionMode);
-      const previous = permissionMode;
-      setPermissionMode(next);
-      
-      void setPermissionModeCommand(next).catch((err) => {
-        console.error("[chat] Shift+Tab permission cycle failed:", err);
-        setPermissionMode(previous);
-      });
-    }
-  };
-
-  // #endregion
-
   return (
     <div className="flex h-full gap-4">
       <aside className="w-60 shrink-0 border-r border-slate-800 pr-3">
@@ -379,56 +294,7 @@ export default function ChatRoute() {
           <div ref={bottomRef} />
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
-          <div className="flex items-center justify-end">
-            <PermissionModeToggle />
-          </div>
-
-          {pendingAttachments.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {pendingAttachments.map((p) => (
-                <span
-                  key={p}
-                  className="flex items-center gap-1 rounded border border-slate-700 bg-slate-800/60 px-2 py-0.5 text-xs text-slate-300"
-                  title={p}
-                >
-                  <span className="max-w-[180px] truncate">{basenameOf(p)}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(p)}
-                    className="text-slate-500 hover:text-slate-200"
-                    aria-label={`Remove ${basenameOf(p)}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="relative">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={3}
-              placeholder="Type a message... (Enter to send, Shift+Enter for newline; drop files to attach)"
-              className="w-full resize-none rounded border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-100 focus:border-slate-500 focus:outline-none"
-            />
-            {isDragging && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-sky-500 bg-sky-950/70 text-xs font-semibold uppercase tracking-wider text-sky-200">
-                Drop files to attach
-              </div>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={!input.trim() && pendingAttachments.length === 0}
-            className="self-end rounded bg-sky-700 px-4 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Send
-          </button>
-        </form>
+        <ChatInput />
       </div>
     </div>
   );
