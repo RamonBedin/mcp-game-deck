@@ -23,6 +23,7 @@ serde_yaml = "0.9"
 tokio = { version = "1", features = ["process", "sync", "io-util", "time", "rt", "net", "macros"] }
 notify = "6"
 notify-debouncer-mini = "0.4"
+walkdir = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

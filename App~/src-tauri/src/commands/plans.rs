@@ -7,32 +7,12 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use crate::commands::settings::get_settings;
+use crate::project_root::try_resolve_project_root;
 use crate::types::{AppError, Plan, PlanFrontmatter, PlanMeta};
 
 const PLANS_SUBDIR: &str = "ProjectSettings/GameDeck/plans";
 
 // region: Internal — path resolution
-
-/// Resolves the Unity project root, or `None` if no source provides
-/// one.
-///
-/// Tries `UNITY_PROJECT_PATH` env first (the F07 launch contract;
-/// matches `claude_supervisor::spawn`'s resolution), then falls back to
-/// the persisted `AppSettings.unity_project_path`. Returning `Option`
-/// (rather than `Result`) lets every plans command coalesce "no
-/// project pinned" into the same empty/not-found path it already
-/// handles for "project pinned, no plans dir yet".
-pub(super) fn try_resolve_project_root() -> Option<PathBuf> {
-    if let Some(path) = std::env::var("UNITY_PROJECT_PATH")
-        .ok()
-        .filter(|s| !s.is_empty())
-    {
-        return Some(PathBuf::from(path));
-    }
-
-    get_settings().unity_project_path.map(PathBuf::from)
-}
 
 /// Returns the absolute path to the plans directory for the current
 /// project, or `None` when no project root resolves.

@@ -199,6 +199,46 @@ pub struct PlansChangedPayload {
 
 // endregion
 
+// region: Files
+
+/// Kind of entry returned by `list_project_files` — directories are
+/// included so the user can `@SomeFolder/` to reference a folder in
+/// the `@` picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FileKind {
+    File,
+    Directory,
+}
+
+/// One entry in the project file index, relative to `UNITY_PROJECT_PATH`.
+///
+/// `path` is normalized to forward slashes regardless of OS so the
+/// React side can treat it as a URL-style identifier without
+/// platform-conditional parsing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileIndexEntry {
+    pub path: String,
+    pub kind: FileKind,
+}
+
+/// Payload for `project-files-changed` — emitted by the files-root
+/// watcher whenever a path under the active project changes.
+///
+/// `debounced` is `true` when the notify-debouncer-mini batch carried
+/// more than one event (multiple FS changes coalesced into a single
+/// emit). React's `useProjectFiles` ignores the flag and re-fetches
+/// the full index on every event — the field exists for diagnostics
+/// and future v2.1 throttling experiments.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFilesChangedPayload {
+    pub debounced: bool,
+}
+
+// endregion
+
 // region: Catalog
 
 /// Source classification for a slash command, mirrored to React for

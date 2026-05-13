@@ -10,6 +10,7 @@ pub mod connection;
 pub mod conversation;
 pub mod dev;
 pub mod env;
+pub mod files;
 pub mod install;
 pub mod plans;
 pub mod requests;

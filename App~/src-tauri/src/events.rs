@@ -9,9 +9,9 @@ use tauri::{AppHandle, Emitter};
 use crate::types::{
     AgentMessagePayload, AskUserRequestedPayload, ClaudeVersionOutOfRangePayload, Message,
     MessageStreamChunkPayload, MessageStreamCompletePayload, PermissionModeChangedPayload,
-    PermissionRequestedPayload, PlansChangedPayload, RouteRequestedPayload,
-    SdkInstallFailedPayload, SdkInstallProgressPayload, SupervisorStatusChangedPayload,
-    UnityStatusChangedPayload,
+    PermissionRequestedPayload, PlansChangedPayload, ProjectFilesChangedPayload,
+    RouteRequestedPayload, SdkInstallFailedPayload, SdkInstallProgressPayload,
+    SupervisorStatusChangedPayload, UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -62,6 +62,11 @@ pub const EVT_CLAUDE_VERSION_OUT_OF_RANGE: &str = "claude-version-out-of-range";
 /// Event name for `PlansChangedPayload` — emitted by the plans dir
 /// file watcher (see `plans_watcher::run_watcher_loop`).
 pub const EVT_PLANS_CHANGED: &str = "plans-changed";
+
+/// Event name for `ProjectFilesChangedPayload` — emitted by the
+/// project-root file watcher whenever a path under the active Unity
+/// project changes (see `files_watcher::run_watcher_loop`).
+pub const EVT_PROJECT_FILES_CHANGED: &str = "project-files-changed";
 
 // endregion
 
@@ -332,6 +337,25 @@ pub fn emit_plans_changed(
     payload: PlansChangedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_PLANS_CHANGED, payload)
+}
+
+/// Broadcasts a project-root filesystem change to the frontend. The
+/// payload's `debounced` flag is informational; React refetches the
+/// file index unconditionally on receipt.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle used to emit the event.
+/// * `payload` - `debounced` flag for diagnostics.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_project_files_changed(
+    app: &AppHandle,
+    payload: ProjectFilesChangedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_PROJECT_FILES_CHANGED, payload)
 }
 
 // endregion

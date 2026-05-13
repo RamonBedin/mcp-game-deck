@@ -9,7 +9,9 @@
 pub mod claude_supervisor;
 pub mod commands;
 pub mod events;
+pub mod files_watcher;
 pub mod plans_watcher;
+pub mod project_root;
 pub mod types;
 pub mod unity_client;
 
@@ -18,6 +20,8 @@ pub mod unity_client;
 use tauri::{AppHandle, Manager, WindowEvent};
 
 use claude_supervisor::ClaudeSupervisor;
+use commands::files::FilesIndex;
+use files_watcher::FilesWatcher;
 use plans_watcher::PlansWatcher;
 use unity_client::UnityClient;
 
@@ -73,6 +77,8 @@ pub fn run() {
         .manage(ClaudeSupervisor::new())
         .manage(UnityClient::new())
         .manage(PlansWatcher::new())
+        .manage(FilesWatcher::new())
+        .manage(FilesIndex::new())
         .setup(|app| {
             let app_handle = app.handle().clone();
 
@@ -96,6 +102,12 @@ pub fn run() {
                 watcher.start(app_for_watcher.clone()).await;
             });
 
+            let app_for_files_watcher = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let watcher = app_for_files_watcher.state::<FilesWatcher>();
+                watcher.start(app_for_files_watcher.clone()).await;
+            });
+
             let unity = app_handle.state::<UnityClient>();
             unity.start(app_handle.clone());
 
@@ -112,6 +124,9 @@ pub fn run() {
                     if let Some(watcher) = app.try_state::<PlansWatcher>() {
                         watcher.stop().await;
                     }
+                    if let Some(watcher) = app.try_state::<FilesWatcher>() {
+                        watcher.stop().await;
+                    }
                     app.exit(0);
                 });
             }
@@ -125,6 +140,7 @@ pub fn run() {
             commands::conversation::set_permission_mode,
             commands::conversation::get_permission_mode,
             commands::requests::respond_to_request,
+            commands::files::list_project_files,
             commands::plans::list_plans,
             commands::plans::read_plan,
             commands::plans::write_plan,

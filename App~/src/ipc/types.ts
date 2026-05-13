@@ -167,6 +167,38 @@ export interface PlansChangedPayload
 
 // #endregion
 
+// #region Files
+
+/**
+ * Kind of entry returned by `list_project_files`. Directories are
+ * included so the `@` picker can offer `@SomeFolder/` references.
+ */
+export type FileKind = "file" | "directory";
+
+/**
+ * One entry in the project file index. `path` is relative to the
+ * active `UNITY_PROJECT_PATH`, normalized to forward slashes
+ * regardless of OS.
+ */
+export interface FileIndexEntry
+{
+  path: string;
+  kind: FileKind;
+}
+
+/**
+ * Payload for `project-files-changed`. `debounced` is `true` when the
+ * underlying watcher batch coalesced more than one filesystem event;
+ * `useProjectFiles` refetches the index unconditionally, so the flag
+ * is informational only.
+ */
+export interface ProjectFilesChangedPayload
+{
+  debounced: boolean;
+}
+
+// #endregion
+
 // #region Catalog
 
 /**
