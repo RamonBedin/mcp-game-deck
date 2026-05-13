@@ -22,7 +22,7 @@
 | 4 | 4.1 — `system/init` capture in `sdk-entry.js` → `CatalogReady` | ✅ done | — |
 | 4 | 4.2 — React `catalogStore` + `useCommands` / `useAgents` hooks | ✅ done | — |
 | 5 | 5.1 — `useSlashAutocomplete` hook | ✅ done | — |
-| 5 | 5.2 — `SlashDropdown` component | ⏳ pending | — |
+| 5 | 5.2 — `SlashDropdown` component | ✅ done | — |
 | 5 | 5.3 — Wire slash dropdown into ChatRoute input | ⏳ pending | — |
 | 5 | 5.4 — Slash dropdown smoke validation | ⏳ pending | — |
 | 6 | 6.1 — `list_project_files` Tauri command + files watcher | ⏳ pending | — |
