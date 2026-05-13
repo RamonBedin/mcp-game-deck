@@ -27,7 +27,7 @@
 | 5 | 5.4 — Slash dropdown smoke validation | ✅ done | — |
 | 6 | 6.1 — `list_project_files` Tauri command + files watcher | ✅ done | — |
 | 6 | 6.2 — `useProjectFiles` + `useAtAutocomplete` hooks | ✅ done | — |
-| 6 | 6.3 — `AtDropdown` unified component | ⏳ pending | — |
+| 6 | 6.3 — `AtDropdown` unified component | ✅ done | — |
 | 6 | 6.4 — Wire `@` picker into ChatRoute input + smoke | ⏳ pending | — |
 | 7 | 7.1 — Final F06 smoke: 17 DoD scenarios + regression checks | ⏳ pending | — |
 
