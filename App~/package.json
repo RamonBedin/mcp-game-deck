@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "test": "vitest run",
     "icons": "node scripts/generate-icons.mjs",
     "postinstall": "node scripts/generate-icons.mjs"
   },
@@ -31,6 +32,7 @@
     "postcss": "^8.5.12",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.6.3",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vitest": "^2.0.0"
   }
 }

@@ -21,7 +21,7 @@
 | 3 | 3.2 — `Plugin~/skills/plan-execute/SKILL.md` | ✅ done | — |
 | 4 | 4.1 — `system/init` capture in `sdk-entry.js` → `CatalogReady` | ✅ done | — |
 | 4 | 4.2 — React `catalogStore` + `useCommands` / `useAgents` hooks | ✅ done | — |
-| 5 | 5.1 — `useSlashAutocomplete` hook | ⏳ pending | — |
+| 5 | 5.1 — `useSlashAutocomplete` hook | ✅ done | — |
 | 5 | 5.2 — `SlashDropdown` component | ⏳ pending | — |
 | 5 | 5.3 — Wire slash dropdown into ChatRoute input | ⏳ pending | — |
 | 5 | 5.4 — Slash dropdown smoke validation | ⏳ pending | — |
