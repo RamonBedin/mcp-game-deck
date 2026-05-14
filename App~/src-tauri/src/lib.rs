@@ -14,6 +14,7 @@ pub mod markdown_doc;
 pub mod plans_watcher;
 pub mod project_root;
 pub mod rules_bundle;
+pub mod rules_watcher;
 pub mod types;
 pub mod unity_client;
 

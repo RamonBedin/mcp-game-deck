@@ -292,6 +292,26 @@ export interface Rule
   estimatedTokens: number;
 }
 
+/**
+ * Kind of filesystem change emitted by `rules-changed`. Synthesized
+ * Rust-side by comparing a known-names set against `path.exists()` —
+ * the underlying `notify-debouncer-mini` collapses native event kinds.
+ */
+export type RulesChangedKind = "created" | "modified" | "deleted";
+
+/**
+ * Payload for `rules-changed` — emitted whenever a `.md` file under
+ * the active project's rules dir is created, modified, or deleted.
+ *
+ * `name` is the file stem (no `.md`); `undefined` when the watcher
+ * couldn't extract a name (e.g. non-UTF8 path).
+ */
+export interface RulesChangedPayload
+{
+  kind: RulesChangedKind;
+  name?: string;
+}
+
 // #endregion
 
 // #region Settings
