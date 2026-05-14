@@ -1,13 +1,14 @@
 //! Rules Tauri commands.
 //!
-//! `list_rules` is real (F08 task 2.1); `read_rule` / `write_rule` /
-//! `delete_rule` / `toggle_rule` remain F01-era stubs and land in
-//! tasks 2.2-2.5.
+//! `list_rules` and `read_rule` are real (F08 tasks 2.1-2.2);
+//! `write_rule` / `delete_rule` / `toggle_rule` remain F01-era stubs
+//! and land in tasks 2.3-2.5.
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
-use crate::markdown_doc::{ensure_dir, parse_frontmatter, read_metadata_ms};
+use crate::markdown_doc::{ensure_dir, parse_frontmatter, read_metadata_ms, validate_kebab_name};
 use crate::project_root::try_resolve_project_root;
 use crate::types::{AppError, Rule, RuleMeta};
 
@@ -143,27 +144,72 @@ pub fn list_rules() -> Vec<RuleMeta> {
 
 // region: Read / write
 
-/// Stub: reads a rule by name.
+/// Reads a rule by name from the pinned Unity project's rules dir.
 ///
-/// Returns a fixed placeholder `Rule` today.
+/// Validates the name format, then reads
+/// `<UNITY_PROJECT_PATH>/ProjectSettings/GameDeck/rules/<name>.md` and
+/// splits the optional YAML frontmatter from the body. Malformed YAML
+/// is tolerated: `frontmatter` falls back to an empty map and the
+/// body still surfaces so the Rules pane can edit and resave.
 ///
 /// # Arguments
 ///
-/// * `name` - Rule filename without extension.
+/// * `name` - Rule filename without extension; must match the
+///   kebab-case rule enforced by `markdown_doc::validate_kebab_name`.
 ///
 /// # Returns
 ///
-/// A placeholder `Rule` whose body explains that real UI lands in Feature 08.
+/// The rule's `name`, mtime (`last_modified`, in milliseconds),
+/// `content` (body without the `---` delimiters), the full
+/// `frontmatter` map, and `estimated_tokens` (chars/4 round-up over
+/// the full raw file).
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// - `InvalidInput` when `name` violates the kebab-case rule.
+/// - `FileNotFound` when no Unity project is pinned, or when the
+///   file does not exist on disk.
+/// - `PermissionDenied` when the OS rejects the read.
+/// - `Internal` for any other IO error or filesystem stat failure.
 #[tauri::command]
 pub fn read_rule(name: String) -> Result<Rule, AppError> {
+    validate_kebab_name(&name)?;
+
+    let dir = rules_dir().ok_or_else(|| {
+        AppError::FileNotFound(format!(
+            "Rule '{name}' not found: no Unity project pinned"
+        ))
+    })?;
+
+    let path = dir.join(format!("{name}.md"));
+
+    let metadata = fs::metadata(&path).map_err(|e| match e.kind() {
+        ErrorKind::NotFound => AppError::FileNotFound(format!("Rule '{name}' not found")),
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot stat rule '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to stat rule '{name}': {e}")),
+    })?;
+
+    let last_modified = read_metadata_ms(&metadata);
+
+    let raw = fs::read_to_string(&path).map_err(|e| match e.kind() {
+        ErrorKind::NotFound => AppError::FileNotFound(format!("Rule '{name}' not found")),
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot read rule '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to read rule '{name}': {e}")),
+    })?;
+
+    let estimated_tokens = estimate_tokens(&raw);
+    let (frontmatter, content) = parse_frontmatter(&raw);
+
     Ok(Rule {
         name,
-        enabled: false,
-        content: "# Stub rule\n\nReal rules UI lands in Feature 08.".to_string(),
+        last_modified,
+        content,
+        frontmatter,
+        estimated_tokens,
     })
 }
 
@@ -249,7 +295,12 @@ mod tests {
 
     #[test]
     fn estimate_tokens_counts_unicode_chars_not_bytes() {
-        // "é" is two bytes in UTF-8 but one char.
         assert_eq!(estimate_tokens("éééé"), 1);
+    }
+
+    #[test]
+    fn read_rule_rejects_invalid_name() {
+        let err = read_rule("Has Spaces".to_string()).unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)));
     }
 }

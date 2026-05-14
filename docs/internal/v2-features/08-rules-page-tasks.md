@@ -10,7 +10,7 @@
 |-------|------|--------|--------|
 | 1 | 1.1 — Extract `markdown_doc` module + flip plans to ms | ✅ done | — |
 | 2 | 2.1 — `list_rules` real implementation | ✅ done | — |
-| 2 | 2.2 — `read_rule` real implementation | ⏳ pending | — |
+| 2 | 2.1 — `list_rules` real implementation | ✅ done | — |
 | 2 | 2.3 — `write_rule` real implementation | ⏳ pending | — |
 | 2 | 2.4 — `delete_rule` real implementation | ⏳ pending | — |
 | 2 | 2.5 — `toggle_rule` surgical frontmatter mutation | ⏳ pending | — |

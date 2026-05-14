@@ -269,13 +269,27 @@ export interface RuleMeta
 }
 
 /**
- * Full contents of a rule.
+ * Free-form frontmatter map for rule documents.
+ */
+export type RuleFrontmatter = Record<string, unknown>;
+
+/**
+ * Full contents of a rule, including its parsed frontmatter and
+ * body.
+ *
+ * `lastModified` is in **milliseconds since the Unix epoch**
+ * (matches `RuleMeta` / `PlanMeta` / `SessionSummary`). `content` is
+ * the body **without** `---` delimiters. The full frontmatter map
+ * is surfaced separately so the React pane can render the
+ * `applies-to` chip strip without re-parsing.
  */
 export interface Rule
 {
   name: string;
-  enabled: boolean;
+  lastModified: number;
   content: string;
+  frontmatter: RuleFrontmatter;
+  estimatedTokens: number;
 }
 
 // #endregion

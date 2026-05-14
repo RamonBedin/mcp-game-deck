@@ -324,13 +324,31 @@ pub struct RuleMeta {
     pub estimated_tokens: u32,
 }
 
-/// Full contents of a rule, including its activation flag and body.
+/// Free-form frontmatter map for rule documents.
+///
+/// Schema is intentionally open — v2.0 reads `enabled` / `description`
+/// / `applies-to` (see [`RuleMeta`]), but writes preserve unknown
+/// fields verbatim so user-authored frontmatter round-trips through
+/// toggles and edits (F08 task 2.5).
+pub type RuleFrontmatter = Map<String, Value>;
+
+/// Full contents of a rule, including its parsed frontmatter and
+/// body.
+///
+/// `last_modified` is in **milliseconds since the Unix epoch**
+/// (matches [`RuleMeta`] / [`PlanMeta`] / [`SessionSummary`]).
+/// `content` is the body **without** `---` delimiters. The full
+/// frontmatter map is surfaced separately so the React pane can
+/// render the `applies-to` chip strip and so v2.1+ surfaces can
+/// expand the schema without re-shaping `Rule`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
     pub name: String,
-    pub enabled: bool,
+    pub last_modified: i64,
     pub content: String,
+    pub frontmatter: RuleFrontmatter,
+    pub estimated_tokens: u32,
 }
 
 // endregion
