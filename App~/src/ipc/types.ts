@@ -109,11 +109,18 @@ export interface SessionSummary
 
 // #region Plans
 
-/** Lightweight metadata for a plan file (used in list views). */
+/**
+ * Lightweight metadata for a plan file (used in list views).
+ *
+ * `description` is convenience-extracted from the file's YAML
+ * frontmatter so the list view doesn't have to read every plan's full
+ * body. `null` when absent, blank, or unparseable.
+ */
 export interface PlanMeta
 {
   name: string;
   lastModified: number;
+  description: string | null;
 }
 
 /**
@@ -123,11 +130,117 @@ export interface PlanMeta
  */
 export type PlanFrontmatter = Record<string, unknown>;
 
-/** Full contents of a plan, including its parsed frontmatter and body. */
-export interface Plan extends PlanMeta
+/**
+ * Full contents of a plan, including its parsed frontmatter and body.
+ *
+ * Mirrors Rust's `Plan` struct shape: independent of `PlanMeta` because
+ * `description` is a list-view convenience, while a full read returns
+ * the entire `frontmatter` map for callers that want it.
+ */
+export interface Plan
 {
+  name: string;
+  lastModified: number;
   content: string;
   frontmatter: PlanFrontmatter;
+}
+
+/**
+ * Kind of filesystem change emitted by `plans-changed`. Synthesized
+ * Rust-side by comparing a known-names set against `path.exists()` —
+ * the underlying `notify-debouncer-mini` collapses native event kinds.
+ */
+export type PlansChangedKind = "created" | "modified" | "deleted";
+
+/**
+ * Payload for `plans-changed` — emitted whenever a `.md` file under
+ * the active project's plans dir is created, modified, or deleted.
+ *
+ * `name` is the file stem (no `.md`); `undefined` when the watcher
+ * couldn't extract a name (e.g. non-UTF8 path).
+ */
+export interface PlansChangedPayload
+{
+  kind: PlansChangedKind;
+  name?: string;
+}
+
+// #endregion
+
+// #region Files
+
+/**
+ * Kind of entry returned by `list_project_files`. Directories are
+ * included so the `@` picker can offer `@SomeFolder/` references.
+ */
+export type FileKind = "file" | "directory";
+
+/**
+ * One entry in the project file index. `path` is relative to the
+ * active `UNITY_PROJECT_PATH`, normalized to forward slashes
+ * regardless of OS.
+ */
+export interface FileIndexEntry
+{
+  path: string;
+  kind: FileKind;
+}
+
+/**
+ * Payload for `project-files-changed`. `debounced` is `true` when the
+ * underlying watcher batch coalesced more than one filesystem event;
+ * `useProjectFiles` refetches the index unconditionally, so the flag
+ * is informational only.
+ */
+export interface ProjectFilesChangedPayload
+{
+  debounced: boolean;
+}
+
+// #endregion
+
+// #region Catalog
+
+/**
+ * Source classification for a slash command, mirrored from Rust for
+ * the slash dropdown . Built-ins are Claude Code's
+ * first-party commands; user-commands live under
+ * `ProjectSettings/GameDeck/commands/`; plugin commands come from
+ * this package (`mcp-game-deck:` prefix); third-party covers any
+ * other namespaced prefix.
+ */
+export type CommandSource =
+  | "built-in"
+  | "user-command"
+  | "plugin"
+  | "third-party";
+
+/**
+ * Source classification for an agent, mirrored from Rust for the `@`
+ * picker (F06 group 6). Same prefix scheme as `CommandSource` minus
+ * the `user-command` variant.
+ */
+export type AgentSource = "built-in" | "plugin" | "third-party";
+
+/**
+ * One entry in the `catalog-ready` agent message's `commands` array.
+ * `argumentHint` mirrors a SKILL.md's `argument-hint` frontmatter
+ * field; omitted from the wire when the command takes no argument.
+ */
+export interface CatalogCommand
+{
+  name: string;
+  description: string;
+  argumentHint?: string;
+  source: CommandSource;
+}
+
+/** One entry in the `catalog-ready` agent message's `agents` array. */
+export interface CatalogAgent
+{
+  name: string;
+  description: string;
+  source: AgentSource;
 }
 
 // #endregion
@@ -353,7 +466,8 @@ export type AgentMessage =
   | { type: "health-failed"; message: string }
   | { type: "ask-user-requested"; requestId: string; turnId: string; agentId: string | null; input: { questions: AskUserQuestion[] } }
   | { type: "permission-requested"; requestId: string; turnId: string; agentId: string | null; toolName: string; input: unknown; blockedPath: string | null; decisionReason: string | null }
-  | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: AskUserQuestionOutput | null; toolName: string | null; turnId: string | null };
+  | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: AskUserQuestionOutput | null; toolName: string | null; turnId: string | null }
+  | { type: "catalog-ready"; commands: CatalogCommand[]; agents: CatalogAgent[] };
 
 /** Wire payload for `agent-message`. */
 export interface AgentMessagePayload

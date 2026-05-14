@@ -19,6 +19,7 @@ import type {
   ClaudeInstallStatus,
   ConnectionStatus,
   DecisionPayload,
+  FileIndexEntry,
   Message,
   PermissionMode,
   Plan,
@@ -85,6 +86,12 @@ export const readPlan = (name: string): Promise<Plan> => invoke("read_plan", { n
 export const writePlan = (name: string, content: string): Promise<void> => invoke("write_plan", { name, content });
 
 export const deletePlan = (name: string): Promise<void> => invoke("delete_plan", { name });
+
+// #endregion
+
+// #region Files
+
+export const listProjectFiles = (): Promise<FileIndexEntry[]> => invoke("list_project_files");
 
 // #endregion
 

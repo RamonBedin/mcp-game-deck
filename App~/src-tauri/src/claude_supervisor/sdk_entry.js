@@ -396,7 +396,11 @@ async function runHealthCheck()
   {
     q = query({
       prompt: "__health__",
-      options: { cwd: projectPath },
+      options: {
+        cwd: projectPath,
+        plugins: buildPlugins(),
+        additionalDirectories: buildAdditionalDirectories(),
+      },
     });
   }
   catch (err)
@@ -416,7 +420,11 @@ async function runHealthCheck()
   const consume = (async () => {
     for await (const msg of q)
     {
-      if (msg?.type === "result")
+      if (msg?.type === "system" && msg?.subtype === "init")
+      {
+        emitCatalogOnInit(msg);
+      }
+      else if (msg?.type === "result")
       {
         return;
       }
@@ -456,6 +464,194 @@ async function runHealthCheck()
  * @type {string | null}
  */
 let pendingResumeSessionId = null;
+
+// endregion
+
+// region: catalog emit
+
+
+const BUILTIN_COMMANDS = new Set([
+  "clear", "help", "cost", "permissions", "agents", "init",
+  "login", "logout", "model", "review", "security-review",
+  "status", "exit",
+  "update-config", "debug", "simplify", "batch",
+  "fewer-permission-prompts", "loop", "schedule", "claude-api",
+  "compact", "context", "heapdump", "extra-usage", "usage",
+  "insights", "team-onboarding",
+]);
+
+/**
+ * Classifies a command name's source for the React-side catalog.
+ *
+ * @param {string} name - Raw command name from the SDK's init payload.
+ * @returns {"built-in" | "user-command" | "plugin" | "third-party"}
+ */
+function classifyCommandSource(name)
+{
+  if (name.startsWith("mcp-game-deck:"))
+  {
+    return "plugin";
+  }
+
+  if (name.includes(":"))
+  {
+    return "third-party";
+  }
+
+  const bare = name.startsWith("/") ? name.slice(1) : name;
+
+  if (BUILTIN_COMMANDS.has(bare))
+  {
+    return "built-in";
+  }
+
+  return "user-command";
+}
+
+/**
+ * Classifies an agent name's source. No built-in agent set today —
+ * un-namespaced names fall through to `built-in` as a sensible
+ * default until the SDK starts surfacing platform-level agents.
+ *
+ * @param {string} name - Raw agent name from the SDK's init payload.
+ * @returns {"built-in" | "plugin" | "third-party"}
+ */
+function classifyAgentSource(name)
+{
+  if (name.startsWith("mcp-game-deck:"))
+  {
+    return "plugin";
+  }
+
+  if (name.includes(":"))
+  {
+    return "third-party";
+  }
+
+  return "built-in";
+}
+
+/**
+ * Last emitted catalog payload as JSON, for compare-and-skip. Reset
+ * to null on every fresh JS process (supervisor restart). String
+ * compare is cheap and the payload is small.
+ *
+ * @type {string | null}
+ */
+let lastCatalogJson = null;
+
+/**
+ * One-shot flag: true after the first `system/init` shape has been
+ * dumped to stderr. Lets diagnostic output happen once per process
+ * without flooding the log on every turn.
+ *
+ * @type {boolean}
+ */
+let hasLoggedInitShape = false;
+
+/**
+ * Transforms the SDK's `system/init` payload into a `catalog-ready`
+ * envelope and emits it on stdout when the contents differ from the
+ * cached last emit.
+ *
+ * Field paths are defensive: the exact shape of `system/init` varies
+ * by SDK version, so two common conventions are tried per field
+ * (`slash_commands` / `commands`, `agents` / `available_agents`).
+ * The raw shape is dumped once per process via debug() — if the
+ * catalog ends up empty on smoke, that dump is the diagnostic to
+ * inspect.
+ *
+ * @param {object} initMessage - The full `system/init` SDK message.
+ * @returns {void}
+ */
+function emitCatalogOnInit(initMessage)
+{
+  if (!hasLoggedInitShape)
+  {
+    hasLoggedInitShape = true;
+    debug("system/init shape:", JSON.stringify(initMessage, null, 2));
+  }
+
+  const rawCommands = initMessage.slash_commands ?? initMessage.commands ?? [];
+  const rawAgents = initMessage.agents ?? initMessage.available_agents ?? [];
+
+  const commands = rawCommands
+    .map((c) => {
+      const name = typeof c === "string" ? c : (c?.name ?? c?.command ?? "");
+      const description = typeof c === "object" && c !== null ? (c.description ?? "") : "";
+      const hint = typeof c === "object" && c !== null ? (c.argumentHint ?? c.argument_hint) : undefined;
+      return {
+        name,
+        description,
+        ...(hint ? { argumentHint: hint } : {}),
+        source: classifyCommandSource(name),
+      };
+    })
+    .filter((c) => c.name.length > 0);
+
+  const agents = rawAgents
+    .map((a) => {
+      const name = typeof a === "string" ? a : (a?.name ?? "");
+      const description =
+        typeof a === "object" && a !== null ? (a.description ?? "") : "";
+      return {
+        name,
+        description,
+        source: classifyAgentSource(name),
+      };
+    })
+    .filter((a) => a.name.length > 0);
+
+  const payload = { type: "catalog-ready", commands, agents };
+  const payloadJson = JSON.stringify(payload);
+
+  if (payloadJson !== lastCatalogJson)
+  {
+    emit(payload);
+    lastCatalogJson = payloadJson;
+    debug(
+      "catalog emitted:",
+      `${commands.length} commands, ${agents.length} agents`,
+    );
+  }
+}
+
+/**
+ * Updates `pendingResumeSessionId` from an SDK message that carries
+ * `session_id` (system/init or result). No-op when the id is missing
+ * or unchanged. Used by handleInput's stream loop; runHealthCheck
+ * deliberately skips this to keep the `__health__` session isolated
+ * from the user's conversation continuity.
+ *
+ * @param {object} msg - Any SDK message; missing session_id is no-op.
+ * @returns {void}
+ */
+function captureSessionId(msg)
+{
+  if (typeof msg.session_id === "string" && msg.session_id.length > 0)
+  {
+    if (msg.session_id !== pendingResumeSessionId)
+    {
+      pendingResumeSessionId = msg.session_id;
+      debug("captured session_id:", msg.session_id);
+    }
+  }
+}
+
+/**
+ * Composite handler for `system/init` from a user-turn query:
+ * captures session_id AND emits the catalog. The health check uses
+ * `emitCatalogOnInit` directly because it intentionally skips
+ * session_id capture to keep the `__health__` session isolated.
+ *
+ * @param {object} msg - The full `system/init` SDK message.
+ * @returns {void}
+ */
+function handleSystemInitForUserTurn(msg)
+{
+  captureSessionId(msg);
+  emitCatalogOnInit(msg);
+}
 
 // endregion
 
@@ -881,7 +1077,15 @@ async function handleInput(text, attachments)
 
     for await (const msg of q)
     {
-      if (msg?.type === "stream_event")
+      // system/init from a user-turn query carries session_id (for
+      // resume continuity) AND the commands/agents catalog. result
+      // re-asserts session_id at end-of-turn as defense-in-depth;
+      // no catalog there. stream_event / user are content dispatch.
+      if (msg?.type === "system" && msg?.subtype === "init")
+      {
+        handleSystemInitForUserTurn(msg);
+      }
+      else if (msg?.type === "stream_event")
       {
         handleStreamEvent(msg.event, turnId, activeBlocks);
       }
@@ -902,6 +1106,7 @@ async function handleInput(text, attachments)
       }
       else if (msg?.type === "result")
       {
+        captureSessionId(msg);
         emitTurnComplete(turnId);
       }
     }

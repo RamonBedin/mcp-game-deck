@@ -6,6 +6,8 @@
 use tauri::{AppHandle, State};
 
 use crate::claude_supervisor::ClaudeSupervisor;
+use crate::files_watcher::FilesWatcher;
+use crate::plans_watcher::PlansWatcher;
 use crate::types::{AppError, ConnectionStatus, SupervisorStatus};
 use crate::unity_client::UnityClient;
 
@@ -71,30 +73,44 @@ pub fn reconnect_unity() -> Result<(), AppError> {
     Ok(())
 }
 
-/// Restarts the Claude Code supervisor.
+/// Restarts the Claude Code supervisor and rebinds the plans + files
+/// watchers.
 ///
-/// Skeleton today: returns `AppError::Internal` with the message
-/// . Real spawn lands in
-/// and replaces the body without changing the signature.
+/// `UNITY_PROJECT_PATH` may have changed between launches (the env is
+/// read by `claude_supervisor::spawn` on every call), so both
+/// watchers are also restarted so they pick up the new project's
+/// directories. Each watcher's `start` internally stops any existing
+/// task before spawning the new one, so this is safe to call
+/// repeatedly.
 ///
 /// # Arguments
 ///
-/// * `app` - Application handle forwarded to `spawn`.
+/// * `app` - Application handle forwarded to `spawn` and both watchers.
 /// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
+/// * `watcher` - Tauri-managed `PlansWatcher` state.
+/// * `files_watcher` - Tauri-managed `FilesWatcher` state.
 ///
 /// # Errors
 ///
-/// Returns `AppError::Internal`
+/// Returns `AppError::Internal` when `spawn` fails. Watcher rebind
+/// errors are logged on stderr but not surfaced — both watchers will
+/// retry internally and a failure here shouldn't block the user from
+/// restarting the supervisor.
 #[tauri::command]
 pub async fn restart_supervisor(
     app: AppHandle,
     supervisor: State<'_, ClaudeSupervisor>,
+    watcher: State<'_, PlansWatcher>,
+    files_watcher: State<'_, FilesWatcher>,
 ) -> Result<(), AppError> {
     supervisor
-        .spawn(app)
+        .spawn(app.clone())
         .await
         .map(|_pid| ())
-        .map_err(|e| AppError::Internal(e.to_string()))
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    watcher.start(app.clone()).await;
+    files_watcher.start(app).await;
+    Ok(())
 }
 
 // endregion

@@ -17,6 +17,8 @@ import type {
   MessageStreamCompletePayload,
   PermissionModeChangedPayload,
   PermissionRequestedPayload,
+  PlansChangedPayload,
+  ProjectFilesChangedPayload,
   RouteRequestedPayload,
   SdkInstallFailedPayload,
   SdkInstallProgressPayload,
@@ -81,5 +83,17 @@ export const onSdkInstallFailed = wrap<SdkInstallFailedPayload>("sdk-install-fai
 export const onAgentMessage = wrap<AgentMessagePayload>("agent-message");
 
 export const onPermissionModeChanged = wrap<PermissionModeChangedPayload>("permission-mode-changed");
+
+// #endregion
+
+// #region Plans
+
+export const onPlansChanged = wrap<PlansChangedPayload>("plans-changed");
+
+// #endregion
+
+// #region Files
+
+export const onProjectFilesChanged = wrap<ProjectFilesChangedPayload>("project-files-changed");
 
 // #endregion
