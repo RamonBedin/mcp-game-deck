@@ -1,14 +1,12 @@
 //! Rules Tauri commands.
-//!
-//! `list_rules` and `read_rule` are real (F08 tasks 2.1-2.2);
-//! `write_rule` / `delete_rule` / `toggle_rule` remain F01-era stubs
-//! and land in tasks 2.3-2.5.
 
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 
-use crate::markdown_doc::{ensure_dir, parse_frontmatter, read_metadata_ms, validate_kebab_name};
+use crate::markdown_doc::{
+    atomic_write, ensure_dir, parse_frontmatter, read_metadata_ms, validate_kebab_name,
+};
 use crate::project_root::try_resolve_project_root;
 use crate::types::{AppError, Rule, RuleMeta};
 
@@ -213,25 +211,60 @@ pub fn read_rule(name: String) -> Result<Rule, AppError> {
     })
 }
 
-/// Stub: writes a rule to disk.
+/// Writes a rule to disk atomically.
 ///
-/// No-op today. Real implementation lands in Feature 08.
+/// Validates the name format, ensures the rules directory exists,
+/// then delegates to `markdown_doc::atomic_write` (tmp-then-rename).
+/// The two-step survives partial-write crashes: a crashed write
+/// leaves a `.md.tmp` zombie that `list_rules` ignores (filter is
+/// `extension == "md"` exact, not `.md.*`).
+///
+/// **Overwrite semantics:** the existing `<name>.md` is replaced
+/// without backup. Collision detection is the UI's job (the React
+/// "+ New rule" flow checks the cached list before invoking).
+/// `toggle_rule` also writes back through the same
+/// underlying helper after splicing the frontmatter.
 ///
 /// # Arguments
 ///
-/// * `name` - Rule filename without extension (currently ignored).
-/// * `content` - Markdown body to persist (currently ignored).
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
+/// * `name` - Rule filename without extension; must match the
+///   kebab-case rule enforced by `markdown_doc::validate_kebab_name`.
+/// * `content` - Full markdown body (frontmatter included if any).
+///   Written verbatim.
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// - `InvalidInput` when `name` violates the kebab-case rule.
+/// - `FileNotFound` when no Unity project is pinned.
+/// - `PermissionDenied` when the OS rejects the write or rename.
+/// - `Internal` when ensuring the rules dir fails, or any other IO
+///   error during write/rename.
 #[tauri::command]
-#[allow(unused_variables)]
 pub fn write_rule(name: String, content: String) -> Result<(), AppError> {
+    validate_kebab_name(&name)?;
+
+    let dir = rules_dir().ok_or_else(|| {
+        AppError::FileNotFound(format!(
+            "Cannot save rule '{name}': no Unity project pinned"
+        ))
+    })?;
+
+    ensure_dir(&dir).map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to ensure rules dir at {}: {e}",
+            dir.display()
+        ))
+    })?;
+
+    let final_path = dir.join(format!("{name}.md"));
+
+    atomic_write(&final_path, content.as_bytes()).map_err(|e| match e.kind() {
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot write rule '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to write rule '{name}': {e}")),
+    })?;
+
     Ok(())
 }
 
@@ -301,6 +334,12 @@ mod tests {
     #[test]
     fn read_rule_rejects_invalid_name() {
         let err = read_rule("Has Spaces".to_string()).unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn write_rule_rejects_invalid_name() {
+        let err = write_rule("Has Spaces".to_string(), "x".to_string()).unwrap_err();
         assert!(matches!(err, AppError::InvalidInput(_)));
     }
 }
