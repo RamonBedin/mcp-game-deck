@@ -1,4 +1,6 @@
 //! Rules Tauri commands.
+//!
+//! Real `list_rules`, `read_rule`, `write_rule`, and `delete_rule`;
 
 use std::fs;
 use std::io::ErrorKind;
@@ -268,22 +270,46 @@ pub fn write_rule(name: String, content: String) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Stub: deletes a rule.
+/// Deletes a rule by name from the pinned Unity project's rules dir.
+///
+/// Validates the name format, resolves the rules directory, and
+/// calls `fs::remove_file`. Does not create the rules dir on the way
+/// in: if the dir is missing, the underlying `NotFound` surfaces
+/// naturally (creating an empty dir just to delete a file inside it
+/// would be nonsense).
 ///
 /// # Arguments
 ///
-/// * `name` - Rule filename without extension (currently ignored).
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
+/// * `name` - Rule filename without extension; must match the
+///   kebab-case rule enforced by `markdown_doc::validate_kebab_name`.
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// - `InvalidInput` when `name` violates the kebab-case rule.
+/// - `FileNotFound` when no Unity project is pinned, or when the
+///   file does not exist on disk.
+/// - `PermissionDenied` when the OS rejects the unlink.
+/// - `Internal` for any other IO error.
 #[tauri::command]
-#[allow(unused_variables)]
 pub fn delete_rule(name: String) -> Result<(), AppError> {
+    validate_kebab_name(&name)?;
+
+    let dir = rules_dir().ok_or_else(|| {
+        AppError::FileNotFound(format!(
+            "Cannot delete rule '{name}': no Unity project pinned"
+        ))
+    })?;
+
+    let path = dir.join(format!("{name}.md"));
+
+    fs::remove_file(&path).map_err(|e| match e.kind() {
+        ErrorKind::NotFound => AppError::FileNotFound(format!("Rule '{name}' not found")),
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot delete rule '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to delete rule '{name}': {e}")),
+    })?;
+
     Ok(())
 }
 
@@ -340,6 +366,12 @@ mod tests {
     #[test]
     fn write_rule_rejects_invalid_name() {
         let err = write_rule("Has Spaces".to_string(), "x".to_string()).unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn delete_rule_rejects_invalid_name() {
+        let err = delete_rule("Has Spaces".to_string()).unwrap_err();
         assert!(matches!(err, AppError::InvalidInput(_)));
     }
 }
