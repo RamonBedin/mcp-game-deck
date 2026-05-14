@@ -82,6 +82,14 @@ fn resolve_plugin_dir() -> Option<std::path::PathBuf> {
 /// markdown lives inside `Plugin~/knowledge/`, so reads stay within
 /// the plugin's auto-permission scope.
 ///
+/// `MCP_GAME_DECK_RULES_BUNDLE_PATH` is set unconditionally to
+/// `<project>/Library/MCPGameDeck/rules-bundle.md`. The file at that
+/// path may or may not exist — `sdk-entry.js` checks at every
+/// `query()` and adds `appendSystemPromptFile` only when the file
+/// exists with non-zero size. Setting unconditionally means a rule
+/// toggle later in the session is reflected on the next turn without
+/// touching the supervisor.
+///
 /// # Arguments
 ///
 /// * `app` - Application handle used to surface the soft-warn event.
@@ -143,6 +151,12 @@ pub fn spawn_node_child(
             path.to_string_lossy().as_ref(),
         );
     }
+    let bundle_path =
+        crate::rules_bundle::bundle_path(std::path::Path::new(project_path));
+    cmd.env(
+        "MCP_GAME_DECK_RULES_BUNDLE_PATH",
+        bundle_path.to_string_lossy().as_ref(),
+    );
 
     crate::claude_supervisor::windows_hygiene::apply(&mut cmd);
 

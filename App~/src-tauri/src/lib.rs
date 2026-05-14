@@ -26,6 +26,7 @@ use claude_supervisor::ClaudeSupervisor;
 use commands::files::FilesIndex;
 use files_watcher::FilesWatcher;
 use plans_watcher::PlansWatcher;
+use rules_watcher::RulesWatcher;
 use unity_client::UnityClient;
 
 // region: Single-instance handler
@@ -80,10 +81,17 @@ pub fn run() {
         .manage(ClaudeSupervisor::new())
         .manage(UnityClient::new())
         .manage(PlansWatcher::new())
+        .manage(RulesWatcher::new())
         .manage(FilesWatcher::new())
         .manage(FilesIndex::new())
         .setup(|app| {
             let app_handle = app.handle().clone();
+
+            if let Some(root) = project_root::try_resolve_project_root() {
+                if let Err(e) = rules_bundle::recompose(&root) {
+                    eprintln!("[rules-bundle] startup recompose failed: {e}");
+                }
+            }
 
             let app_for_supervisor = app_handle.clone();
             tauri::async_runtime::spawn(async move {
@@ -103,6 +111,12 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let watcher = app_for_watcher.state::<PlansWatcher>();
                 watcher.start(app_for_watcher.clone()).await;
+            });
+
+            let app_for_rules_watcher = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let watcher = app_for_rules_watcher.state::<RulesWatcher>();
+                watcher.start(app_for_rules_watcher.clone()).await;
             });
 
             let app_for_files_watcher = app_handle.clone();
@@ -125,6 +139,9 @@ pub fn run() {
                         supervisor.shutdown().await;
                     }
                     if let Some(watcher) = app.try_state::<PlansWatcher>() {
+                        watcher.stop().await;
+                    }
+                    if let Some(watcher) = app.try_state::<RulesWatcher>() {
                         watcher.stop().await;
                     }
                     if let Some(watcher) = app.try_state::<FilesWatcher>() {

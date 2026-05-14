@@ -16,7 +16,7 @@
 | 2 | 2.5 — `toggle_rule` surgical frontmatter mutation | ✅ done | — |
 | 3 | 3.1 — `rules_bundle::recompose` composition | ✅ done | — |
 | 3 | 3.2 — `rules_watcher` notify loop + emit | ✅ done | — |
-| 3 | 3.3 — Spawn env var + sdk-entry.js consumer + startup recompose | ⏳ pending | — |
+| 3 | 3.3 — Spawn env var + sdk-entry.js consumer + startup recompose | ✅ done | — |
 | 4 | 4.1 — `rulesStore` + `rules-changed` subscription | ⏳ pending | — |
 | 4 | 4.2 — `RulesList` component (checkbox + token header) | ⏳ pending | — |
 | 4 | 4.3 — `RulePane` + `RuleViewer` + `RuleEditor` + estimator | ⏳ pending | — |
