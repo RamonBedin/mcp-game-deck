@@ -1,10 +1,11 @@
 //! Rules Tauri commands.
 //!
-//! Real `list_rules`, `read_rule`, `write_rule`, and `delete_rule`;
+//! Real `list_rules`, `read_rule`, `write_rule`, `delete_rule`, and
+//! `toggle_rule`.
 
 use std::fs;
 use std::io::ErrorKind;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::markdown_doc::{
     atomic_write, ensure_dir, parse_frontmatter, read_metadata_ms, validate_kebab_name,
@@ -36,6 +37,112 @@ pub(crate) fn rules_dir() -> Option<PathBuf> {
 /// header summary.
 fn estimate_tokens(raw: &str) -> u32 {
     ((raw.chars().count() as u32) + 3) / 4
+}
+
+// endregion
+
+// region: Internal — cap enforcement
+
+const ENABLED_CAP: usize = 10;
+
+/// Counts how many rules in `dir` currently have `enabled: true` in
+/// their YAML frontmatter. Returns `0` on any IO failure (best-effort
+/// — used only for the soft cap; a missing dir means zero enabled).
+fn count_enabled_rules(dir: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .filter_map(|res| res.ok())
+        .filter(|entry| {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                return false;
+            }
+            let Ok(raw) = fs::read_to_string(&path) else {
+                return false;
+            };
+            let (frontmatter, _body) = parse_frontmatter(&raw);
+            frontmatter
+                .get("enabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        })
+        .count()
+}
+
+// endregion
+
+// region: Internal — surgical toggle
+
+/// Computes the new file content after flipping the `enabled` key in
+/// the rule's YAML frontmatter, and reports the previous `enabled`
+/// state so the caller can short-circuit the cap check on no-ops.
+///
+/// Three input shapes are handled:
+///
+/// 1. **Valid YAML mapping between `---` delimiters:** parses via
+///    `serde_yaml::Value::Mapping` (preserves insertion order),
+///    inserts or updates the `enabled` key in place, re-serializes,
+///    splices back. Existing key ordering is preserved across the
+///    round-trip; unknown keys round-trip verbatim.
+/// 2. **No frontmatter (or unclosed opening delimiter):** injects a
+///    fresh `---\nenabled: <bool>\n---\n` block at the top; body
+///    preserved byte-for-byte. Effectively materializes the
+///    frontmatter on first toggle.
+/// 3. **Non-mapping YAML (`null`, sequence, scalar):** returns
+///    `AppError::Internal` — refusing to silently rewrite user
+///    intent. The user is expected to fix the file by hand.
+///
+/// Returns `(new_content, was_enabled)`. `was_enabled` is `false`
+/// when the file had no frontmatter or had no `enabled` key.
+fn compose_toggled_file(raw: &str, enabled: bool) -> Result<(String, bool), AppError> {
+    let stripped = raw.strip_prefix('\u{FEFF}').unwrap_or(raw);
+
+    let after_open = stripped
+        .strip_prefix("---\n")
+        .or_else(|| stripped.strip_prefix("---\r\n"));
+
+    let split = after_open.and_then(|rest| {
+        if let Some(end) = rest.find("\n---\n") {
+            Some((&rest[..end], &rest[end + "\n---\n".len()..]))
+        } else if let Some(end) = rest.find("\n---\r\n") {
+            Some((&rest[..end], &rest[end + "\n---\r\n".len()..]))
+        } else {
+            None
+        }
+    });
+
+    let (yaml_text, body) = match split {
+        Some(pair) => pair,
+        None => {
+            let injected = format!("---\nenabled: {enabled}\n---\n{stripped}");
+            return Ok((injected, false));
+        }
+    };
+
+    let value: serde_yaml::Value = serde_yaml::from_str(yaml_text)
+        .map_err(|e| AppError::Internal(format!("Failed to parse rule frontmatter: {e}")))?;
+
+    let serde_yaml::Value::Mapping(mut mapping) = value else {
+        return Err(AppError::Internal(
+            "Cannot toggle a rule with non-mapping frontmatter; edit the file directly."
+                .into(),
+        ));
+    };
+
+    let key = serde_yaml::Value::String("enabled".into());
+    let was_enabled = mapping
+        .get(&key)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    mapping.insert(key, serde_yaml::Value::Bool(enabled));
+
+    let new_yaml = serde_yaml::to_string(&serde_yaml::Value::Mapping(mapping))
+        .map_err(|e| AppError::Internal(format!("Failed to serialize rule frontmatter: {e}")))?;
+
+    let new_content = format!("---\n{new_yaml}---\n{body}");
+    Ok((new_content, was_enabled))
 }
 
 // endregion
@@ -317,23 +424,75 @@ pub fn delete_rule(name: String) -> Result<(), AppError> {
 
 // region: Toggle
 
-/// Stub: enables or disables a rule.
+/// Enables or disables a rule by surgically rewriting its YAML
+/// frontmatter's `enabled` key. Body and unknown frontmatter fields
+/// round-trip verbatim.
+///
+/// **Cap enforcement (defense in depth):** when `enabled == true`,
+/// counts currently-enabled rules in the dir; if already at
+/// [`ENABLED_CAP`] (10) AND the target rule wasn't already enabled,
+/// returns `InvalidInput("Rule cap reached (10 enabled). Disable
+/// one first.")`. Idempotent enable on an already-enabled rule
+/// bypasses the cap (no count growth). Disabling is always allowed.
+///
+/// **Non-mapping frontmatter:** if the file's frontmatter parses as
+/// anything other than a YAML mapping (e.g. `null`, a sequence, a
+/// scalar), the command returns `Internal` rather than silently
+/// rewriting — user fixes the file manually.
+///
+/// **No frontmatter:** the file gets a fresh `---\nenabled:
+/// <bool>\n---\n` block prepended; body is preserved byte-for-byte.
 ///
 /// # Arguments
 ///
-/// * `name` - Rule filename without extension (currently ignored).
-/// * `enabled` - Desired activation flag (currently ignored).
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
+/// * `name` - Rule filename without extension; must match the
+///   kebab-case rule enforced by `markdown_doc::validate_kebab_name`.
+/// * `enabled` - Desired activation flag.
 ///
 /// # Errors
 ///
-/// Reserved for future implementations.
+/// - `InvalidInput` when `name` violates the kebab-case rule or
+///   when the cap would be exceeded.
+/// - `FileNotFound` when no Unity project is pinned, or when the
+///   rule file is missing.
+/// - `PermissionDenied` when the OS rejects the read or write.
+/// - `Internal` for non-mapping frontmatter, YAML parse/serialize
+///   failures, or other IO errors.
 #[tauri::command]
-#[allow(unused_variables)]
 pub fn toggle_rule(name: String, enabled: bool) -> Result<(), AppError> {
+    validate_kebab_name(&name)?;
+
+    let dir = rules_dir().ok_or_else(|| {
+        AppError::FileNotFound(format!(
+            "Cannot toggle rule '{name}': no Unity project pinned"
+        ))
+    })?;
+
+    let path = dir.join(format!("{name}.md"));
+
+    let raw = fs::read_to_string(&path).map_err(|e| match e.kind() {
+        ErrorKind::NotFound => AppError::FileNotFound(format!("Rule '{name}' not found")),
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot read rule '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to read rule '{name}': {e}")),
+    })?;
+
+    let (new_content, was_enabled) = compose_toggled_file(&raw, enabled)?;
+
+    if enabled && !was_enabled && count_enabled_rules(&dir) >= ENABLED_CAP {
+        return Err(AppError::InvalidInput(
+            "Rule cap reached (10 enabled). Disable one first.".into(),
+        ));
+    }
+
+    atomic_write(&path, new_content.as_bytes()).map_err(|e| match e.kind() {
+        ErrorKind::PermissionDenied => {
+            AppError::PermissionDenied(format!("Cannot write rule '{name}'"))
+        }
+        _ => AppError::Internal(format!("Failed to write rule '{name}': {e}")),
+    })?;
+
     Ok(())
 }
 
@@ -373,5 +532,74 @@ mod tests {
     fn delete_rule_rejects_invalid_name() {
         let err = delete_rule("Has Spaces".to_string()).unwrap_err();
         assert!(matches!(err, AppError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn toggle_rule_rejects_invalid_name() {
+        let err = toggle_rule("Has Spaces".to_string(), true).unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn compose_toggled_file_flips_enabled_in_existing_mapping() {
+        let raw = "---\nenabled: false\ndescription: foo\n---\n# Body\n";
+        let (out, was) = compose_toggled_file(raw, true).unwrap();
+        assert!(!was);
+        assert!(out.contains("enabled: true"));
+        assert!(out.ends_with("# Body\n"));
+        assert!(!out.contains("enabled: false"));
+    }
+
+    #[test]
+    fn compose_toggled_file_preserves_key_order() {
+        let raw =
+            "---\ndescription: d\nenabled: false\napplies-to:\n- ui\ncustom: keep\n---\nbody";
+        let (out, _) = compose_toggled_file(raw, true).unwrap();
+        let desc_pos = out.find("description").unwrap();
+        let enabled_pos = out.find("enabled").unwrap();
+        let applies_pos = out.find("applies-to").unwrap();
+        let custom_pos = out.find("custom").unwrap();
+        assert!(desc_pos < enabled_pos);
+        assert!(enabled_pos < applies_pos);
+        assert!(applies_pos < custom_pos);
+    }
+
+    #[test]
+    fn compose_toggled_file_preserves_body_bytes() {
+        let raw = "---\nenabled: false\n---\n# Heading\n\n- item\n- item2\n";
+        let (out, _) = compose_toggled_file(raw, true).unwrap();
+        assert!(out.ends_with("# Heading\n\n- item\n- item2\n"));
+    }
+
+    #[test]
+    fn compose_toggled_file_injects_block_when_no_frontmatter() {
+        let raw = "# Just a body\n\nno frontmatter at all\n";
+        let (out, was) = compose_toggled_file(raw, true).unwrap();
+        assert!(!was);
+        assert!(out.starts_with("---\nenabled: true\n---\n"));
+        assert!(out.ends_with("# Just a body\n\nno frontmatter at all\n"));
+    }
+
+    #[test]
+    fn compose_toggled_file_rejects_non_mapping_frontmatter() {
+        let raw = "---\n- foo\n- bar\n---\nbody\n";
+        let err = compose_toggled_file(raw, true).unwrap_err();
+        assert!(matches!(err, AppError::Internal(_)));
+    }
+
+    #[test]
+    fn compose_toggled_file_reports_was_enabled_when_already_true() {
+        let raw = "---\nenabled: true\n---\nbody";
+        let (_out, was) = compose_toggled_file(raw, true).unwrap();
+        assert!(was);
+    }
+
+    #[test]
+    fn compose_toggled_file_inserts_enabled_when_key_missing() {
+        let raw = "---\ndescription: foo\n---\nbody";
+        let (out, was) = compose_toggled_file(raw, true).unwrap();
+        assert!(!was);
+        assert!(out.contains("enabled: true"));
+        assert!(out.contains("description: foo"));
     }
 }
