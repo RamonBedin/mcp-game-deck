@@ -43,8 +43,9 @@ use tauri::AppHandle;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::task::JoinHandle;
 
-use crate::commands::plans::{ensure_plans_dir, plans_dir};
+use crate::commands::plans::plans_dir;
 use crate::events::emit_plans_changed;
+use crate::markdown_doc::ensure_dir;
 use crate::types::{PlansChangedKind, PlansChangedPayload};
 
 // region: Constants
@@ -174,11 +175,11 @@ async fn run_watcher_loop(app: AppHandle, mut stop_rx: oneshot::Receiver<()>) {
     loop {
         let dir = loop {
             if let Some(d) = plans_dir() {
-                match ensure_plans_dir(&d) {
+                match ensure_dir(&d) {
                     Ok(()) => break d,
                     Err(e) => {
                         eprintln!(
-                            "[plans-watcher] ensure_plans_dir failed at {}: {e}; retrying",
+                            "[plans-watcher] ensure_dir failed at {}: {e}; retrying",
                             d.display()
                         );
                     }

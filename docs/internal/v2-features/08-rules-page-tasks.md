@@ -8,7 +8,7 @@
 
 | Group | Task | Status | Commit |
 |-------|------|--------|--------|
-| 1 | 1.1 — Extract `markdown_doc` module + flip plans to ms | ⏳ pending | — |
+| 1 | 1.1 — Extract `markdown_doc` module + flip plans to ms | ✅ done | — |
 | 2 | 2.1 — `list_rules` real implementation | ⏳ pending | — |
 | 2 | 2.2 — `read_rule` real implementation | ⏳ pending | — |
 | 2 | 2.3 — `write_rule` real implementation | ⏳ pending | — |

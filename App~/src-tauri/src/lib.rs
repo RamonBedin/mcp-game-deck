@@ -10,6 +10,7 @@ pub mod claude_supervisor;
 pub mod commands;
 pub mod events;
 pub mod files_watcher;
+pub mod markdown_doc;
 pub mod plans_watcher;
 pub mod project_root;
 pub mod types;
