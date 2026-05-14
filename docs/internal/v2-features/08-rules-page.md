@@ -25,7 +25,7 @@ ProjectSettings/GameDeck/rules/<rule-name>.md
 
 Same convention pattern as plans (F06) and commands (`create-command` skill): per-project, versioned by user's git, writable regardless of how the package is installed.
 
-Enabled rules are compiled by Rust into a single bundle file at `Library/MCPGameDeck/rules-bundle.md` (gitignored — derived artifact). On every `query()`, `sdk-entry.js` passes that path to the SDK via `appendSystemPromptFile`, sidestepping Windows' ~32KB CreateProcess command-line ceiling that inline `appendSystemPrompt` strings would hit on long rule sets.
+Enabled rules are compiled by Rust into a single bundle file at `Library/MCPGameDeck/rules-bundle.md` (gitignored — derived artifact). On every `query()`, `sdk-entry.js` reads the file's contents and forwards them to the SDK via `systemPrompt.append` (preset: `"claude_code"`). The SDK handles the Windows ~32KB `CreateProcess` ceiling internally via tempfile + `--append-system-prompt-file` to the CLI, so the host just hands over the string.
 
 ## Scope IN
 
@@ -68,9 +68,9 @@ This feature does not depend on F09 (Design Handoff). F09 may visually polish th
 
 These were the nine open questions raised before spec work; resolutions captured here so the spec/tasks can stand on settled ground.
 
-### #1 — Injection mechanism: `appendSystemPromptFile`, not `appendSystemPrompt`
+### #1 — Injection mechanism: `systemPrompt.append` (resolved during 3.3)
 
-Inline `appendSystemPrompt` strings round-trip through the SDK → `claude` CLI handoff and hit Windows' ~32KB `CreateProcess` command-line ceiling on long rule sets. The file-path variant sidesteps it entirely. Captured in an explicit TODO comment in `sdk_entry.js` before this work started; spec follows the documented path.
+Originally locked as `appendSystemPromptFile` based on a forward-looking TODO in `sdk_entry.js`. Empirical smoke during task 3.3 (a 🦖-prefix rule) revealed the option was silently ignored: the bundle composed correctly and stderr logged the path, but Claude responded without the prefix. The Claude Agent SDK TypeScript reference + the "Modifying System Prompts" doc resolved the real shape: `systemPrompt?: string | { type: "preset"; preset: "claude_code"; append?: string }` — `append` takes a string, not a path. The host reads the bundle file's contents inline and forwards them through `append`; the SDK handles the Windows ~32KB `CreateProcess` ceiling internally via tempfile + `--append-system-prompt-file` to the CLI. Lesson: verify SDK options against type definitions, not against forward-looking code comments.
 
 ### #2 — `applies-to` is informational only in v2.0
 
@@ -86,7 +86,7 @@ When ten feels too few, that's the signal rules are doing too much work and some
 
 ### #5 — Bundle position: end of system prompt
 
-`appendSystemPromptFile` naturally appends after the SDK's own system prompt — recent context wins, which is what we want for "rules the user explicitly set."
+`systemPrompt.append` (with preset `"claude_code"`) naturally appends after the SDK's own system prompt — recent context wins, which is what we want for "rules the user explicitly set."
 
 ### #6 — Frontmatter shape
 
@@ -128,7 +128,7 @@ Total: ~7 days focused work, 15 tasks across 5 groups.
 
 | Risk | Likelihood | Mitigation |
 |------|------------|------------|
-| `appendSystemPromptFile` semantics differ from expectation (SDK option name, path requirements) | medium | Smoke scenario 5/6 confirms empirically; if it fails, triage via `sdk_entry.js` stderr debug line; documented as anticipated follow-up |
+| SDK option semantics differ from initial assumption (`appendSystemPromptFile` turned out non-existent; canonical option is `systemPrompt.append`) | realized | Smoke scenarios 5/6 caught it via 🦖-prefix rule; fix landed in task 3.3 (read bundle content + forward via `systemPrompt.append`); resolution captured in Decision #1 and tasks.md follow-ups |
 | Rules eat too much of the model's context budget | medium | Cap of 10; per-rule token estimate; >500 tokens shows warning glyph |
 | Conflicting rules confuse the model | medium | Surface tokens; no auto-resolution. v2.1 may add conflict detection |
 | Vague rules degrade model output | medium | Editor includes hint copy in the template; live token count discourages bloat |
@@ -150,9 +150,9 @@ v2.0.
 
 ## References
 
-- `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md` — engine decision; F08's `appendSystemPromptFile` path follows from the ADR
+- `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md` — engine decision; F08's `systemPrompt.append` injection follows from the ADR
 - `docs/internal/v2-architecture.md` — process layout, storage location convention
 - `docs/internal/v2-features/06-plans-crud.md` — established the Rust+React+watcher pattern that F08 extends
 - `docs/internal/v2-features/08-rules-page-spec.md` — companion executable spec
 - `docs/internal/v2-features/08-rules-page-tasks.md` — companion task breakdown
-- Claude Agent SDK `appendSystemPromptFile`: https://platform.claude.com/docs/en/agent-sdk/system-prompts (verify exact field name during task 3.3)
+- Claude Agent SDK "Modifying System Prompts": https://platform.claude.com/docs/en/agent-sdk/modifying-system-prompts — Options interface defines `systemPrompt?: string | { type: "preset"; preset: "claude_code"; append?: string }`. Verified empirically during F08 task 3.3.

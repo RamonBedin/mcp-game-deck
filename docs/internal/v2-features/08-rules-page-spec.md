@@ -5,7 +5,7 @@
 
 ## What this is
 
-Single deliverable: a **Rules tab** in the Tauri React app for CRUD on per-project behavior rules stored as markdown under `<UNITY_PROJECT_PATH>/ProjectSettings/GameDeck/rules/<name>.md`, plus a **bundle pipeline** that compiles every `enabled: true` rule into a single file the SDK injects as `appendSystemPromptFile` on every `query()`.
+Single deliverable: a **Rules tab** in the Tauri React app for CRUD on per-project behavior rules stored as markdown under `<UNITY_PROJECT_PATH>/ProjectSettings/GameDeck/rules/<name>.md`, plus a **bundle pipeline** that compiles every `enabled: true` rule into a single file whose contents the SDK injects via `systemPrompt.append` (preset: `"claude_code"`) on every `query()`.
 
 After this feature, the user can codify project-specific conventions ("always use TextMeshPro", "never modify `Assets/ThirdParty/`", "namespace as `ProjectName.Module`") in markdown files that automatically apply to every conversation — no more repeating instructions, no more drift between teammates, no more loss when context window pressure forces the agent to forget.
 
@@ -43,7 +43,7 @@ This is the third Rust+React+watcher feature in v2.0 (after F06 plans and F06 pr
                         │  │ MCP_GAME_DECK_RULES_BUNDLE_PATH env var      │ │
                         │  │ Every query() options:                       │ │
                         │  │   if exists && size > 0:                     │ │
-                        │  │     appendSystemPromptFile: path             │ │
+                        │  │     systemPrompt: { append: text }           │ │
                         │  │   else: omit                                  │ │
                         │  └──────────────────────────────────────────────┘ │
                         └──────────────────────────────────────────────────┘
@@ -62,7 +62,7 @@ This is the third Rust+React+watcher feature in v2.0 (after F06 plans and F06 pr
                         └──────────────────────────────────────────────────┘
 ```
 
-Two clean lanes again. The Rules tab and the SDK meet at the bundle file. CRUD on individual rules goes through Rust commands; the SDK never reads individual rule files. The bundle compiler runs Rust-side on every `rules-changed` event so the file is always fresh — the SDK reads it (via the SDK's own file handling for `appendSystemPromptFile`) on every `query()`, picking up changes automatically without any stdin coordination.
+Two clean lanes again. The Rules tab and the SDK meet at the bundle file. CRUD on individual rules goes through Rust commands; the SDK never reads individual rule files. The bundle compiler runs Rust-side on every `rules-changed` event so the file is always fresh — `sdk-entry.js` reads the file contents on every `query()` and forwards them via `systemPrompt.append`, picking up changes automatically without any stdin coordination.
 
 ## Stack
 
@@ -123,9 +123,9 @@ App~/src-tauri/src/
 ├── plans_watcher.rs                 # consume markdown_doc helpers
 ├── claude_supervisor/spawn.rs       # set MCP_GAME_DECK_RULES_BUNDLE_PATH
 │                                    #   env var before spawning sdk-entry.js
-└── claude_supervisor/sdk_entry.js   # check env var + file exists/size on
-│                                    #   each query(); add
-│                                    #   appendSystemPromptFile when present
+└── claude_supervisor/sdk_entry.js   # read bundle content; forward via
+│                                    #   systemPrompt.append (preset:
+│                                    #   "claude_code") on each query()
 
 App~/src/
 ├── routes/RulesRoute.tsx            # placeholder replaced
@@ -213,7 +213,7 @@ Use the namespacing pattern `ProjectName.Module` for all new C# classes...
 
 Ordering: enabled rules sorted alphabetically by name (deterministic; helps prompt caching). Each rule's body is written verbatim — no transformation, no truncation. The `---` separator between rules is for human readability when inspecting the file; the SDK reads the whole text as the appended system prompt.
 
-When zero rules are enabled: Rust **deletes** the bundle file (`fs::remove_file`, ignore `NotFound`). JS detects absence via `fs.existsSync()` + size check and omits `appendSystemPromptFile` entirely. Avoids feeding the SDK a zero-byte file (unknown SDK behavior on empty content; safer to omit).
+When zero rules are enabled: Rust **deletes** the bundle file (`fs::remove_file`, ignore `NotFound`). JS detects absence via `fs.statSync()` + size check and omits the `systemPrompt` option entirely. Avoids feeding the SDK an empty append (unknown SDK behavior on empty content; safer to omit).
 
 ## Wire protocol changes
 
@@ -244,25 +244,22 @@ This is set unconditionally (path is deterministic from `UNITY_PROJECT_PATH`); t
 In `handleInput`'s `queryOptions` construction, after the existing `cwd`, `permissionMode`, `mcpServers`, `plugins`, `additionalDirectories`, `canUseTool`:
 
 ```javascript
-const bundlePath = process.env.MCP_GAME_DECK_RULES_BUNDLE_PATH;
-if (bundlePath && bundlePath.length > 0)
+const rulesBundleContent = resolveRulesBundleContent();
+if (rulesBundleContent !== null)
 {
-  try
-  {
-    const stats = fsSync.statSync(bundlePath);  // sync OK — boot path
-    if (stats.isFile() && stats.size > 0)
-    {
-      queryOptions.appendSystemPromptFile = bundlePath;
-    }
-  }
-  catch (err)
-  {
-    // ENOENT or read error: omit; not fatal
-  }
+  queryOptions.systemPrompt = {
+    type: "preset",
+    preset: "claude_code",
+    append: rulesBundleContent,
+  };
 }
 ```
 
-Same check happens inside `runHealthCheck` so the health probe also injects the bundle (smoke verifies real configuration end-to-end). Sync `statSync` is fine on the boot/query path — the file is local, the call is microseconds. No new dep needed.
+`resolveRulesBundleContent()` is a small helper in the same file that reads `MCP_GAME_DECK_RULES_BUNDLE_PATH` from env, `statSync`s the file (skip on missing / zero-byte / error), then `readFileSync(path, "utf8")` for the contents. Returns `null` to omit the option entirely.
+
+The SDK's `systemPrompt` shape is `{ type: "preset"; preset: "claude_code"; append?: string }` — `append` takes the raw rule text, not a path. The Windows ~32KB CreateProcess ceiling on long appends is handled internally by the SDK (it spills `append` to a tempfile and forwards `--append-system-prompt-file` to the CLI), so the host just hands over the string.
+
+The same helper is used inside `runHealthCheck` so the health probe also injects the bundle (smoke verifies real configuration end-to-end). Sync `statSync` + `readFileSync` are fine on the boot/query path — the file is local, sub-millisecond, and the SDK reads it once per turn anyway. No new dep needed.
 
 **No stdin protocol changes.** No new `AgentMessage` variant. No new control message type. The whole Rust↔JS coordination is "Rust writes the file; JS reads its path from env and stats it on every turn."
 
@@ -370,9 +367,9 @@ The following 17 scenarios pass on Windows 11 against a real Unity 6 project wit
 2. Click "+ New rule" → form opens → enter `prefer-textmeshpro` → Create → rule appears in list (disabled, ~N tokens shown), opens in Edit mode with template content.
 3. Edit content → Save → View mode shows rendered markdown; file written to `ProjectSettings/GameDeck/rules/prefer-textmeshpro.md`; bundle file still does NOT exist (rule is disabled).
 4. Toggle the rule on via the row checkbox → list refreshes, header reads "Rules (1/10 enabled, ~N tokens)"; bundle file created at `Library/MCPGameDeck/rules-bundle.md` containing the rule.
-5. Send a message in Chat tab — verify in stderr log (or via SDK trace) that `appendSystemPromptFile` is set on the `query()` call.
+5. Send a message in Chat tab — verify in stderr log that `[sdk-entry] rules bundle: <N> chars` prints on the `query()` call (the `systemPrompt.append` payload size).
 6. Ask Claude in chat: "what rules am I working under?" — Claude references the rule content (smoke that the bundle is reaching the model).
-7. Toggle the rule off via the pane Toggle button → bundle file deleted; next `query()` omits `appendSystemPromptFile`.
+7. Toggle the rule off via the pane Toggle button → bundle file deleted; next `query()` omits `systemPrompt` entirely (stderr shows `rules bundle: (none)`).
 8. Create 10 enabled rules → header reads "Rules (10/10 enabled, ~N tokens)"; attempt to toggle an 11th on → toast "Limit of 10 enabled rules. Disable one first."; the click is rejected.
 9. Delete an enabled rule (was 10/10 → 9/10) → confirmation modal → confirm → file removed, bundle recomposes without it, header updates.
 10. Edit a rule externally in VS Code → save → Rules tab list and bundle file refresh within ~500ms (file watcher + recompose).
@@ -406,7 +403,7 @@ The following 17 scenarios pass on Windows 11 against a real Unity 6 project wit
 - **User enables 10 rules then disables one externally** — watcher fires, recompose runs, bundle reflects 9 rules. Cap calculation in the React UI also re-reads from `list_rules`, so subsequent enables work correctly up to the new 10/10 ceiling.
 - **`applies-to` value is a string instead of an array** in user-edited frontmatter (e.g. `applies-to: ui`) — `read_rule` falls back to `applies_to: []` (informational field; not worth erroring). v2.1 may coerce single-string to single-element array.
 - **`enabled` value is not a boolean** (e.g. `enabled: "yes"`) — falls back to `false` (conservative; can't accidentally inject). User must use literal YAML `true` / `false`.
-- **Recompose during query()** — race window where Rust is rewriting the bundle while JS is reading it for `appendSystemPromptFile`. Atomic tmp-then-rename means JS either sees the old fully-formed file or the new fully-formed file, never a partial write. Worst case: one turn uses the previous bundle; next turn picks up the new one.
+- **Recompose during query()** — race window where Rust is rewriting the bundle while JS is reading it for `systemPrompt.append`. Atomic tmp-then-rename means JS either sees the old fully-formed file or the new fully-formed file, never a partial write. Worst case: one turn uses the previous bundle; next turn picks up the new one.
 - **Long rule (>2k chars)** — works; UI shows a warning glyph at >500 estimated tokens per rule. Bundle composition is identical (no truncation).
 - **Cap was at 10 and user deletes an enabled rule** — falls to 9/10. Subsequent enable on a disabled rule works.
 - **All 10 rules are deleted externally while the tab is open** — watcher fires for each (debounced), list goes to empty, bundle file is deleted by recompose. UI returns to empty state cleanly.

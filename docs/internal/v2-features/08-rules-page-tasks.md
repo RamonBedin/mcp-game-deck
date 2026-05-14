@@ -17,7 +17,7 @@
 | 3 | 3.1 — `rules_bundle::recompose` composition | ✅ done | — |
 | 3 | 3.2 — `rules_watcher` notify loop + emit | ✅ done | — |
 | 3 | 3.3 — Spawn env var + sdk-entry.js consumer + startup recompose | ✅ done | — |
-| 4 | 4.1 — `rulesStore` + `rules-changed` subscription | ⏳ pending | — |
+| 4 | 4.1 — `rulesStore` + `rules-changed` subscription | ✅ done | — |
 | 4 | 4.2 — `RulesList` component (checkbox + token header) | ⏳ pending | — |
 | 4 | 4.3 — `RulePane` + `RuleViewer` + `RuleEditor` + estimator | ⏳ pending | — |
 | 4 | 4.4 — Wire `RulesRoute` 2-col + toggle + cap + new-rule flow | ⏳ pending | — |
@@ -327,9 +327,9 @@ Refs: 08-rules-page-tasks.md (task 2.5), 08-rules-page-spec.md
 feat(rules): rules_bundle::recompose composer (F08 task 3.1)
 
 Reads all rules, filters enabled, sorts alphabetically, composes the
-appendSystemPromptFile-ready bundle text, atomic-writes to
+systemPrompt.append-ready bundle text, atomic-writes to
 Library/MCPGameDeck/rules-bundle.md. Deletes the bundle file when
-zero rules are enabled (avoids feeding the SDK a zero-byte file).
+zero rules are enabled (avoids feeding the SDK an empty append).
 
 Refs: 08-rules-page-tasks.md (task 3.1), 08-rules-page-spec.md
 ```
@@ -390,29 +390,26 @@ Refs: 08-rules-page-tasks.md (task 3.2), 08-rules-page-spec.md
   - When building the spawn command, add `MCP_GAME_DECK_RULES_BUNDLE_PATH=<bundle_path>` where `bundle_path = rules_bundle::bundle_path(&project_root).to_string_lossy()`. Unconditional set; the file at that path may or may not exist (JS handles both).
   - Set alongside the existing `MCP_GAME_DECK_PLUGIN_DIR` / `MCP_GAME_DECK_COMMANDS_DIR` block, same style.
 - `App~/src-tauri/src/claude_supervisor/sdk_entry.js`:
-  - In `handleInput`'s `queryOptions` block (just after `additionalDirectories` line and before `canUseTool`), insert:
-    ```javascript
-    const bundlePath = process.env.MCP_GAME_DECK_RULES_BUNDLE_PATH;
-    if (bundlePath && bundlePath.length > 0)
-    {
-      try
-      {
-        const stats = fsSync.statSync(bundlePath);
-        if (stats.isFile() && stats.size > 0)
-        {
-          queryOptions.appendSystemPromptFile = bundlePath;
-        }
-      }
-      catch (err)
-      {
-        // ENOENT or read error: omit; bundle absent means zero
-        // enabled rules, which is fine.
-      }
-    }
-    ```
   - Add `import fsSync from "node:fs";` at the top alongside the existing `fsp` import.
-  - Apply the same check inside `runHealthCheck`'s `query()` options block — health probe also exercises the rule injection path so smoke catches misconfiguration.
-  - Add a debug line: `debug("rules bundle:", queryOptions.appendSystemPromptFile ?? "(none)")` inside `handleInput` after the check, so stderr shows the bundle state per turn. Useful for the smoke validation in task 5.1.
+  - Factor a small `resolveRulesBundleContent()` helper that reads `MCP_GAME_DECK_RULES_BUNDLE_PATH`, `statSync`s the file (skip on missing / zero-byte / error), and returns the UTF-8 contents via `readFileSync`. Returns `null` to omit. Same idiom as `buildMcpServers` / `buildPlugins` / `buildAdditionalDirectories`.
+  - In `handleInput`'s `queryOptions` block (after the literal is built, before `pendingResumeSessionId`), insert:
+    ```javascript
+    const rulesBundleContent = resolveRulesBundleContent();
+    if (rulesBundleContent !== null)
+    {
+      queryOptions.systemPrompt = {
+        type: "preset",
+        preset: "claude_code",
+        append: rulesBundleContent,
+      };
+    }
+    debug(
+      "rules bundle:",
+      rulesBundleContent !== null ? `${rulesBundleContent.length} chars` : "(none)",
+    );
+    ```
+  - Apply the same helper inside `runHealthCheck`: declare a local `healthOptions` variable (the current code uses an object literal inline; lift it out), then set `healthOptions.systemPrompt = { type, preset, append }` when the helper returns content. Health probe exercises the rule injection path so smoke catches misconfiguration.
+  - The debug line inside `handleInput` logs the append size in chars (not the path), making the smoke check in task 5.1 a simple stderr grep for `[sdk-entry] rules bundle: <N> chars`.
   - Remove the existing TODO comment block in `handleInput` that referenced this work (`// NOTE: when F08 (Rules Page) starts injecting system prompts, ...`).
 - `App~/src-tauri/src/lib.rs`:
   - In the setup hook (alongside the plans watcher spawn), add: `rules_bundle::recompose(&project_root)` on startup, ignoring `Err` (log only). This ensures the bundle is fresh on first `query()` even if the watcher hasn't fired yet.
@@ -434,11 +431,13 @@ Refs: 08-rules-page-tasks.md (task 3.2), 08-rules-page-spec.md
 feat(rules): wire bundle env var + sdk-entry.js consumer (F08 task 3.3)
 
 spawn.rs sets MCP_GAME_DECK_RULES_BUNDLE_PATH unconditionally;
-sdk-entry.js checks file existence and size on every query() before
-adding appendSystemPromptFile. lib.rs recomposes on startup so the
-bundle is fresh before the first turn; restart_supervisor recomposes
-on project switch. The 32KB Windows CreateProcess ceiling is sidestepped
-by feeding the SDK a file path, not an inline string.
+sdk-entry.js reads the bundle file's contents on every query() and
+forwards them via systemPrompt.append (preset: "claude_code"). lib.rs
+recomposes on startup so the bundle is fresh before the first turn;
+restart_supervisor recomposes on project switch. The Windows ~32KB
+CreateProcess ceiling on long appends is handled internally by the
+SDK (tempfile + --append-system-prompt-file to the CLI), so the host
+just hands over the string.
 
 Removes the F08-pending TODO comment block from handleInput.
 
@@ -640,8 +639,8 @@ Refs: 08-rules-page-tasks.md (task 4.4), 08-rules-page-spec.md
 **Validation:** every scenario in the spec's "Definition of done" section passes against a real Unity 6 project on Windows 11. No regressions in F02 / F04 / F06 / F07 paths.
 
 Pay special attention to:
-- **Scenario 5** (verify `appendSystemPromptFile` is actually set on the SDK call): inspect supervisor stderr for the `rules bundle:` debug line added in task 3.3.
-- **Scenario 6** (Claude references rule content): write a rule that says something distinctive ("All variables must be prefixed with `q_`"), enable it, ask Claude to write a code snippet. Verify the prefix shows up. If it doesn't, the bundle isn't reaching the model — either the env var isn't set, the file is missing/empty, or the SDK's `appendSystemPromptFile` semantics differ from expectation. Triage from stderr first.
+- **Scenario 5** (verify the bundle is forwarded via `systemPrompt.append` on the SDK call): inspect supervisor stderr for the `[sdk-entry] rules bundle: <N> chars` debug line added in task 3.3.
+- **Scenario 6** (Claude references rule content): write a rule that says something distinctive ("All variables must be prefixed with `q_`"), enable it, ask Claude to write a code snippet. Verify the prefix shows up. If it doesn't, the bundle isn't reaching the model — either the env var isn't set, the file is missing/empty, or the SDK's `systemPrompt.append` semantics differ from expectation (verify against the SDK's TypeScript type definitions, not just an old code comment). Triage from stderr first.
 - **Scenario 10** (external edit reflects in UI): keep the Rules tab open in Tauri; edit a rule file in VS Code; save; verify the list row and pane refresh within ~500ms.
 - **Scenario 16** (F06 regression after markdown_doc refactor): run F06's smoke checklist (plans CRUD, slash dropdown, `@` picker) end-to-end. Refactor risk is highest here.
 
@@ -651,7 +650,7 @@ Pay special attention to:
 docs(rules): F08 final smoke validated — green (F08 task 5.1)
 
 All 17 DoD scenarios from the spec pass. F02/F04/F06/F07 regression
-checks clean. Rules page + appendSystemPromptFile injection shipping
+checks clean. Rules page + systemPrompt.append injection shipping
 with no known defects.
 
 Refs: 08-rules-page-tasks.md (task 5.1), 08-rules-page-spec.md
@@ -679,7 +678,7 @@ Refs: 08-rules-page-tasks.md (task 5.1), 08-rules-page-spec.md
 
 These are likely surface areas to watch — record actual findings in PR notes as they appear.
 
-- **`appendSystemPromptFile` SDK semantics in practice.** The SDK option name and behavior come from the comment in `sdk_entry.js`; smoke (scenario 5) is the empirical confirmation. If the SDK accepts a different option name (e.g. `systemPromptFile` without the `append` prefix, or requires explicit absolute paths only), update the wire-up and re-smoke. Document the actual name + signature in PR notes.
-- **`runHealthCheck` cost when rules are enabled.** Health probe will now include the rules bundle in its system prompt. For a typical bundle (<2K tokens) the cost increase is negligible per probe, but if users grow to 10 rules at ~500 tokens each (5K total), each probe adds ~5K input tokens. Future optimization: skip `appendSystemPromptFile` in `runHealthCheck` (probe doesn't need rules) or use `initializationResult()` streaming-input pattern for zero tokens. Defer until cost shows up.
+- **`systemPrompt.append` SDK semantics — resolved.** The original draft assumed an `appendSystemPromptFile` option taking a file path, based on a forward-looking TODO inside `sdk_entry.js`. Empirical smoke (Scenario 5 + a 🦖-prefix rule) showed the option was silently ignored: bundle composed correctly, stderr logged `rules bundle: <path>`, but Claude responded without the prefix. The Claude Agent SDK TypeScript reference + the "Modifying System Prompts" doc resolved the real shape: `systemPrompt?: string | { type: "preset"; preset: "claude_code"; append?: string }` — `append` takes a string, not a path. F08 task 3.3 reads the bundle file's contents inline and forwards them through `append`; the SDK handles the Windows ~32KB CreateProcess ceiling internally via tempfile + `--append-system-prompt-file` to the CLI. Lesson: when an SDK option is added based on a code comment rather than the SDK's own type definitions, verify the type definitions first.
+- **`runHealthCheck` cost when rules are enabled.** Health probe will now include the rules bundle in its system prompt. For a typical bundle (<2K tokens) the cost increase is negligible per probe, but if users grow to 10 rules at ~500 tokens each (5K total), each probe adds ~5K input tokens. Future optimization: skip `systemPrompt.append` in `runHealthCheck` (probe doesn't need rules) or use `initializationResult()` streaming-input pattern for zero tokens. Defer until cost shows up.
 - **Bundle composition latency for large rule sets.** Worst case: 10 enabled rules at 500 tokens each = 5K tokens = ~20KB. Recompose reads 10 files, sorts, concatenates — all in-memory, sub-millisecond. No issue at v2.0 scale. If a user somehow accumulates hundreds of rule files (cap notwithstanding), recompose stays fast as long as files are small.
 - **`toggle_rule` rejecting non-mapping frontmatter is friction.** If users encounter this in the wild (a rule with `enabled: true` as the only frontmatter content somehow parsed as a scalar, etc), they have to edit the file directly. Consider: instead of erroring, normalize the frontmatter to a mapping during toggle. Cheaper than a docs explanation. Defer until reports surface.

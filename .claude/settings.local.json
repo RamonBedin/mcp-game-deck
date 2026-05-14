@@ -20,7 +20,8 @@
       "Bash(cargo test *)",
       "Bash(pwsh *)",
       "Bash(powershell.exe *)",
-      "Bash(cargo build *)"
+      "Bash(cargo build *)",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }
