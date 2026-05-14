@@ -29,7 +29,7 @@
 | 6 | 6.2 — `useProjectFiles` + `useAtAutocomplete` hooks | ✅ done | — |
 | 6 | 6.3 — `AtDropdown` unified component | ✅ done | — |
 | 6 | 6.4 — Wire `@` picker into ChatRoute input + smoke | ✅ done | — |
-| 7 | 7.1 — Final F06 smoke: 17 DoD scenarios + regression checks | ⏳ pending | — |
+| 7 | 7.1 — Final F06 smoke: 17 DoD scenarios + regression checks | ✅ done | — |
 
 ---
 
