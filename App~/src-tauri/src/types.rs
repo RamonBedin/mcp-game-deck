@@ -302,11 +302,26 @@ pub struct CatalogAgent {
 // region: Rules
 
 /// Lightweight metadata for a rule file (used in list views).
+///
+/// `last_modified` is in **milliseconds since the Unix epoch**
+/// (matches [`PlanMeta`] and [`SessionSummary`]). `description` and
+/// `applies_to` are convenience-extracted from the file's YAML
+/// frontmatter so the list view doesn't have to read every rule's
+/// full body. `estimated_tokens` is a chars/4 heuristic computed
+/// from the full file content (frontmatter + body) so the Rules
+/// tab's header can show the bundle cost at a glance.
+///
+/// `applies_to` is **informational only** in v2.0 — the bundle
+/// compiler ignores it; v2.1 may filter per-subagent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleMeta {
     pub name: String,
+    pub last_modified: i64,
     pub enabled: bool,
+    pub description: Option<String>,
+    pub applies_to: Vec<String>,
+    pub estimated_tokens: u32,
 }
 
 /// Full contents of a rule, including its activation flag and body.

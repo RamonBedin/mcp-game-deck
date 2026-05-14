@@ -247,16 +247,34 @@ export interface CatalogAgent
 
 // #region Rules
 
-/** Lightweight metadata for a rule file (used in list views). */
+/**
+ * Lightweight metadata for a rule file (used in list views).
+ *
+ * `lastModified` is in **milliseconds since the Unix epoch**
+ * (matches `PlanMeta` and `SessionSummary`). `description` and
+ * `appliesTo` are convenience-extracted from the file's YAML
+ * frontmatter so the list doesn't have to read each rule's full
+ * body. `estimatedTokens` is a chars/4 heuristic computed from the
+ * full file content (frontmatter + body) so the Rules tab header
+ * can show bundle cost at a glance.
+ */
 export interface RuleMeta
 {
   name: string;
+  lastModified: number;
   enabled: boolean;
+  description: string | null;
+  appliesTo: string[];
+  estimatedTokens: number;
 }
 
-/** Full contents of a rule, including its activation flag and body. */
-export interface Rule extends RuleMeta
+/**
+ * Full contents of a rule.
+ */
+export interface Rule
 {
+  name: string;
+  enabled: boolean;
   content: string;
 }
 
