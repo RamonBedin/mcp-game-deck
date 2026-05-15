@@ -21,7 +21,7 @@
 | 4 | 4.2 — `RulesList` component (checkbox + token header) | ✅ done | — |
 | 4 | 4.3 — `RulePane` + `RuleViewer` + `RuleEditor` + estimator | ✅ done | — |
 | 4 | 4.4 — Wire `RulesRoute` 2-col + toggle + cap + new-rule flow | ✅ done | — |
-| 5 | 5.1 — F08 final smoke: 17 DoD scenarios + regression checks | ⏳ pending | — |
+| 5 | 5.1 — F08 final smoke: 17 DoD scenarios + regression checks | ✅ done | — |
 
 ---
 
