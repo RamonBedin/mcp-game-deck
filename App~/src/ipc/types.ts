@@ -247,17 +247,69 @@ export interface CatalogAgent
 
 // #region Rules
 
-/** Lightweight metadata for a rule file (used in list views). */
+/**
+ * Lightweight metadata for a rule file (used in list views).
+ *
+ * `lastModified` is in **milliseconds since the Unix epoch**
+ * (matches `PlanMeta` and `SessionSummary`). `description` and
+ * `appliesTo` are convenience-extracted from the file's YAML
+ * frontmatter so the list doesn't have to read each rule's full
+ * body. `estimatedTokens` is a chars/4 heuristic computed from the
+ * full file content (frontmatter + body) so the Rules tab header
+ * can show bundle cost at a glance.
+ */
 export interface RuleMeta
 {
   name: string;
+  lastModified: number;
   enabled: boolean;
+  description: string | null;
+  appliesTo: string[];
+  estimatedTokens: number;
 }
 
-/** Full contents of a rule, including its activation flag and body. */
-export interface Rule extends RuleMeta
+/**
+ * Free-form frontmatter map for rule documents.
+ */
+export type RuleFrontmatter = Record<string, unknown>;
+
+/**
+ * Full contents of a rule, including its parsed frontmatter and
+ * body.
+ *
+ * `lastModified` is in **milliseconds since the Unix epoch**
+ * (matches `RuleMeta` / `PlanMeta` / `SessionSummary`). `content` is
+ * the body **without** `---` delimiters. The full frontmatter map
+ * is surfaced separately so the React pane can render the
+ * `applies-to` chip strip without re-parsing.
+ */
+export interface Rule
 {
+  name: string;
+  lastModified: number;
   content: string;
+  frontmatter: RuleFrontmatter;
+  estimatedTokens: number;
+}
+
+/**
+ * Kind of filesystem change emitted by `rules-changed`. Synthesized
+ * Rust-side by comparing a known-names set against `path.exists()` —
+ * the underlying `notify-debouncer-mini` collapses native event kinds.
+ */
+export type RulesChangedKind = "created" | "modified" | "deleted";
+
+/**
+ * Payload for `rules-changed` — emitted whenever a `.md` file under
+ * the active project's rules dir is created, modified, or deleted.
+ *
+ * `name` is the file stem (no `.md`); `undefined` when the watcher
+ * couldn't extract a name (e.g. non-UTF8 path).
+ */
+export interface RulesChangedPayload
+{
+  kind: RulesChangedKind;
+  name?: string;
 }
 
 // #endregion

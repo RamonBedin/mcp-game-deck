@@ -8,6 +8,7 @@ use tauri::{AppHandle, State};
 use crate::claude_supervisor::ClaudeSupervisor;
 use crate::files_watcher::FilesWatcher;
 use crate::plans_watcher::PlansWatcher;
+use crate::rules_watcher::RulesWatcher;
 use crate::types::{AppError, ConnectionStatus, SupervisorStatus};
 use crate::unity_client::UnityClient;
 
@@ -74,14 +75,16 @@ pub fn reconnect_unity() -> Result<(), AppError> {
 }
 
 /// Restarts the Claude Code supervisor and rebinds the plans + files
-/// watchers.
+/// watchers (plus the rules watcher) and refreshes the rules bundle.
 ///
 /// `UNITY_PROJECT_PATH` may have changed between launches (the env is
-/// read by `claude_supervisor::spawn` on every call), so both
-/// watchers are also restarted so they pick up the new project's
-/// directories. Each watcher's `start` internally stops any existing
-/// task before spawning the new one, so this is safe to call
-/// repeatedly.
+/// read by `claude_supervisor::spawn` on every call), so all three
+/// watchers are restarted so they pick up the new project's
+/// directories. The rules bundle (`Library/MCPGameDeck/rules-bundle.md`)
+/// is also recomposed before the supervisor spawns so its first
+/// `query()` injects the correct project's rules. Each watcher's
+/// `start` internally stops any existing task before spawning the
+/// new one, so this is safe to call repeatedly.
 ///
 /// # Arguments
 ///
@@ -89,11 +92,12 @@ pub fn reconnect_unity() -> Result<(), AppError> {
 /// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
 /// * `watcher` - Tauri-managed `PlansWatcher` state.
 /// * `files_watcher` - Tauri-managed `FilesWatcher` state.
+/// * `rules_watcher` - Tauri-managed `RulesWatcher` state.
 ///
 /// # Errors
 ///
 /// Returns `AppError::Internal` when `spawn` fails. Watcher rebind
-/// errors are logged on stderr but not surfaced — both watchers will
+/// errors are logged on stderr but not surfaced — every watcher will
 /// retry internally and a failure here shouldn't block the user from
 /// restarting the supervisor.
 #[tauri::command]
@@ -102,14 +106,21 @@ pub async fn restart_supervisor(
     supervisor: State<'_, ClaudeSupervisor>,
     watcher: State<'_, PlansWatcher>,
     files_watcher: State<'_, FilesWatcher>,
+    rules_watcher: State<'_, RulesWatcher>,
 ) -> Result<(), AppError> {
+    if let Some(root) = crate::project_root::try_resolve_project_root() {
+        if let Err(e) = crate::rules_bundle::recompose(&root) {
+            eprintln!("[rules-bundle] restart_supervisor recompose failed: {e}");
+        }
+    }
     supervisor
         .spawn(app.clone())
         .await
         .map(|_pid| ())
         .map_err(|e| AppError::Internal(e.to_string()))?;
     watcher.start(app.clone()).await;
-    files_watcher.start(app).await;
+    files_watcher.start(app.clone()).await;
+    rules_watcher.start(app).await;
     Ok(())
 }
 

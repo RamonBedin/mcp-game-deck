@@ -142,10 +142,13 @@ pub struct SessionSummary {
 
 /// Lightweight metadata for a plan file (used in list views).
 ///
-/// `description` is convenience-extracted from the file's YAML
-/// frontmatter so the list view doesn't have to read every plan's full
-/// body. Falls back to `None` when the field is absent, blank, or the
-/// frontmatter is malformed.
+/// `last_modified` is the file's mtime in **milliseconds since the
+/// Unix epoch** — matches `SessionSummary.last_modified` and the
+/// React side's `Date.now()`-based math (no compensating `* 1000` in
+/// the UI). `description` is convenience-extracted from the file's
+/// YAML frontmatter so the list view doesn't have to read every
+/// plan's full body. Falls back to `None` when the field is absent,
+/// blank, or the frontmatter is malformed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanMeta {
@@ -160,6 +163,9 @@ pub struct PlanMeta {
 pub type PlanFrontmatter = Map<String, Value>;
 
 /// Full contents of a plan, including its parsed frontmatter and body.
+///
+/// `last_modified` is the file's mtime in **milliseconds since the
+/// Unix epoch**, matching [`PlanMeta`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Plan {
@@ -296,20 +302,81 @@ pub struct CatalogAgent {
 // region: Rules
 
 /// Lightweight metadata for a rule file (used in list views).
+///
+/// `last_modified` is in **milliseconds since the Unix epoch**
+/// (matches [`PlanMeta`] and [`SessionSummary`]). `description` and
+/// `applies_to` are convenience-extracted from the file's YAML
+/// frontmatter so the list view doesn't have to read every rule's
+/// full body. `estimated_tokens` is a chars/4 heuristic computed
+/// from the full file content (frontmatter + body) so the Rules
+/// tab's header can show the bundle cost at a glance.
+///
+/// `applies_to` is **informational only** in v2.0 — the bundle
+/// compiler ignores it; v2.1 may filter per-subagent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleMeta {
     pub name: String,
+    pub last_modified: i64,
     pub enabled: bool,
+    pub description: Option<String>,
+    pub applies_to: Vec<String>,
+    pub estimated_tokens: u32,
 }
 
-/// Full contents of a rule, including its activation flag and body.
+/// Free-form frontmatter map for rule documents.
+///
+/// Schema is intentionally open — v2.0 reads `enabled` / `description`
+/// / `applies-to` (see [`RuleMeta`]), but writes preserve unknown
+/// fields verbatim so user-authored frontmatter round-trips through
+/// toggles and edits (F08 task 2.5).
+pub type RuleFrontmatter = Map<String, Value>;
+
+/// Full contents of a rule, including its parsed frontmatter and
+/// body.
+///
+/// `last_modified` is in **milliseconds since the Unix epoch**
+/// (matches [`RuleMeta`] / [`PlanMeta`] / [`SessionSummary`]).
+/// `content` is the body **without** `---` delimiters. The full
+/// frontmatter map is surfaced separately so the React pane can
+/// render the `applies-to` chip strip and so v2.1+ surfaces can
+/// expand the schema without re-shaping `Rule`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
     pub name: String,
-    pub enabled: bool,
+    pub last_modified: i64,
     pub content: String,
+    pub frontmatter: RuleFrontmatter,
+    pub estimated_tokens: u32,
+}
+
+/// Kind of filesystem change emitted by `rules-changed`.
+///
+/// Synthesized in `rules_watcher::classify_event` by comparing the
+/// in-memory set of known names against `path.exists()` at delivery
+/// time — `notify-debouncer-mini` collapses native event kinds into
+/// `DebouncedEventKind::Any`, so the create/modify/delete distinction
+/// is reconstructed rather than carried from the OS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RulesChangedKind {
+    Created,
+    Modified,
+    Deleted,
+}
+
+/// Payload for `rules-changed` — emitted by the rules-directory file
+/// watcher whenever a `.md` file is created, modified, or deleted.
+///
+/// `name` is the file stem (no `.md` extension); `None` if the watcher
+/// can't extract a name (e.g. non-UTF8 path).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RulesChangedPayload {
+    pub kind: RulesChangedKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 // endregion
@@ -650,6 +717,17 @@ mod tests {
     fn plans_changed_payload_serializes_kebab_kind() {
         let p = PlansChangedPayload {
             kind: PlansChangedKind::Created,
+            name: Some("foo".into()),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("\"kind\":\"created\""));
+        assert!(json.contains("\"name\":\"foo\""));
+    }
+
+    #[test]
+    fn rules_changed_payload_serializes_kebab_kind() {
+        let p = RulesChangedPayload {
+            kind: RulesChangedKind::Created,
             name: Some("foo".into()),
         };
         let json = serde_json::to_string(&p).unwrap();

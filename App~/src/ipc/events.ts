@@ -20,6 +20,7 @@ import type {
   PlansChangedPayload,
   ProjectFilesChangedPayload,
   RouteRequestedPayload,
+  RulesChangedPayload,
   SdkInstallFailedPayload,
   SdkInstallProgressPayload,
   SupervisorStatusChangedPayload,
@@ -89,6 +90,12 @@ export const onPermissionModeChanged = wrap<PermissionModeChangedPayload>("permi
 // #region Plans
 
 export const onPlansChanged = wrap<PlansChangedPayload>("plans-changed");
+
+// #endregion
+
+// #region Rules
+
+export const onRulesChanged = wrap<RulesChangedPayload>("rules-changed");
 
 // #endregion
 

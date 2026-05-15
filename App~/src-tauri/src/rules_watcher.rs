@@ -1,39 +1,42 @@
-//! Filesystem watcher for the active project's plans directory.
+//! Filesystem watcher for the active project's rules directory.
 //!
-//! Emits the `plans-changed` Tauri event whenever a `.md` file under
-//! `<UNITY_PROJECT_PATH>/ProjectSettings/GameDeck/plans/` is created,
-//! modified, or deleted.
+//! Emits the `rules-changed` Tauri event whenever a `.md` file under
+//! `<UNITY_PROJECT_PATH>/ProjectSettings/GameDeck/rules/` is created,
+//! modified, or deleted. Before emitting, the bundle compiler runs
+//! ([`rules_bundle::recompose`]) so `Library/MCPGameDeck/rules-bundle.md`
+//! always reflects the latest enabled set by the time React refetches
+//! and the SDK reads the file on its next `query()`.
 //!
-//! **Kind synthesis caveat:** `notify-debouncer-mini` collapses every
-//! native event into `DebouncedEventKind::Any` — the lighter debouncer
-//! in the `notify` family does not preserve create/modify/delete
-//! distinctions. To populate `PlansChangedKind`, this module tracks a
-//! `HashSet<String>` of currently-known plan names and synthesizes the
-//! kind by checking presence-before + `path.exists()`-now at event
-//! delivery time (see [`classify_event`]). The consumer (`plansStore`
-//! ) refetches `list_plans` on every event, so the
-//! synthesized kind is informational — a delete-then-create within the
-//! 250ms debounce window will collapse into a single `Modified` event
-//! rather than `Deleted` + `Created`, and that's accepted as a
-//! cosmetic limitation.
+//! **Kind synthesis caveat:** mirrors `plans_watcher` —
+//! `notify-debouncer-mini` collapses every native event into
+//! `DebouncedEventKind::Any`, so [`classify_event`] reconstructs
+//! Created/Modified/Deleted by checking presence-before +
+//! `path.exists()`-now. The consumer (`rulesStore`) refetches
+//! `list_rules` on every event, so the synthesized kind is
+//! informational.
 //!
-//! **`.md.tmp` filter:** `write_plan` writes through a `<name>.md.tmp`
-//! file then renames; that sequence produces four native FS events
-//! (create tmp, modify tmp, delete tmp, create md). The 250ms debounce
-//! collapses them, but we ALSO filter on `extension == "md"` before
-//! classifying so the tmp path never surfaces as an event (its stem
-//! would be `<name>.md`, which is invalid for the consumer).
+//! **`.md.tmp` filter:** `write_rule` / `toggle_rule` /
+//! `rules_bundle::recompose` all atomic-write via `.md.tmp` then
+//! rename. The 250ms debounce collapses the burst, and the
+//! `extension == "md"` filter drops the tmp path before classification.
+//!
+//! **Recompose-before-emit:** every classified event triggers a
+//! [`rules_bundle::recompose`] call (errors logged, not fatal) before
+//! the event is emitted. The bundle file is therefore guaranteed to
+//! reflect the post-event state by the time React sees `rules-changed`
+//! and refetches.
 //!
 //! **Lifecycle:**
-//! - Started from `lib.rs::setup` (Tauri-managed state).
+//! - Started from `lib.rs::setup` (Tauri-managed state, wired in F08
+//!   task 3.3).
 //! - Stopped from the `CloseRequested` handler before `app.exit(0)`.
 //! - Restarted by `commands::connection::restart_supervisor` so a
-//!   `UNITY_PROJECT_PATH` change picks up the new project's plans dir.
+//!   `UNITY_PROJECT_PATH` change picks up the new project's rules dir.
 //! - If no project root resolves at startup, the background task polls
 //!   every 5s until one appears.
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -43,27 +46,29 @@ use tauri::AppHandle;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::task::JoinHandle;
 
-use crate::commands::plans::plans_dir;
-use crate::events::emit_plans_changed;
+use crate::events::emit_rules_changed;
 use crate::markdown_doc::ensure_dir;
-use crate::types::{PlansChangedKind, PlansChangedPayload};
+use crate::project_root::try_resolve_project_root;
+use crate::rules_bundle;
+use crate::types::{RulesChangedKind, RulesChangedPayload};
 
 // region: Constants
 
+const RULES_SUBDIR: &str = "ProjectSettings/GameDeck/rules";
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const REBIND_BACKOFF: Duration = Duration::from_secs(1);
 const DEBOUNCE_WINDOW: Duration = Duration::from_millis(250);
 
 // endregion
 
-// region: PlansWatcher
+// region: RulesWatcher
 
-/// Tauri-managed handle for the plans-directory watcher.
+/// Tauri-managed handle for the rules-directory watcher.
 ///
 /// Owns the optional running task plus its stop channel; both reset
 /// together on every `start` / `stop` so the handle never reports a
 /// stale "running" state when the task has already terminated.
-pub struct PlansWatcher {
+pub struct RulesWatcher {
     state: Arc<Mutex<Option<WatcherHandles>>>,
 }
 
@@ -72,7 +77,7 @@ struct WatcherHandles {
     join: JoinHandle<()>,
 }
 
-impl PlansWatcher {
+impl RulesWatcher {
     /// Builds a fresh watcher in the stopped state. No background task
     /// is spawned until `start` is called.
     pub fn new() -> Self {
@@ -108,7 +113,7 @@ impl PlansWatcher {
     }
 }
 
-impl Default for PlansWatcher {
+impl Default for RulesWatcher {
     fn default() -> Self {
         Self::new()
     }
@@ -118,7 +123,7 @@ impl Default for PlansWatcher {
 
 // region: Event classification
 
-/// Synthesizes a [`PlansChangedKind`] from before/after presence.
+/// Synthesizes a [`RulesChangedKind`] from before/after presence.
 ///
 /// `notify-debouncer-mini` collapses native event kinds into
 /// `DebouncedEventKind::Any`, so the create/modify/delete distinction
@@ -130,12 +135,12 @@ impl Default for PlansWatcher {
 /// least-destructive default: the React consumer refetches anyway,
 /// and "Modified" avoids incorrectly suggesting a delete that never
 /// happened.
-pub(crate) fn classify_event(was_known: bool, exists_now: bool) -> PlansChangedKind {
+pub(crate) fn classify_event(was_known: bool, exists_now: bool) -> RulesChangedKind {
     match (was_known, exists_now) {
-        (false, true) => PlansChangedKind::Created,
-        (true, true) => PlansChangedKind::Modified,
-        (true, false) => PlansChangedKind::Deleted,
-        (false, false) => PlansChangedKind::Modified,
+        (false, true) => RulesChangedKind::Created,
+        (true, true) => RulesChangedKind::Modified,
+        (true, false) => RulesChangedKind::Deleted,
+        (false, false) => RulesChangedKind::Modified,
     }
 }
 
@@ -168,18 +173,19 @@ fn read_known_names(dir: &Path) -> HashSet<String> {
 
 // region: Run loop
 
-/// Outer loop: resolves the plans dir, attaches the debouncer, drains
-/// events, and re-attaches after backoff on error or channel close.
-/// Exits on `stop_rx`.
+/// Outer loop: resolves the rules dir + project root, attaches the
+/// debouncer, drains events, and re-attaches after backoff on error
+/// or channel close. Exits on `stop_rx`.
 async fn run_watcher_loop(app: AppHandle, mut stop_rx: oneshot::Receiver<()>) {
     loop {
-        let dir = loop {
-            if let Some(d) = plans_dir() {
+        let (dir, project_root) = loop {
+            if let Some(root) = try_resolve_project_root() {
+                let d: PathBuf = root.join(RULES_SUBDIR);
                 match ensure_dir(&d) {
-                    Ok(()) => break d,
+                    Ok(()) => break (d, root),
                     Err(e) => {
                         eprintln!(
-                            "[plans-watcher] ensure_dir failed at {}: {e}; retrying",
+                            "[rules-watcher] ensure_dir failed at {}: {e}; retrying",
                             d.display()
                         );
                     }
@@ -199,7 +205,7 @@ async fn run_watcher_loop(app: AppHandle, mut stop_rx: oneshot::Receiver<()>) {
         }) {
             Ok(d) => d,
             Err(e) => {
-                eprintln!("[plans-watcher] failed to create debouncer: {e}; backing off");
+                eprintln!("[rules-watcher] failed to create debouncer: {e}; backing off");
                 tokio::select! {
                     _ = &mut stop_rx => return,
                     _ = tokio::time::sleep(REBIND_BACKOFF) => {}
@@ -212,7 +218,7 @@ async fn run_watcher_loop(app: AppHandle, mut stop_rx: oneshot::Receiver<()>) {
             .watch(&dir, RecursiveMode::NonRecursive)
         {
             eprintln!(
-                "[plans-watcher] watch({}) failed: {e}; backing off",
+                "[rules-watcher] watch({}) failed: {e}; backing off",
                 dir.display()
             );
             drop(debouncer);
@@ -223,7 +229,8 @@ async fn run_watcher_loop(app: AppHandle, mut stop_rx: oneshot::Receiver<()>) {
             continue;
         }
 
-        let needs_rebind = drain_events(&app, &mut rx, &mut stop_rx, &mut known).await;
+        let needs_rebind =
+            drain_events(&app, &mut rx, &mut stop_rx, &mut known, &project_root).await;
         drop(debouncer);
 
         match needs_rebind {
@@ -244,14 +251,16 @@ enum DrainOutcome {
 }
 
 /// Inner loop: pulls from the debouncer's channel, filters non-`.md`
-/// paths, classifies each remaining path, and emits. Returns `Stop`
-/// when the caller asked us to stop, `Rebind` when the channel closed
-/// or the underlying watcher reported an error.
+/// paths, classifies each remaining path, recomposes the bundle, and
+/// emits. Returns `Stop` when the caller asked us to stop, `Rebind`
+/// when the channel closed or the underlying watcher reported an
+/// error.
 async fn drain_events(
     app: &AppHandle,
     rx: &mut mpsc::UnboundedReceiver<DebounceEventResult>,
     stop_rx: &mut oneshot::Receiver<()>,
     known: &mut HashSet<String>,
+    project_root: &Path,
 ) -> DrainOutcome {
     loop {
         tokio::select! {
@@ -259,7 +268,7 @@ async fn drain_events(
             msg = rx.recv() => match msg {
                 None => return DrainOutcome::Rebind,
                 Some(Err(e)) => {
-                    eprintln!("[plans-watcher] notify error: {e}");
+                    eprintln!("[rules-watcher] notify error: {e}");
                     return DrainOutcome::Rebind;
                 }
                 Some(Ok(events)) => {
@@ -283,14 +292,17 @@ async fn drain_events(
                         } else {
                             known.remove(&name);
                         }
-                        if let Err(e) = emit_plans_changed(
+                        if let Err(e) = rules_bundle::recompose(project_root) {
+                            eprintln!("[rules-watcher] recompose failed: {e}");
+                        }
+                        if let Err(e) = emit_rules_changed(
                             app,
-                            PlansChangedPayload {
+                            RulesChangedPayload {
                                 kind,
                                 name: Some(name),
                             },
                         ) {
-                            eprintln!("[plans-watcher] emit failed: {e}");
+                            eprintln!("[rules-watcher] emit failed: {e}");
                         }
                     }
                 }
@@ -307,21 +319,21 @@ mod tests {
 
     #[test]
     fn classify_event_unknown_then_exists_is_created() {
-        assert_eq!(classify_event(false, true), PlansChangedKind::Created);
+        assert_eq!(classify_event(false, true), RulesChangedKind::Created);
     }
 
     #[test]
     fn classify_event_known_then_exists_is_modified() {
-        assert_eq!(classify_event(true, true), PlansChangedKind::Modified);
+        assert_eq!(classify_event(true, true), RulesChangedKind::Modified);
     }
 
     #[test]
     fn classify_event_known_then_missing_is_deleted() {
-        assert_eq!(classify_event(true, false), PlansChangedKind::Deleted);
+        assert_eq!(classify_event(true, false), RulesChangedKind::Deleted);
     }
 
     #[test]
     fn classify_event_unknown_then_missing_defaults_to_modified() {
-        assert_eq!(classify_event(false, false), PlansChangedKind::Modified);
+        assert_eq!(classify_event(false, false), RulesChangedKind::Modified);
     }
 }

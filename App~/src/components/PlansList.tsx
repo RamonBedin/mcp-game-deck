@@ -21,13 +21,12 @@ import type { PlanMeta } from "../ipc/types";
 
 // #region Helpers
 
-const formatRelative = (seconds: number): string => {
-  if (seconds <= 0)
+const formatRelative = (millis: number): string => {
+  if (millis <= 0)
   {
     return "—";
   }
 
-  const millis = seconds * 1000;
   const diff = Date.now() - millis;
   const secondsAgo = Math.floor(diff / 1000);
 

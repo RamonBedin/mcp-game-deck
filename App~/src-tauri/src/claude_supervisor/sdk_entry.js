@@ -18,6 +18,7 @@
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { promises as fsp } from "node:fs";
+import fsSync from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -370,6 +371,60 @@ async function buildAttachmentBlock(filePath)
 
 // endregion
 
+// region: rules bundle resolution
+
+/**
+ * Reads the rules bundle env var and returns the bundle file's
+ * contents when the file exists with non-zero size, so the caller
+ * can set `queryOptions.systemPrompt.append`. Returns `null` when
+ * the env var is unset, the path doesn't exist, the file is empty,
+ * or any stat / read error occurs — those cases all collapse into
+ * "no rules" and the caller omits the option entirely.
+ *
+ * Sync `statSync` + `readFileSync` are fine on the boot / per-query
+ * hot path: the file is local, sub-millisecond, and we'd read it
+ * once per turn no matter what. The size check via `statSync` runs
+ * first so an oversized rule bundle doesn't slurp into memory
+ * unnecessarily (cap of 10 enabled rules keeps practical size well
+ * under any concern, but the staged check costs nothing).
+ *
+ * F08 task 3.3 — passed inline via the SDK's `systemPrompt: { type:
+ * "preset", preset: "claude_code", append }` shape. The SDK handles
+ * the Windows ~32KB CreateProcess ceiling internally by spilling
+ * long appends to a tempfile and forwarding `--append-system-prompt-file`
+ * to the CLI, so the host doesn't need to mediate that.
+ *
+ * @returns {string | null} The bundle file's UTF-8 contents when
+ *   it's safe to inject; null to omit.
+ */
+function resolveRulesBundleContent()
+{
+  const bundlePath = process.env.MCP_GAME_DECK_RULES_BUNDLE_PATH;
+
+  if (!bundlePath || bundlePath.length === 0)
+  {
+    return null;
+  }
+  try
+  {
+    const stats = fsSync.statSync(bundlePath);
+
+    if (!stats.isFile() || stats.size === 0)
+    {
+      return null;
+    }
+
+    const content = fsSync.readFileSync(bundlePath, "utf8");
+    return content.length > 0 ? content : null;
+  }
+  catch (err)
+  {
+    return null;
+  }
+}
+
+// endregion
+
 // region: health check
 
 const HEALTH_CHECK_TIMEOUT_MS = 15000;
@@ -394,13 +449,24 @@ async function runHealthCheck()
   let q;
   try
   {
+    const healthOptions = {
+      cwd: projectPath,
+      plugins: buildPlugins(),
+      additionalDirectories: buildAdditionalDirectories(),
+    };
+    const healthBundleContent = resolveRulesBundleContent();
+
+    if (healthBundleContent !== null)
+    {
+      healthOptions.systemPrompt = {
+        type: "preset",
+        preset: "claude_code",
+        append: healthBundleContent,
+      };
+    }
     q = query({
       prompt: "__health__",
-      options: {
-        cwd: projectPath,
-        plugins: buildPlugins(),
-        additionalDirectories: buildAdditionalDirectories(),
-      },
+      options: healthOptions,
     });
   }
   catch (err)
@@ -1020,12 +1086,6 @@ async function handleInput(text, attachments)
   const activeBlocks = new Map();
   try
   {
-    // NOTE: when F08 (Rules Page) starts injecting system prompts,
-    // long content should reach the SDK via `appendSystemPromptFile`
-    // (a path), not `appendSystemPrompt` (an inline string). Inline
-    // strings round-trip through the SDK → claude CLI handoff and
-    // bump into Windows' ~32KB CreateProcess command-line ceiling on
-    // long rule sets; the file-path form sidesteps it entirely.
     const queryOptions = {
       cwd: projectPath,
       includePartialMessages: true,
@@ -1035,6 +1095,21 @@ async function handleInput(text, attachments)
       additionalDirectories: buildAdditionalDirectories(),
       canUseTool: canUseToolCallback,
     };
+
+    const rulesBundleContent = resolveRulesBundleContent();
+    
+    if (rulesBundleContent !== null)
+    {
+      queryOptions.systemPrompt = {
+        type: "preset",
+        preset: "claude_code",
+        append: rulesBundleContent,
+      };
+    }
+    debug(
+      "rules bundle:",
+      rulesBundleContent !== null ? `${rulesBundleContent.length} chars` : "(none)",
+    );
 
     if (pendingResumeSessionId !== null)
     {

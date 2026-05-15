@@ -14,6 +14,7 @@ import FirstRunPanel, {FirstRunCheckingScreen, isInstallReady,} from "./componen
 import UpdateBanner from "./components/UpdateBanner";
 import { useCatalogSubscription } from "./hooks/useCatalogSubscription";
 import { usePlansSubscription } from "./hooks/usePlansSubscription";
+import { useRulesSubscription } from "./hooks/useRulesSubscription";
 import {checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus,} from "./ipc/commands";
 import { onRouteRequested, onSupervisorStatusChanged } from "./ipc/events";
 import type { ClaudeInstallStatus } from "./ipc/types";
@@ -49,6 +50,7 @@ export default function App()
   const [installStatus, setInstallStatus] = useState<ClaudeInstallStatus | null>(null);
 
   usePlansSubscription();
+  useRulesSubscription();
   useCatalogSubscription();
 
   // #region Effects
