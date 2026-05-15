@@ -21,9 +21,9 @@
  * with `enabled` matching the optimistic value, the entry is
  * dropped via `useEffect([rules])`. When `onToggle` resolves with
  * `{ok: false}` (cap reached, non-mapping frontmatter, IO error),
- * the optimistic entry is reverted immediately and the error
- * message surfaces in a 3s auto-dismiss toast at the bottom of the
- * list.
+ * the optimistic entry is reverted immediately; surfacing the error
+ * to the user is the route's responsibility (task 4.4 consolidated
+ * the toast into a single route-level banner above both columns).
  *
  * Visual conventions mirror `PlansList` for cohesion across the
  * app's sidebars (header style, row chrome, active-state highlight).
@@ -36,7 +36,6 @@ import type { RuleMeta } from "../ipc/types";
 
 const ENABLED_CAP = 10;
 const TOKENS_WARNING_THRESHOLD = 500;
-const TOAST_DISMISS_MS = 3000;
 
 // #endregion
 
@@ -89,8 +88,9 @@ const formatRelative = (millis: number): string => {
  * Props for {@link RulesList}.
  *
  * `onToggle` returns the same `{ok, error?}` shape that
- * `rulesStore.toggleRule` surfaces; this component renders the toast
- * locally on `{ok: false}`, so the consumer doesn't have to.
+ * `rulesStore.toggleRule` surfaces; this component reverts the
+ * optimistic entry on `{ok: false}` but does not render a toast —
+ * the route consumer owns the user-facing error surface.
  */
 interface RulesListProps
 {
@@ -103,8 +103,9 @@ interface RulesListProps
 
 /**
  * Renders the rules sidebar: header with cap-aware count + estimated
- * token total, "+ New rule" button, optimistic per-row enable
- * checkbox, and an inline toast at the bottom for toggle failures.
+ * token total, "+ New rule" button, and optimistic per-row enable
+ * checkbox. Toggle failures revert the optimistic entry locally;
+ * the route consumer surfaces the error.
  *
  * @param props - See {@link RulesListProps}.
  * @returns The sidebar element.
@@ -112,7 +113,6 @@ interface RulesListProps
 export default function RulesList({ rules, selectedName, onSelect, onNewRule, onToggle, }: RulesListProps)
 {
   const [optimistic, setOptimistic] = useState<Map<string, boolean>>(new Map());
-  const [toast, setToast] = useState<string | null>(null);
 
   // Reconcile optimistic entries when fresh props arrive (watcher event →
   // loadList → new `rules`). Any entry whose props value matches the
@@ -139,17 +139,6 @@ export default function RulesList({ rules, selectedName, onSelect, onNewRule, on
     });
   }, [rules]);
 
-  // Toast auto-dismiss.
-  useEffect(() => {
-    if (toast === null)
-    {
-      return;
-    }
-
-    const id = window.setTimeout(() => setToast(null), TOAST_DISMISS_MS);
-    return () => window.clearTimeout(id);
-  }, [toast]);
-
   const isEnabled = (r: RuleMeta): boolean => optimistic.get(r.name) ?? r.enabled;
 
   const enabledCount = rules.filter(isEnabled).length;
@@ -167,7 +156,6 @@ export default function RulesList({ rules, selectedName, onSelect, onNewRule, on
         m.delete(rule.name);
         return m;
       });
-      setToast(result.error ?? "Toggle failed.");
     }
   };
 
@@ -251,15 +239,6 @@ export default function RulesList({ rules, selectedName, onSelect, onNewRule, on
           })
         )}
       </div>
-
-      {toast !== null && (
-        <div
-          role="alert"
-          className="mt-2 rounded border border-yellow-700/60 bg-yellow-900/40 px-3 py-2 text-xs text-yellow-100"
-        >
-          {toast}
-        </div>
-      )}
     </div>
   );
 }

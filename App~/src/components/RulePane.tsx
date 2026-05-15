@@ -18,10 +18,9 @@
  * `boolean | null` that overrides `rule.frontmatter.enabled` for
  * the visual state until either the active rule changes
  * (navigation), the edit mode changes, or the action returns
- * `{ok: false}`. On `{ok: false}` we revert and surface a local
- * 3s toast (same UX shape as the row checkbox in `RulesList`; task
- * 4.4 may consolidate the two toasts into a single route-level
- * surface).
+ * `{ok: false}` (in which case we revert). Task 4.4 consolidated
+ * the toggle-error toast at the route level above both columns;
+ * this component no longer renders one.
  *
  * The `confirmingDelete` flag resets on any transition of the
  * active rule or the edit mode, mirroring `PlanPane`.
@@ -31,12 +30,6 @@ import { useEffect, useState } from "react";
 import type { Rule } from "../ipc/types";
 import RuleEditor from "./RuleEditor";
 import RuleViewer from "./RuleViewer";
-
-// #region Constants
-
-const TOAST_DISMISS_MS = 3000;
-
-// #endregion
 
 // #region Component
 
@@ -67,23 +60,11 @@ export default function RulePane({rule, editMode, editDraft, onEnterEdit, onCanc
 {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     setConfirmingDelete(false);
     setOptimisticEnabled(null);
   }, [rule?.name, editMode]);
-
-  // Toast auto-dismiss.
-  useEffect(() => {
-    if (toast === null)
-    {
-      return;
-    }
-
-    const id = window.setTimeout(() => setToast(null), TOAST_DISMISS_MS);
-    return () => window.clearTimeout(id);
-  }, [toast]);
 
   if (rule === null)
   {
@@ -107,7 +88,6 @@ export default function RulePane({rule, editMode, editDraft, onEnterEdit, onCanc
     if (!result.ok)
     {
       setOptimisticEnabled(null);
-      setToast(result.error ?? "Toggle failed.");
     }
   };
 
@@ -204,15 +184,6 @@ export default function RulePane({rule, editMode, editDraft, onEnterEdit, onCanc
         />
       ) : (
         <RuleViewer rule={rule} />
-      )}
-
-      {toast !== null && (
-        <div
-          role="alert"
-          className="border-t border-yellow-700/60 bg-yellow-900/40 px-4 py-2 text-xs text-yellow-100"
-        >
-          {toast}
-        </div>
       )}
     </div>
   );
