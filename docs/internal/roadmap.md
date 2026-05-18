@@ -2,7 +2,7 @@
 
 > Living document. Update as features ship or scope shifts.
 
-> ⚠️ **ADR-001 applies** to the v2.0 milestone. See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`. The original Features 02 (Orchestrator) and 03 (Slash Commands) were superseded and removed; the new Feature 02 (Claude Code Supervisor) reuses slot 02 with the work ADR-001 actually requires (spawning Claude Code as the chat engine inside Tauri) — **shipped Apr 2026**. Feature 05 was absorbed entirely by Feature 04 (Interactive Approvals & Clarifying Questions) — **shipped Apr 2026**. Feature 06 (Plans CRUD) was revised under ADR-001 in May 2026 with bundled slash + `@` autocomplete dropdown — design locked, 22 tasks ready. Feature 08 (Rules Page) still needs revision before execution. Feature 01 was delivered but its Node-side target shifted (now the Feature 02 supervisor, instead of a custom server). The v2.0 theme and overall sequencing below are unchanged — only the engine identity changed.
+> ⚠️ **ADR-001 applies** to the v2.0 milestone. See `docs/internal/architecture/ADR-001-claude-code-sdk-as-engine.md`. The original Features 02 (Orchestrator) and 03 (Slash Commands) were superseded and removed; the new Feature 02 (Claude Code Supervisor) reuses slot 02 with the work ADR-001 actually requires (spawning Claude Code as the chat engine inside Tauri) — **shipped Apr 2026**. Feature 05 was absorbed entirely by Feature 04 (Interactive Approvals & Clarifying Questions) — **shipped Apr 2026**. Feature 06 (Plans CRUD + bundled slash & `@` autocomplete) — **shipped May 2026**. Feature 08 (Rules Page) — **shipped May 2026**. Feature 09 (v2.0 UX Pass — design system + components + B.02/B.06/B.08/B.10 backend asks) — **shipped May 2026**. v2.0 feature work is complete; remaining backend asks (B.01/B.03/B.04/B.05/B.07/B.09) plus all deferred items live in `post-v2.0-backlog.md`.
 
 ## Current version
 
@@ -24,7 +24,7 @@ The 41 tool audits already exist (`.claude/reports/audits/`). They are not throw
 
 ## Milestones
 
-### v2.0 — External app + orchestrator architecture (PRIORITY, IN PROGRESS)
+### v2.0 — External app + orchestrator architecture (✅ FEATURE-COMPLETE, May 2026)
 
 **Theme:** chat moves out of the Unity Editor entirely. Unity package becomes a thin runtime + connector. UX gets a proper home where lifecycle disruptions don't kill it.
 
@@ -41,10 +41,10 @@ The 41 tool audits already exist (`.claude/reports/audits/`). They are not throw
 | 3 | ~~Slash commands customizable by user~~ | — | ❌ removed by ADR-001 (Claude Code reads `.claude/commands/` and `.claude/skills/` natively) |
 | 4 | Interactive Approvals & Clarifying Questions (absorbs former F05) | `04-interactive-approvals.md` + `-spec.md` + `-tasks.md` | ✅ done (Apr 2026) — merged to `develop/v2.0` |
 | ~~5~~ | ~~Permission system fix~~ | — | ❌ absorbed by F04 (Apr 2026); see `04-interactive-approvals.md` |
-| 6 | Plans CRUD with markdown storage in `ProjectSettings/GameDeck/plans/` + bundled slash & `@` autocomplete dropdown | `06-plans-crud.md` + `06-plans-crud-spec.md` + `06-plans-crud-tasks.md` | 🟡 immediate — design locked May 2026, 22 tasks ready, branch `feature/06-plans-crud` to be cut from `develop/v2.0` |
+| 6 | Plans CRUD with markdown storage in `ProjectSettings/GameDeck/plans/` + bundled slash & `@` autocomplete dropdown | `06-plans-crud.md` + `06-plans-crud-spec.md` + `06-plans-crud-tasks.md` | ✅ done (May 2026) |
 | 7 | Editor pin status (replaces chat window inside Unity) | `07-editor-status-pin.md` + `07-editor-status-pin-spec.md` + `07-editor-status-pin-tasks.md` | ✅ done (Apr 2026) — merged to `develop/v2.0` |
-| 8 | Rules page (user-defined behavior constraints) | `08-rules-page.md` | ⏳ pending — needs revision under ADR-001 (medium) |
-| 9 | Claude Design used to prototype UI | `09-design-handoff.md` | ⏳ pending — unchanged by ADR-001 |
+| 8 | Rules page (user-defined behavior constraints) | `08-rules-page.md` | ✅ done (May 2026) — revised under ADR-001; injection via `systemPrompt.append`; bundle composed in `Library/MCPGameDeck/rules-bundle.md` |
+| 9 | v2.0 UX Pass — design system, atoms, shell, chat rewrite, request cards, Library route, Settings reorg, icons, B.02/B.06/B.08/B.10 | `09-design-handoff.md` | ✅ done (May 2026) — design tokens + all components + 4 backend asks shipped; remaining B.* in `post-v2.0-backlog.md` |
 
 **What v2.0 deletes from the current code:**
 
@@ -225,14 +225,29 @@ Don't let the roadmap silently drift.
 
 ## What's shipping next
 
-**Just shipped:** Feature 04 (Interactive Approvals & Clarifying Questions) — merged to `develop/v2.0` April 2026. Single `canUseTool` callback wired in `sdk-entry.js` routes both permission requests and the SDK's built-in `AskUserQuestion` clarifying questions through a unified `RequestCard` UI in React. F05 (Permission System Fix) was absorbed entirely; the F05 doc was deleted as part of this work. Auto-resolve on supervisor crash with `interrupted` state. Permission cards (Allow / Allow Always / Deny) and question cards (single / multi / free-text, up to 3 questions per card stacked) share the same `RequestCard` base + `react-markdown` body. Subagent inheritance verified empirically — the documented Anthropic fix for the subagent MCP bug holds for `canUseTool` flows too.
+**v2.0 is feature-complete** as of May 2026. All 9 features in scope shipped:
 
-**Also shipped recently:**
-- **Feature 02 (Claude Code Supervisor)** — merged Apr 2026. Replaced the F01 echo stub with a real `@anthropic-ai/claude-agent-sdk` `query()` loop spawning Claude Code as a subprocess. Mid-execution Decision #2 pivoted from `--add-dir` skill discovery to the SDK's `plugins: [{type:"local", path}]` option (empirical finding: `additionalDirectories` only grants file access, not skill auto-discovery). `Plugin~/` now structured as a Claude Code plugin with `.claude-plugin/plugin.json`, `agents/`, `skills/`, `knowledge/`. No copy step into user `.claude/`; UPM removal removes the plugin. Specialists ship as agents (subagent MCP bug fix verified). `{{KB_PATH}}` machinery simplified — resolved via plugin layout convention or one-time substitution at consolidation time, not runtime. SDK + `claude` are external dependencies (not bundled in MSI — proprietary license per Anthropic Commercial Terms); first-run UX detects + redirects to install docs if missing. Auth fully owned by Claude Code.
-- **Feature 07 (Editor Status Pin)** — merged Apr 2026. The pin replaces the in-Unity `Editor/ChatUI/` panel with a `MainToolbarDropdown` entry that polls MCP server status (gray/red/yellow/green/badge), launches Tauri via `Process.Start` with the env-var contract, and surfaces a 5-item dropdown menu (Open Chat / Settings / Copy URL / Show install folder / About). Tauri side gained `tauri-plugin-single-instance`, `tauri-plugin-cli`, and `tauri-plugin-opener` plus an `UpdateBanner` component. Single-instance is app-global (per-project isolation deferred to v2.1+). Validation of the SUCCESS path (real download → spawn → connected app) deferred to v2.0 release rehearsal alongside several 4.x/5.x items — needs a real GitHub release with `.exe` + `.sha256` assets.
+- **F01 — External app (Tauri + React)** ✅ Apr 2026
+- **F02 — Claude Code Supervisor** ✅ Apr 2026 — `@anthropic-ai/claude-agent-sdk` `query()` loop, plugin discovery via `plugins: [{type:"local", path}]`, `Plugin~/` structured as a Claude Code plugin
+- **F04 — Interactive Approvals & Clarifying Questions** ✅ Apr 2026 — unified `canUseTool` + `AskUserQuestion` UI; F05 absorbed
+- **F06 — Plans CRUD + bundled slash & `@` autocomplete** ✅ May 2026 — 22 tasks across 7 groups; markdown storage in `ProjectSettings/GameDeck/plans/`; project-file index with gitignore-style exclusions
+- **F07 — Editor Status Pin** ✅ Apr 2026 — replaces in-Unity chat window; single-instance app-global (per-project isolation deferred to v2.1+)
+- **F08 — Rules Page** ✅ May 2026 — `systemPrompt.append` injection (Decision #1 resolved during 3.3); `Library/MCPGameDeck/rules-bundle.md` composed by Rust; 10-rule cap; `markdown_doc` Rust module extracted as shared infrastructure with F06
+- **F09 — v2.0 UX Pass** ✅ May 2026 — design tokens + atoms + shell + chat rewrite + tier-aware request cards + new Library route + Settings reorg + Tauri/pin icon pack. Backend asks shipped: B.02 (`cancel_current_turn`), B.06 (`preview_rules_bundle`), B.08 (recent commands cache), B.10 (knowledge docs reader with full-text search + match highlights)
 
-**Immediate:** **Feature 06 (Plans CRUD + bundled slash & `@` autocomplete)** on branch `feature/06-plans-crud` (to be cut from `develop/v2.0`). The full trio (`06-plans-crud.md` design root, `-spec.md` executable spec, `-tasks.md` 22 tasks across 7 groups) is ready as of 2026-05-07. Original F06 was a CRUD-only feature (~10 tasks); decision #8 bundled the slash + `@` dropdown after recognition that without discoverability the new `/save-plan` and `/plan-execute` skills (and the 22 existing `Plugin~/skills/`, the 10 specialists, and any user-installed plugin commands) stay invisible in the Tauri chat input. The dropdown's data source is free — the SDK already emits the catalog via `system/init` (per ADR-001 mapping table). `@` is a unified picker covering both agents and project files (Rust file index with sensible exclusions: `Library/`, `Temp/`, `obj/`, `Logs/`, `.vs/`, `.git/`, `node_modules/`, `dist/`, hidden dirs except `.claude/`).
+**Out-of-band fixes shipped during F09 dogfood (May 2026):**
 
-**Next after 06:** Feature 08 (Rules Page) — needs revision under ADR-001 (medium); storage location stays at `ProjectSettings/GameDeck/rules/`, mechanism shifts from custom server prompt injection to `--append-system-prompt` or project-level `CLAUDE.md` overlay. Then Feature 09 (Design Handoff) — unchanged by ADR-001, mockups for screens that aren't already implemented can be regenerated against the live Tauri build at any time without blocking.
+- `inFlight` guard in `conversationStore` — debounces duplicate sends from launchpad/library card clicks; WorkingStrip visible from send → turn-complete (not just first delta)
+- Delete session UI + `delete_session` Rust command — trash icon on hover with confirm dialog
+- Collapsible columns (NavRail + SessionList + PlansList + RulesList) via localStorage-backed `useCollapsedColumn` hook
+- HUD permission mode picker — clickable popover with 4 options (Ask / Auto-edit / Plan / Free) replacing the static label
+- Settings: real content in Appearance / Claude Code / Plugin / About panels (no more `<PanelStub />`)
+- Bug fix: deleting the active session now also calls `startNewSession()` so the supervisor's stale `pendingResumeSessionId` doesn't trigger "No conversation found" on the next turn
+- Self-heal on "No conversation found with session ID …" errors — auto-clear resume pointer + currentSessionId so the next message starts fresh
+- Dead code prune: `markRequestInterrupted` / `getPermissionMode` / `reconnectUnity` removed (TS bindings + Rust commands)
 
-**Tool consolidation:** paused until v2.0 ships. The Animation review draft and GameObject review (with escalations) sit in `.claude/reports/reviews/` waiting for v2.2.1 to pick them up.
+**Immediate next:** v2.0 release rehearsal — needs a real GitHub release with `.exe` + `.sha256` assets to validate the SUCCESS path of F07 (real download → spawn → Tauri connects to MCP → first chat round-trip). Several 4.x / 5.x tasks in `07-editor-status-pin-tasks.md` flagged this for "v2.0 release rehearsal".
+
+**After v2.0 ships:** see `post-v2.0-backlog.md` for the complete map of deferred items grouped by milestone (v2.0.x patches → v2.1 multi-LLM + dogfood polish → v2.2.x tool consolidation → v2.3+ personalisation).
+
+**Tool consolidation:** the Animation review draft and GameObject review (with escalations) sit in `.claude/reports/reviews/` waiting for v2.2.1 to pick them up. 41 audits cached April 2026 — re-run any domain whose code drifted significantly during v2.0.

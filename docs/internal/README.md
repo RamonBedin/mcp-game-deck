@@ -7,16 +7,17 @@ Internal design docs and roadmap for MCP Game Deck. **Not user-facing** — thes
 ```
 docs/internal/
 ├── README.md              ← you are here
-├── roadmap.md             ← v1.2 / v2.0 / v2.1 milestones, what goes where
+├── roadmap.md             ← v2.0 / v2.1 / v2.2.x / v2.3+ milestones, what goes where
+├── post-v2.0-backlog.md   ← aggregated map of every deferred item from v2.0 → its target milestone
 ├── v2-architecture.md     ← cross-cutting architectural decisions for v2.0
 ├── v2-features/           ← one doc per feature; agreed features expand to root + `-spec.md` + `-tasks.md`
 │   ├── 01-external-app*           ← shipped (Apr 2026)
 │   ├── 02-claude-code-supervisor* ← shipped (Apr 2026)
 │   ├── 04-interactive-approvals*  ← shipped (Apr 2026), absorbs former F05
-│   ├── 06-plans-crud*             ← design locked May 2026, trio ready
+│   ├── 06-plans-crud*             ← shipped (May 2026)
 │   ├── 07-editor-status-pin*      ← shipped (Apr 2026)
-│   ├── 08-rules-page.md
-│   └── 09-design-handoff.md
+│   ├── 08-rules-page.md           ← shipped (May 2026)
+│   └── 09-design-handoff.md       ← shipped (May 2026)
 ├── architecture/          ← canonical architectural decision records (ADR-001 lives here)
 └── decisions/             ← earlier ADR convention; coexists with architecture/
 ```
