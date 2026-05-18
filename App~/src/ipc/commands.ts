@@ -36,8 +36,6 @@ export const getUnityStatus = (): Promise<ConnectionStatus> => invoke("get_unity
 
 export const getSupervisorStatus = (): Promise<SupervisorStatus> => invoke("get_supervisor_status");
 
-export const reconnectUnity = (): Promise<void> => invoke("reconnect_unity");
-
 export const restartSupervisor = (): Promise<void> => invoke("restart_supervisor");
 
 // #endregion
@@ -60,20 +58,8 @@ export const sendMessage = (
 export const setPermissionMode = (mode: PermissionMode): Promise<void> =>
   invoke("set_permission_mode", { mode });
 
-export const getPermissionMode = (): Promise<PermissionMode> =>
-  invoke("get_permission_mode");
-
-/**
- * Forwards the user's permission / question card response to the
- * supervisor. The Tauri command (task 2.2) writes a
- * `respond-to-request` JSON line on `sdk-entry.js`'s stdin; the
- * stdin handler (task 1.3) resolves the awaited `canUseTool`
- * promise and the conversation continues.
- */
-export const respondToRequest = (
-  requestId: string,
-  decision: DecisionPayload,
-): Promise<void> => invoke("respond_to_request", { requestId, decision });
+export const respondToRequest = (requestId: string, decision: DecisionPayload,): Promise<void> => invoke("respond_to_request", { requestId, decision });
+export const cancelCurrentTurn = (): Promise<void> => invoke("cancel_current_turn");
 
 // #endregion
 
@@ -105,6 +91,8 @@ export const resumeSession = (sessionId: string): Promise<void> => invoke("resum
 
 export const startNewSession = (): Promise<void> => invoke("start_new_session");
 
+export const deleteSession = (sessionId: string): Promise<void> => invoke("delete_session", { sessionId });
+
 // #endregion
 
 // #region Rules
@@ -118,6 +106,44 @@ export const writeRule = (name: string, content: string): Promise<void> => invok
 export const deleteRule = (name: string): Promise<void> => invoke("delete_rule", { name });
 
 export const toggleRule = (name: string, enabled: boolean): Promise<void> => invoke("toggle_rule", { name, enabled });
+
+export const previewRulesBundle = (): Promise<string> => invoke("preview_rules_bundle");
+
+// #endregion
+
+// #region Recent commands
+
+export const listRecentCommands = (): Promise<string[]> => invoke("list_recent_commands");
+
+export const trackRecentCommand = (command: string): Promise<void> => invoke("track_recent_command", { command });
+
+// #endregion
+
+// #region Knowledge
+
+/**
+ * Lightweight metadata for one knowledge doc bundled in
+ * `Plugin~/knowledge/`. Mirrors Rust's `KnowledgeDocMeta`.
+ */
+export interface KnowledgeDocMeta
+{
+  id: string;
+  num: string;
+  title: string;
+  wordCount: number;
+}
+
+/** Full knowledge doc — metadata plus the raw markdown body. */
+export interface KnowledgeDoc extends KnowledgeDocMeta
+{
+  body: string;
+}
+
+export const listKnowledgeDocs = (): Promise<KnowledgeDocMeta[]> => invoke("list_knowledge_docs");
+
+export const readKnowledgeDoc = (id: string): Promise<KnowledgeDoc> => invoke("read_knowledge_doc", { id });
+
+export const readAllKnowledgeDocs = (): Promise<KnowledgeDoc[]> => invoke("read_all_knowledge_docs");
 
 // #endregion
 

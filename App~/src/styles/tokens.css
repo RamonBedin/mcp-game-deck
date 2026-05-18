@@ -1,0 +1,153 @@
+/* ===========================================================
+   MCP Game Deck — v2.0 Design Tokens
+   ===========================================================
+
+   Imported by globals.css. Mirrored into tailwind.config.js — every
+   color/spacing/radius below is also accessible as a Tailwind utility
+   (e.g. `bg-bg-2`, `text-brand-violet`, `border-tier-destr/30`).
+
+   Naming convention:
+     --bg-N        surface layer  (0 deepest, 5 highest)
+     --txt-N       text hierarchy (1 brightest, 5 faintest)
+     --line-*      strokes
+     --violet-*    primary brand
+     --cyan-*      secondary brand
+     --grad-brand  generative-moment gradient
+     --ok/warn/bad semantic colors
+     --tier-*      permission risk tiers
+     --ag-*        per-agent accent colors
+   =========================================================== */
+
+:root
+{
+  /* ============ SURFACES ============ */
+  --bg-0:  #07070D;
+  --bg-1:  #0E0F18;
+  --bg-2:  #14151F;
+  --bg-3:  #1B1D2A;
+  --bg-4:  #232636;
+  --bg-5:  #2B2E42;
+
+  /* ============ STROKES ============ */
+  --line:       #232636;
+  --line-soft:  #1B1D2A;
+  --line-hard:  #2B2E42;
+
+  /* ============ TEXT ============ */
+  --txt-1: #ECEDF5;
+  --txt-2: #B5B8CC;
+  --txt-3: #7A7E96;
+  --txt-4: #4F526A;
+  --txt-5: #353749;
+
+  /* ============ BRAND ============ */
+  --violet:        #7B5CFF;
+  --violet-soft:   #9D7CFF;
+  --violet-deep:   #5B3FE0;
+  --violet-glow:   rgba(123, 92, 255, 0.35);
+  --cyan:          #4CC9FF;
+  --cyan-soft:     #7AD8FF;
+  --grad-brand:    linear-gradient(135deg, #7B5CFF 0%, #4CC9FF 100%);
+  --grad-brand-r:  linear-gradient(110deg, #9D7CFF 0%, #4CC9FF 60%, #7AD8FF 100%);
+
+  /* ============ SEMANTIC ============ */
+  --ok:   #4ADE80;
+  --warn: #F5B946;
+  --bad:  #FF5C7A;
+  --info: #5BBDFF;
+
+  /* permission risk tier */
+  --tier-read:   #5BBDFF;
+  --tier-write:  #F5B946;
+  --tier-destr:  #FF5C7A;
+
+  /* per-specialist accent colors (used in Avatar + subagent indicator) */
+  --ag-shader:   #FF7AC6;
+  --ag-ui:       #4CC9FF;
+  --ag-dots:     #4ADE80;
+  --ag-perf:     #F5B946;
+  --ag-gameplay: #9D7CFF;
+  --ag-unity:    #B5B8CC;
+  --ag-systems:  #FF9B6E;
+  --ag-techart:  #7AD8FF;
+  --ag-addr:     #C792EA;
+  --ag-qa:       #82E1B6;
+
+  /* ============ TYPE ============ */
+  --f-body: "Inter", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+  --f-hud:  "Orbitron", "Inter", sans-serif;
+
+  /* ============ RADII ============ */
+  --r-1: 4px;
+  --r-2: 6px;
+  --r-3: 8px;
+  --r-4: 12px;
+  --r-5: 16px;
+
+  /* ============ SHADOWS ============ */
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.02), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 4px 12px -2px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--line);
+  --shadow-3: 0 12px 32px -6px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line);
+  --shadow-glow-brand:
+    0 0 0 1px rgba(123, 92, 255, 0.3),
+    0 0 32px -6px var(--violet-glow);
+
+  /* ============ MOTION ============ */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-snap:   cubic-bezier(0.34, 1.56, 0.64, 1);
+  --d-fast: 120ms;
+  --d-med:  200ms;
+  --d-slow: 360ms;
+}
+
+/* ===========================================================
+   Pre-React-mount fallback so the window doesn't flash white.
+   =========================================================== */
+html.dark body
+{
+  background-color: var(--bg-1);
+  color: var(--txt-1);
+  font-family: var(--f-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===========================================================
+   Keyframes — referenced from inline component styles.
+   =========================================================== */
+@keyframes pulse-soft
+{
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.85); }
+}
+
+@keyframes brand-shift
+{
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* ===========================================================
+   Component utility classes — referenced from .tsx files by
+   className. They round-trip cleanly through Tailwind's JIT
+   (each contains tokens it can resolve).
+   =========================================================== */
+@layer components
+{
+  /* Focus ring used by the autocomplete panels and CTA buttons. */
+  .focus-ring
+  {
+    box-shadow: 0 0 0 3px rgba(123, 92, 255, 0.15);
+    border-color: var(--violet);
+  }
+
+  /* The brand gradient as an animated layer; reserved for the
+     Claude avatar during an active turn (motion language §05). */
+  .brand-shift
+  {
+    background: linear-gradient(120deg, #7B5CFF 0%, #4CC9FF 50%, #7B5CFF 100%);
+    background-size: 200% 100%;
+    animation: brand-shift 6s var(--ease-in-out) infinite;
+  }
+}

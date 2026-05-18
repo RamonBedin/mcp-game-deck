@@ -2,11 +2,12 @@
  * Chat composer — owns the textarea, autocomplete state, drag-drop
  * attachments, and submission handlers.
  *
- * Extracted from `ChatRoute.tsx` to keep that route focused on the
- * message list + supervisor subscription. ChatInput is a zero-prop
- * component: it pulls everything it needs from the conversation
- * store and the catalog store, so the route just renders
- * `<ChatInput />` at the bottom of its column.
+ * visual layer rewritten to match the `ChatComposer`
+ * mockup in `atoms.jsx` — single elevated surface with bg-bg-2 and
+ * line-hard border, attachments rendered as `Pill` chips above the
+ * textarea, mode hint + gradient Send button in the footer row. All
+ * autocomplete + keyboard + drag-drop logic is preserved verbatim
+ * from v1; only the chrome changed.
  *
  * Slash autocomplete integration:
  *
@@ -50,8 +51,9 @@ import { setPermissionMode as setPermissionModeCommand } from "../ipc/commands";
 import type { PermissionMode } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 import AtDropdown from "./AtDropdown";
-import PermissionModeToggle from "./PermissionModeToggle";
 import SlashDropdown from "./SlashDropdown";
+import Button from "./atoms/Button";
+import Pill from "./atoms/Pill";
 
 // #region Constants & helpers
 
@@ -83,9 +85,9 @@ const basenameOf = (filePath: string): string => {
 // #region Component
 
 /**
- * Renders the bottom-of-chat composer: permission mode toggle,
- * attachment chips, textarea with drag-drop overlay, send button,
- * and the floating slash-command dropdown.
+ * Renders the bottom-of-chat composer: attachment chips, textarea with
+ * drag-drop overlay, footer hint + gradient Send button, plus the
+ * floating slash/@-command dropdowns.
  *
  * @returns The composer form element.
  */
@@ -336,35 +338,38 @@ export default function ChatInput()
 
   // #endregion
 
-  return (
-    <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
-      <div className="flex items-center justify-end">
-        <PermissionModeToggle />
-      </div>
+  const canSend = input.trim().length > 0 || pendingAttachments.length > 0;
 
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="shrink-0 border-t border-line bg-bg-0 px-[18px] pt-3 pb-3.5"
+    >
       {pendingAttachments.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5 mb-2">
           {pendingAttachments.map((p) => (
-            <span
-              key={p}
-              className="flex items-center gap-1 rounded border border-slate-700 bg-slate-800/60 px-2 py-0.5 text-xs text-slate-300"
-              title={p}
-            >
-              <span className="max-w-[180px] truncate">{basenameOf(p)}</span>
+            <Pill key={p} variant="subtle" size="md">
+              <span
+                className="normal-case font-mono"
+                style={{ letterSpacing: "normal" }}
+                title={p}
+              >
+                {basenameOf(p)}
+              </span>
               <button
                 type="button"
                 onClick={() => removeAttachment(p)}
-                className="text-slate-500 hover:text-slate-200"
+                className="ml-1 text-txt-4 hover:text-txt-1 transition-colors duration-[120ms]"
                 aria-label={`Remove ${basenameOf(p)}`}
               >
                 ×
               </button>
-            </span>
+            </Pill>
           ))}
         </div>
       )}
 
-      <div className="relative">
+      <div className="relative rounded-r-3 border border-line-hard bg-bg-2 px-3 py-2.5 transition-colors duration-[120ms] focus-within:border-brand-violet">
         <textarea
           ref={textareaRef}
           value={input}
@@ -374,24 +379,41 @@ export default function ChatInput()
           }}
           onSelect={handleTextareaSelect}
           onKeyDown={handleKeyDown}
-          rows={3}
-          placeholder="Type a message... (Enter to send, Shift+Enter for newline; drop files to attach)"
-          className="w-full resize-none rounded border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-100 focus:border-slate-500 focus:outline-none"
+          rows={2}
+          placeholder="Type / for commands, @ for files…"
+          className="w-full resize-none bg-transparent border-none outline-none text-txt-1 font-body text-[13.5px] leading-relaxed placeholder:text-txt-4"
         />
+
+        <div className="flex items-center gap-2.5 mt-2 font-mono text-[11px] text-txt-4">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="inline-block rounded-r-1 border border-line-hard bg-bg-3"
+              style={{ width: 12, height: 12 }}
+            />
+            <span>attach</span>
+          </span>
+          <span className="text-txt-5" aria-hidden="true">·</span>
+          <span>⏎ send · ⇧⏎ newline · ⇧⇥ cycle mode</span>
+          <span className="ml-auto">
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={!canSend}
+              icon={<span style={{ fontSize: 12 }}>↗</span>}
+            >
+              Send
+            </Button>
+          </span>
+        </div>
+
         {isDragging && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-sky-500 bg-sky-950/70 text-xs font-semibold uppercase tracking-wider text-sky-200">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-r-3 border-2 border-dashed border-brand-violet bg-brand-violet/10 font-mono text-[11px] uppercase tracking-wider text-brand-violet-soft">
             Drop files to attach
           </div>
         )}
       </div>
-
-      <button
-        type="submit"
-        disabled={!input.trim() && pendingAttachments.length === 0}
-        className="self-end rounded bg-sky-700 px-4 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Send
-      </button>
 
       {slash.active && (
         <SlashDropdown

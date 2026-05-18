@@ -54,26 +54,6 @@ pub fn get_supervisor_status(supervisor: State<'_, ClaudeSupervisor>) -> Supervi
 
 // region: Manual triggers
 
-/// Manual reconnect hook for the Unity client.
-///
-/// No-op today: the connection loop already retries on backoff, and a
-/// manual nudge would require interrupting the current sleep. Out of scope
-///
-/// # Returns
-///
-/// `Ok(())` unconditionally.
-///
-/// # Errors
-///
-/// Reserved for future implementations.
-#[tauri::command]
-pub fn reconnect_unity() -> Result<(), AppError> {
-    // The connection loop already retries on backoff; a manual nudge would
-    // require interrupting the current sleep. Out of scope for 4.1; revisit
-    // if there's a UX need.
-    Ok(())
-}
-
 /// Restarts the Claude Code supervisor and rebinds the plans + files
 /// watchers (plus the rules watcher) and refreshes the rules bundle.
 ///

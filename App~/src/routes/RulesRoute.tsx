@@ -21,9 +21,13 @@
  * `loadList()` triggered by the `rules-changed` watcher event.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import ActiveBundlePanel from "../components/rules/ActiveBundlePanel";
 import RulePane from "../components/RulePane";
 import RulesList from "../components/RulesList";
+import { useCollapsedColumn } from "../hooks/useCollapsedColumn";
+import { previewRulesBundle } from "../ipc/commands";
+import { onRulesChanged } from "../ipc/events";
 import { useRulesStore } from "../stores/rulesStore";
 
 // #region Constants
@@ -99,6 +103,57 @@ export default function RulesRoute()
   const [newRuleName, setNewRuleName] = useState("");
   const [newRuleError, setNewRuleError] = useState<string | null>(null);
   const [toggleToast, setToggleToast] = useState<string | null>(null);
+  const [bundleText, setBundleText] = useState<string | undefined>(undefined);
+  const [listCollapsed, toggleListCollapsed] = useCollapsedColumn("rules-list");
+
+  const enabledRules = useMemo(() => rules.filter((r) => r.enabled), [rules]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    const refetch = () => {
+      previewRulesBundle()
+        .then((text) => {
+          if (cancelled)
+          {
+            return;
+          }
+          setBundleText(text);
+        })
+        .catch((err) => console.error("[rules] preview bundle failed:", err));
+    };
+
+    refetch();
+
+    onRulesChanged(() => refetch())
+      .then((u) => {
+        if (cancelled)
+        {
+          u();
+        }
+        else
+        {
+          unlisten = u;
+        }
+      })
+      .catch((err) => console.error("[rules] bundle subscribe failed:", err));
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  const handleCopyBundle = () => {
+    if (bundleText === undefined || bundleText.length === 0)
+    {
+      return;
+    }
+    void navigator.clipboard.writeText(bundleText).catch((err) => {
+      console.error("[rules] clipboard copy failed:", err);
+    });
+  };
 
   // Toast auto-dismiss.
   useEffect(() => {
@@ -198,15 +253,40 @@ export default function RulesRoute()
       )}
 
       <div className="flex min-h-0 flex-1 gap-4">
-        <div className="w-[250px] shrink-0">
-          <RulesList
-            rules={rules}
-            selectedName={selectedName}
-            onSelect={(name) => void selectRule(name)}
-            onNewRule={handleOpenNewRuleForm}
-            onToggle={handleToggle}
-          />
-        </div>
+        {listCollapsed ? (
+          <aside className="w-8 shrink-0 border-r border-line bg-bg-0 flex flex-col items-center py-3">
+            <button
+              type="button"
+              onClick={toggleListCollapsed}
+              title="Expand rules"
+              aria-label="Expand rules"
+              className="inline-flex items-center justify-center w-6 h-6 rounded-r-1 text-txt-4 hover:text-txt-1 hover:bg-bg-3 transition-colors duration-[120ms]"
+            >
+              <span style={{ fontSize: 11 }}>›</span>
+            </button>
+          </aside>
+        ) : (
+          <div className="w-[250px] shrink-0 flex flex-col">
+            <div className="mb-1.5 flex justify-end">
+              <button
+                type="button"
+                onClick={toggleListCollapsed}
+                title="Collapse rules list"
+                aria-label="Collapse rules list"
+                className="inline-flex items-center justify-center w-5 h-5 rounded-r-1 text-txt-4 hover:text-txt-1 hover:bg-bg-3 transition-colors duration-[120ms]"
+              >
+                <span style={{ fontSize: 11 }}>‹</span>
+              </button>
+            </div>
+            <RulesList
+              rules={rules}
+              selectedName={selectedName}
+              onSelect={(name) => void selectRule(name)}
+              onNewRule={handleOpenNewRuleForm}
+              onToggle={handleToggle}
+            />
+          </div>
+        )}
 
         <div className="flex h-full min-w-0 flex-1 flex-col">
           {newRuleFormOpen ? (
@@ -281,6 +361,13 @@ export default function RulesRoute()
             />
           )}
         </div>
+
+        <ActiveBundlePanel
+          enabledRules={enabledRules}
+          bundleText={bundleText}
+          conflictStatus="ok"
+          onCopy={handleCopyBundle}
+        />
       </div>
     </div>
   );

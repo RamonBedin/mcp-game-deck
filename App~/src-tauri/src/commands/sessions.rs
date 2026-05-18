@@ -145,6 +145,42 @@ pub async fn start_new_session(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// Deletes the JSONL file backing the given session under Claude
+/// Code's per-project storage. Idempotent: deleting a session that
+/// doesn't exist is a no-op (treated as already-gone).
+///
+/// Caller (`SessionList` row's trash button) is responsible for any
+/// UI confirm flow; the command itself doesn't prompt.
+///
+/// # Errors
+///
+/// - `AppError::InvalidInput` when `session_id` contains path
+///   separators (defensive; the React side passes `s.id` directly).
+/// - `AppError::Internal` when `UNITY_PROJECT_PATH` / home resolution
+///   fails or the filesystem rejects the delete.
+#[tauri::command]
+pub fn delete_session(session_id: String) -> Result<(), AppError> {
+    if session_id.is_empty() || session_id.contains(['/', '\\']) || session_id.contains("..") {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid session id: '{session_id}'"
+        )));
+    }
+
+    let project_path = resolve_project_path()?;
+    let dir = paths::claude_sessions_dir(&project_path)
+        .ok_or_else(|| AppError::Internal("home directory unresolvable".into()))?;
+    let file = dir.join(format!("{session_id}.jsonl"));
+
+    match fs::remove_file(&file) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(AppError::Internal(format!(
+            "delete {}: {e}",
+            file.display()
+        ))),
+    }
+}
+
 // endregion
 
 // region: Internal — project path
