@@ -154,11 +154,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection::get_unity_status,
             commands::connection::get_supervisor_status,
-            commands::connection::reconnect_unity,
             commands::connection::restart_supervisor,
             commands::conversation::send_message,
             commands::conversation::set_permission_mode,
-            commands::conversation::get_permission_mode,
             commands::conversation::cancel_current_turn,
             commands::requests::respond_to_request,
             commands::files::list_project_files,
@@ -186,6 +184,7 @@ pub fn run() {
             commands::install::start_sdk_install,
             commands::knowledge::list_knowledge_docs,
             commands::knowledge::read_knowledge_doc,
+            commands::knowledge::read_all_knowledge_docs,
             commands::recent_commands::list_recent_commands,
             commands::recent_commands::track_recent_command,
         ])

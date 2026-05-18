@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAgents } from "../hooks/useAgents";
 import { useCommands } from "../hooks/useCommands";
-import { listKnowledgeDocs, readKnowledgeDoc, type KnowledgeDocMeta, } from "../ipc/commands";
+import { readAllKnowledgeDocs, type KnowledgeDoc, type KnowledgeDocMeta, } from "../ipc/commands";
 import type { CatalogAgent, CatalogCommand, CommandSource } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 import { useNavigate } from "react-router-dom";
@@ -62,6 +62,23 @@ const filterCommands = (commands: CatalogCommand[], query: string): CatalogComma
   );
 };
 
+const filterKnowledge = (docs: KnowledgeDoc[], query: string): KnowledgeDoc[] => {
+  const q = query.trim().toLowerCase();
+
+  if (q.length === 0)
+  {
+    return docs;
+  }
+
+  return docs.filter(
+    (d) =>
+      d.id.toLowerCase().includes(q) ||
+      d.num.toLowerCase().includes(q) ||
+      d.title.toLowerCase().includes(q) ||
+      d.body.toLowerCase().includes(q),
+  );
+};
+
 const SOURCE_BADGE: Record<CommandSource, string> = {
   "built-in":     "BUILT-IN",
   plugin:         "PLUGIN",
@@ -86,17 +103,22 @@ export default function LibraryRoute()
 
   const [active, setActive] = useState<LibraryTab>("agents");
   const [search, setSearch] = useState<string>("");
-  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocMeta[] | null>(null);
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[] | null>(null);
 
   const filteredAgents   = useMemo(() => filterAgents(agents, search),       [agents, search]);
   const filteredCommands = useMemo(() => filterCommands(commands, search), [commands, search]);
+  const filteredKnowledge = useMemo(
+    () => filterKnowledge(knowledgeDocs ?? [], search),
+    [knowledgeDocs, search],
+  );
 
-  // Fetch the knowledge doc list once on mount (B.10). Failures fall
-  // through to the placeholder body so users still see something useful.
+  // Bulk-load every knowledge doc on mount so the search field can
+  // filter against full bodies without a per-keystroke roundtrip.
+  // ~640KB total for the 16 bundled docs — fine to keep in memory.
   useEffect(() => {
     let cancelled = false;
 
-    listKnowledgeDocs()
+    readAllKnowledgeDocs()
       .then((list) => {
         if (cancelled)
         {
@@ -105,7 +127,7 @@ export default function LibraryRoute()
         setKnowledgeDocs(list);
       })
       .catch((err) => {
-        console.error("[library] list_knowledge_docs failed:", err);
+        console.error("[library] read_all_knowledge_docs failed:", err);
       });
 
     return () => {
@@ -186,12 +208,15 @@ export default function LibraryRoute()
 
       {active === "knowledge" && (
         knowledgeDocs === null || knowledgeDocs.length === 0
-          ? <KnowledgePlaceholder />
-          : <KnowledgeReader
-              docs={knowledgeDocs}
-              loadDoc={readKnowledgeDoc}
-              onOpenInChat={handleOpenKnowledge}
-            />
+          ? <KnowledgePlaceholder loading={knowledgeDocs === null} />
+          : filteredKnowledge.length === 0
+            ? <KnowledgeEmptySearch query={search} />
+            : <KnowledgeReader
+                key={filteredKnowledge[0]?.id ?? "none"}
+                docs={filteredKnowledge}
+                onOpenInChat={handleOpenKnowledge}
+                highlightQuery={search}
+              />
       )}
     </div>
   );
@@ -239,19 +264,38 @@ const CommandCard = ({ command, onOpen, disabled = false }: CommandCardProps) =>
 
 // #region KnowledgePlaceholder
 
-const KnowledgePlaceholder = () => (
-  <div className="flex-1 flex items-center justify-center bg-bg-1 p-12">
-    <div className="max-w-md text-center">
-      <div className="font-hud text-[10px] tracking-[0.22em] uppercase text-txt-4 mb-3">
-        No knowledge docs found
+const KnowledgePlaceholder = ({ loading }: { loading: boolean }) => {
+  if (loading)
+  {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-bg-1 p-12">
+        <p className="m-0 text-[13px] text-txt-3 italic">Loading knowledge docs…</p>
       </div>
-      <h2 className="m-0 text-[18px] text-txt-1 font-semibold mb-3">
-        Plugin~/knowledge/ is empty or missing
-      </h2>
-      <p className="m-0 text-[13px] text-txt-3 leading-[1.6]">
-        The Library Knowledge tab reads from <code className="font-mono text-[12px] text-brand-cyan px-1.5 py-px bg-bg-3 rounded">Plugin~/knowledge/</code> via the Tauri commands <code className="font-mono text-[12px] text-brand-cyan px-1.5 py-px bg-bg-3 rounded">list_knowledge_docs()</code> and <code className="font-mono text-[12px] text-brand-cyan px-1.5 py-px bg-bg-3 rounded">read_knowledge_doc(id)</code>. Check that the package ships with knowledge docs.
-      </p>
+    );
+  }
+
+  return (
+    <div className="flex-1 flex items-center justify-center bg-bg-1 p-12">
+      <div className="max-w-md text-center">
+        <div className="font-hud text-[10px] tracking-[0.22em] uppercase text-txt-4 mb-3">
+          No knowledge docs found
+        </div>
+        <h2 className="m-0 text-[18px] text-txt-1 font-semibold mb-3">
+          Plugin~/knowledge/ is empty or missing
+        </h2>
+        <p className="m-0 text-[13px] text-txt-3 leading-[1.6]">
+          The Library Knowledge tab reads from <code className="font-mono text-[12px] text-brand-cyan px-1.5 py-px bg-bg-3 rounded">Plugin~/knowledge/</code> via the Tauri command <code className="font-mono text-[12px] text-brand-cyan px-1.5 py-px bg-bg-3 rounded">read_all_knowledge_docs()</code>. Check that the package ships with knowledge docs.
+        </p>
+      </div>
     </div>
+  );
+};
+
+const KnowledgeEmptySearch = ({ query }: { query: string }) => (
+  <div className="flex-1 flex items-center justify-center bg-bg-1 p-12">
+    <p className="m-0 text-[13px] text-txt-3">
+      No knowledge docs match "<span className="text-txt-1 font-mono">{query}</span>".
+    </p>
   </div>
 );
 

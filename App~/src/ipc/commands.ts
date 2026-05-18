@@ -36,8 +36,6 @@ export const getUnityStatus = (): Promise<ConnectionStatus> => invoke("get_unity
 
 export const getSupervisorStatus = (): Promise<SupervisorStatus> => invoke("get_supervisor_status");
 
-export const reconnectUnity = (): Promise<void> => invoke("reconnect_unity");
-
 export const restartSupervisor = (): Promise<void> => invoke("restart_supervisor");
 
 // #endregion
@@ -59,10 +57,6 @@ export const sendMessage = (
 
 export const setPermissionMode = (mode: PermissionMode): Promise<void> =>
   invoke("set_permission_mode", { mode });
-
-export const getPermissionMode = (): Promise<PermissionMode> =>
-  invoke("get_permission_mode");
-
 
 export const respondToRequest = (requestId: string, decision: DecisionPayload,): Promise<void> => invoke("respond_to_request", { requestId, decision });
 export const cancelCurrentTurn = (): Promise<void> => invoke("cancel_current_turn");
@@ -148,6 +142,8 @@ export interface KnowledgeDoc extends KnowledgeDocMeta
 export const listKnowledgeDocs = (): Promise<KnowledgeDocMeta[]> => invoke("list_knowledge_docs");
 
 export const readKnowledgeDoc = (id: string): Promise<KnowledgeDoc> => invoke("read_knowledge_doc", { id });
+
+export const readAllKnowledgeDocs = (): Promise<KnowledgeDoc[]> => invoke("read_all_knowledge_docs");
 
 // #endregion
 

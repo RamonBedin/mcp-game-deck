@@ -41,7 +41,6 @@ interface ConversationState
   appendRequestBlock: (turnId: string, block: Extract<Block, { type: "request" }>,) => void;
   appendAutoAllowedBlock: (turnId: string, requestId: string, toolName: string,) => void;
   markRequestAnswered: (requestId: string, answer?: AskUserQuestionOutput, outcome?: "allow" | "allow-always" | "deny" | "auto-allowed",) => void;
-  markRequestInterrupted: (requestId: string) => void;
   markAllPendingRequestsInterrupted: () => void;
   clearMessages: () => void;
   loadHistory: (messages: Message[]) => void;
@@ -237,13 +236,6 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         state: "answered",
         answer,
         outcome,
-      })),
-    })),
-  markRequestInterrupted: (requestId) =>
-    set((state) => ({
-      messages: updateRequestBlock(state.messages, requestId, (block) => ({
-        ...block,
-        state: "interrupted",
       })),
     })),
   markAllPendingRequestsInterrupted: () =>

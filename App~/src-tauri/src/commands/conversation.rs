@@ -1,9 +1,8 @@
 //! Conversation Tauri commands.
 //!
 //! Forward chat traffic between the React frontend and the Claude
-//! Code supervisor (`claude_supervisor::ClaudeSupervisor`). Permission
-//! mode stubs (`set_permission_mode` / `get_permission_mode`) are
-//! filled in by tasks 4.2-4.3.
+//! Code supervisor (`claude_supervisor::ClaudeSupervisor`):
+//! `send_message`, `set_permission_mode`, `cancel_current_turn`.
 //!
 //! History + clear commands were dropped in task 4.1: Claude Code's
 //! own session storage is the source of truth (Decision #6 — wired up
@@ -74,19 +73,6 @@ pub async fn set_permission_mode(
         .set_permission_mode(mode)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))
-}
-
-/// Reads the supervisor's current permission mode.
-///
-/// # Returns
-///
-/// The latest mode set via `set_permission_mode`, or
-/// `PermissionMode::Default` on a fresh supervisor.
-#[tauri::command]
-pub fn get_permission_mode(
-    supervisor: State<'_, ClaudeSupervisor>,
-) -> PermissionMode {
-    supervisor.current_permission_mode()
 }
 
 // endregion

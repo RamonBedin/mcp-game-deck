@@ -33,7 +33,9 @@
       "Bash(cp \"C:/Users/Ramon/.claude/projects/C--Projects-mcp-game-deck/eddb4ec7-d39c-4a9f-ad86-7873a0471cd5/tool-results/webfetch-1778866453704-ej04r0.bin\" /tmp/handoff2/h.tar.gz)",
       "Bash(tar -xzf h.tar.gz)",
       "Bash(echo \"tsc=$?\")",
-      "Bash(echo \"cargo=$?\")"
+      "Bash(echo \"cargo=$?\")",
+      "Bash(awk '{print $2}')",
+      "Bash(awk '{sum+=$1; print $1, $2} END {print \"TOTAL\", sum, \"bytes\"}')"
     ]
   }
 }

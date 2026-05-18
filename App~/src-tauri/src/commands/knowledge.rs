@@ -265,6 +265,62 @@ pub fn read_knowledge_doc(id: String) -> Result<KnowledgeDoc, AppError> {
     })
 }
 
+/// Reads every knowledge doc bundled at `Plugin~/knowledge/`, returning
+/// each one's full content (metadata + body). Powers the Library
+/// Knowledge tab's full-text search — bulk-loading once on mount lets
+/// the search filter against doc bodies without 16 separate round-trips.
+///
+/// Sorted by `id` ascending (same order as `list_knowledge_docs`).
+/// Returns an empty vec when the knowledge directory doesn't exist.
+///
+/// # Errors
+///
+/// `AppError::Internal` only on hard IO failures other than
+/// "directory missing" — individual unreadable files are skipped
+/// silently so a single broken doc doesn't blank the whole search.
+#[tauri::command]
+pub fn read_all_knowledge_docs() -> Result<Vec<KnowledgeDoc>, AppError> {
+    let dir = knowledge_dir();
+
+    let entries = match fs::read_dir(&dir) {
+        Ok(it) => it,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => {
+            return Err(AppError::Internal(format!(
+                "Failed to list '{}': {}",
+                dir.display(),
+                e
+            )))
+        }
+    };
+
+    let mut docs: Vec<KnowledgeDoc> = entries
+        .filter_map(|res| res.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+
+            if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                return None;
+            }
+
+            let body = fs::read_to_string(&path).ok()?;
+            let meta = meta_from_file(&path, &body)?;
+
+            Some(KnowledgeDoc {
+                id: meta.id,
+                num: meta.num,
+                title: meta.title,
+                word_count: meta.word_count,
+                body,
+            })
+        })
+        .collect();
+
+    docs.sort_by(|a, b| a.id.cmp(&b.id));
+
+    Ok(docs)
+}
+
 // endregion
 
 #[cfg(test)]
