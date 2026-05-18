@@ -9,6 +9,7 @@
 //! own session storage is the source of truth (Decision #6 — wired up
 //! in task 4.4) and `/clear` is the in-chat reset path.
 
+use serde_json::json;
 use tauri::State;
 
 use crate::claude_supervisor::ClaudeSupervisor;
@@ -86,6 +87,36 @@ pub fn get_permission_mode(
     supervisor: State<'_, ClaudeSupervisor>,
 ) -> PermissionMode {
     supervisor.current_permission_mode()
+}
+
+// endregion
+
+// region: Cancel current turn (B.02)
+
+/// Sends an interrupt to the in-flight `query()` round-trip inside
+/// `sdk-entry.js`. The JS side calls `.return()` on the live query
+/// AsyncGenerator, breaking its `for await` loop; an
+/// `assistant-turn-complete` envelope is emitted so the React
+/// WorkingStrip hides immediately without waiting for the SDK to
+/// settle.
+///
+/// Powers the Cancel button in the v2.0 chat WorkingStrip (B.02 ask).
+/// A no-op when no turn is in flight — the JS side debug-logs and
+/// drops the message, so the Promise resolves clean.
+///
+/// # Errors
+///
+/// `AppError::Internal` when the supervisor isn't running or the
+/// stdin writer task is closed.
+#[tauri::command]
+pub async fn cancel_current_turn(
+    supervisor: State<'_, ClaudeSupervisor>,
+) -> Result<(), AppError> {
+    let payload = json!({ "type": "cancel-current-turn" });
+    supervisor
+        .write_stdin_line(&payload.to_string())
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
 }
 
 // endregion

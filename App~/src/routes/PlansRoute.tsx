@@ -19,6 +19,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PlanPane from "../components/PlanPane";
 import PlansList from "../components/PlansList";
+import { useCollapsedColumn } from "../hooks/useCollapsedColumn";
 import { useConversationStore } from "../stores/conversationStore";
 import { usePlansStore } from "../stores/plansStore";
 
@@ -79,6 +80,7 @@ export default function PlansRoute()
   const [newPlanFormOpen, setNewPlanFormOpen] = useState(false);
   const [newPlanName, setNewPlanName] = useState("");
   const [newPlanError, setNewPlanError] = useState<string | null>(null);
+  const [listCollapsed, toggleListCollapsed] = useCollapsedColumn("plans-list");
 
   // #region Handlers
 
@@ -156,14 +158,39 @@ export default function PlansRoute()
 
   return (
     <div className="flex h-full gap-4">
-      <div className="w-[250px] shrink-0">
-        <PlansList
-          plans={plans}
-          selectedName={selectedName}
-          onSelect={(name) => void selectPlan(name)}
-          onNewPlan={handleOpenNewPlanForm}
-        />
-      </div>
+      {listCollapsed ? (
+        <aside className="w-8 shrink-0 border-r border-line bg-bg-0 flex flex-col items-center py-3">
+          <button
+            type="button"
+            onClick={toggleListCollapsed}
+            title="Expand plans"
+            aria-label="Expand plans"
+            className="inline-flex items-center justify-center w-6 h-6 rounded-r-1 text-txt-4 hover:text-txt-1 hover:bg-bg-3 transition-colors duration-[120ms]"
+          >
+            <span style={{ fontSize: 11 }}>›</span>
+          </button>
+        </aside>
+      ) : (
+        <div className="w-[250px] shrink-0 flex flex-col">
+          <div className="mb-1.5 flex justify-end">
+            <button
+              type="button"
+              onClick={toggleListCollapsed}
+              title="Collapse plans list"
+              aria-label="Collapse plans list"
+              className="inline-flex items-center justify-center w-5 h-5 rounded-r-1 text-txt-4 hover:text-txt-1 hover:bg-bg-3 transition-colors duration-[120ms]"
+            >
+              <span style={{ fontSize: 11 }}>‹</span>
+            </button>
+          </div>
+          <PlansList
+            plans={plans}
+            selectedName={selectedName}
+            onSelect={(name) => void selectPlan(name)}
+            onNewPlan={handleOpenNewPlanForm}
+          />
+        </div>
+      )}
 
       <div className="flex h-full min-w-0 flex-1 flex-col">
         {newPlanFormOpen ? (

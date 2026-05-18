@@ -159,6 +159,7 @@ pub fn run() {
             commands::conversation::send_message,
             commands::conversation::set_permission_mode,
             commands::conversation::get_permission_mode,
+            commands::conversation::cancel_current_turn,
             commands::requests::respond_to_request,
             commands::files::list_project_files,
             commands::plans::list_plans,
@@ -170,10 +171,12 @@ pub fn run() {
             commands::rules::write_rule,
             commands::rules::delete_rule,
             commands::rules::toggle_rule,
+            commands::rules::preview_rules_bundle,
             commands::sessions::get_sessions,
             commands::sessions::get_session_messages,
             commands::sessions::resume_session,
             commands::sessions::start_new_session,
+            commands::sessions::delete_session,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::dev::dev_emit_test_event,
@@ -181,6 +184,10 @@ pub fn run() {
             commands::env::get_env_var,
             commands::install::check_claude_install_status,
             commands::install::start_sdk_install,
+            commands::knowledge::list_knowledge_docs,
+            commands::knowledge::read_knowledge_doc,
+            commands::recent_commands::list_recent_commands,
+            commands::recent_commands::track_recent_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

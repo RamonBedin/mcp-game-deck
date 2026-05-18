@@ -925,6 +925,20 @@ function makeTurnId()
 let currentTurnId = null;
 
 /**
+ * Live reference to the in-flight `query()` AsyncGenerator. Exposed
+ * at module scope so the `cancel-current-turn` stdin branch (B.02)
+ * can call `.return()` on it, breaking out of the `for await` loop
+ * inside `handleInput` and ending the turn early.
+ *
+ * Set in {@link handleInput} immediately after `query()` returns;
+ * cleared in the `finally` block of the same function so a stale
+ * generator can't be cancelled after the turn has already finished.
+ *
+ * @type {AsyncGenerator | null}
+ */
+let currentQuery = null;
+
+/**
  * Promise chain used to serialize successive `handleInput` calls
  * without blocking the stdin `for await` loop. Each new `input`
  * message is appended to the chain via `.then()`; control messages
@@ -1149,6 +1163,7 @@ async function handleInput(text, attachments)
       prompt,
       options: queryOptions,
     });
+    currentQuery = q;
 
     for await (const msg of q)
     {
@@ -1190,6 +1205,10 @@ async function handleInput(text, attachments)
   {
     debug("query error:", err);
     emitError(err instanceof Error ? err.message : String(err));
+  }
+  finally
+  {
+    currentQuery = null;
   }
 }
 
@@ -1355,6 +1374,24 @@ for await (const line of rl)
   else if (parsed?.type === "healthCheck")
   {
     void runHealthCheck();
+  }
+  else if (parsed?.type === "cancel-current-turn")
+  {
+    if (currentQuery !== null && currentTurnId !== null)
+    {
+      const cancellingTurnId = currentTurnId;
+      debug("[cancel] interrupting turn", cancellingTurnId);
+      const target = currentQuery;
+      currentQuery = null;
+      void target.return(undefined).catch((err) => {
+        debug("[cancel] generator.return rejected:", err);
+      });
+      emitTurnComplete(cancellingTurnId);
+    }
+    else
+    {
+      debug("[cancel] no active turn — ignored");
+    }
   }
   else if (parsed?.type === "respond-to-request" && typeof parsed.requestId === "string")
   {

@@ -7,12 +7,31 @@
  * Clicking a row pre-loads its history into the conversation store
  * and pins the supervisor to resume that session on the next prompt;
  * the New Session button clears both pieces of state.
+ *
+ * v2.0 UX Pass: visual rewrite to match the `SessionsPanel` mockup —
+ * font-hud header with count, refresh `IconButton`, neutral `Button`
+ * for "New chat", rows with left-violet bar accent when active and
+ * `txt-1/2/4` text hierarchy.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getSessionMessages, getSessions, resumeSession, startNewSession, } from "../ipc/commands";
+import { deleteSession, getSessionMessages, getSessions, resumeSession, startNewSession, } from "../ipc/commands";
 import type { SessionSummary } from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
+import Button from "./atoms/Button";
+import IconButton from "./atoms/IconButton";
+
+/**
+ * Props for the `SessionList` component.
+ *
+ * Renders the sidebar list of past sessions and optionally exposes a callback
+ * for collapsing the sidebar — typically wired to a close button rendered
+ * inside the list header.
+ */
+interface SessionListProps
+{
+  onCollapse?: () => void;
+}
 
 const HIDDEN_SESSION_TITLES = new Set(["__health__"]);
 
@@ -66,7 +85,7 @@ const formatRelative = (millis: number): string => {
  *
  * @returns The sidebar element with the New Session button + scrolling list.
  */
-export default function SessionList()
+export default function SessionList({ onCollapse }: SessionListProps = {})
 {
   const currentSessionId = useConversationStore((s) => s.currentSessionId);
   const setCurrentSessionId = useConversationStore((s) => s.setCurrentSessionId);
@@ -176,60 +195,142 @@ export default function SessionList()
     }
   };
 
+  const handleDelete = async (id: string, title: string) => {
+    if (busy)
+    {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete session "${title}"? This removes the JSONL file from Claude Code's storage and cannot be undone.`,
+    );
+
+    if (!confirmed)
+    {
+      return;
+    }
+
+    setBusy(true);
+    try
+    {
+      await deleteSession(id);
+
+      if (id === currentSessionId)
+      {
+        try
+        {
+          await startNewSession();
+        }
+        catch (err)
+        {
+          console.error("[sessions] startNewSession after delete failed:", err);
+        }
+        clearMessages();
+        setCurrentSessionId(null);
+      }
+      refresh();
+    }
+    catch (err)
+    {
+      console.error("[sessions] delete failed:", err);
+    }
+    finally
+    {
+      setBusy(false);
+    }
+  };
+
   // #endregion
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-          Sessions
-        </h2>
-        <button
-          type="button"
-          onClick={() => void refresh()}
+    <div className="flex h-full flex-col min-h-0">
+      <div className="mb-3 flex items-center justify-between gap-1">
+        <span className="font-hud text-[9px] tracking-[0.18em] uppercase text-txt-4 flex-1">
+          Sessions · {sessions.length}
+        </span>
+        <IconButton
+          size={20}
+          onClick={() => refresh()}
           disabled={busy}
-          className="text-xs text-slate-500 hover:text-slate-300 disabled:opacity-50"
+          aria-label="Refresh sessions"
           title="Refresh list"
         >
-          ↻
-        </button>
+          <span style={{ fontSize: 12 }}>↻</span>
+        </IconButton>
+        {onCollapse !== undefined && (
+          <IconButton
+            size={20}
+            onClick={onCollapse}
+            aria-label="Collapse sessions"
+            title="Collapse sessions"
+          >
+            <span style={{ fontSize: 11 }}>‹</span>
+          </IconButton>
+        )}
       </div>
 
-      <button
-        type="button"
+      <Button
+        variant="default"
+        size="sm"
         onClick={() => void handleNew()}
         disabled={busy}
-        className="mb-3 rounded border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="mb-3.5 justify-center"
       >
-        + New Session
-      </button>
+        <span className="mr-1">+</span> New chat
+      </Button>
 
-      <div className="flex-1 space-y-1 overflow-y-auto pr-1">
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5 pr-1">
         {sessions.length === 0 ? (
-          <p className="text-xs text-slate-600">No sessions yet.</p>
+          <p className="text-[11.5px] text-txt-4 italic px-2 py-1">No sessions yet.</p>
         ) : (
           sessions.map((s) => {
             const active = s.id === currentSessionId;
             return (
-              <button
+              <div
                 key={s.id}
-                type="button"
-                onClick={() => void handleResume(s.id)}
-                disabled={busy}
-                className={`w-full rounded px-2 py-1.5 text-left text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={[
+                  "group relative rounded-r-1 transition-colors duration-[120ms]",
                   active
-                    ? "border border-sky-700/60 bg-sky-900/40 text-sky-100"
-                    : "border border-transparent bg-slate-800/40 text-slate-300 hover:border-slate-700 hover:bg-slate-800"
-                }`}
+                    ? "bg-bg-3 shadow-[inset_2px_0_0_var(--violet)]"
+                    : "border-l-2 border-transparent hover:bg-bg-3/50",
+                ].join(" ")}
               >
-                <div className="truncate font-medium">{s.title}</div>
-                <div className="mt-0.5 flex justify-between text-[10px] text-slate-500">
-                  <span>{formatRelative(s.lastModified)}</span>
-                  <span>
-                    {s.messageCount} {s.messageCount === 1 ? "msg" : "msgs"}
-                  </span>
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => void handleResume(s.id)}
+                  disabled={busy}
+                  className="w-full text-left px-2.5 py-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <div
+                    className="truncate text-[12.5px] mb-1 pr-6"
+                    style={{
+                      color: active ? "var(--txt-1)" : "var(--txt-2)",
+                      fontWeight: active ? 500 : 400,
+                    }}
+                  >
+                    {s.title}
+                  </div>
+                  <div className="flex justify-between font-mono text-[9.5px] text-txt-4">
+                    <span>{formatRelative(s.lastModified)}</span>
+                    <span>
+                      {s.messageCount} {s.messageCount === 1 ? "msg" : "msgs"}
+                    </span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDelete(s.id, s.title);
+                  }}
+                  disabled={busy}
+                  aria-label={`Delete session ${s.title}`}
+                  title="Delete session"
+                  className="absolute top-1.5 right-1 hidden group-hover:inline-flex items-center justify-center w-5 h-5 rounded-r-1 text-txt-4 hover:text-bad hover:bg-bad/10 transition-colors duration-[120ms] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <TrashIcon />
+                </button>
+              </div>
             );
           })
         )}
@@ -237,3 +338,22 @@ export default function SessionList()
     </div>
   );
 }
+
+const TrashIcon = () => (
+  <svg
+    width={11}
+    height={11}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+  </svg>
+);

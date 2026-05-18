@@ -14,6 +14,7 @@ import ReactDOM from "react-dom/client";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 import App from "./App";
 import ChatRoute from "./routes/ChatRoute";
+import LibraryRoute from "./routes/LibraryRoute";
 import PlansRoute from "./routes/PlansRoute";
 import RulesRoute from "./routes/RulesRoute";
 import SettingsRoute from "./routes/SettingsRoute";
@@ -69,6 +70,7 @@ async function bootstrap() {
             <Route path="chat" element={<ChatRoute />} />
             <Route path="plans" element={<PlansRoute />} />
             <Route path="rules" element={<RulesRoute />} />
+            <Route path="library" element={<LibraryRoute />} />
             <Route path="settings" element={<SettingsRoute />} />
           </Route>
         </Routes>

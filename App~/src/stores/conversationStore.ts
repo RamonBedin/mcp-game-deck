@@ -14,7 +14,7 @@
  */
 
 import { create } from "zustand";
-import { sendMessage as sendMessageCommand } from "../ipc/commands";
+import { sendMessage as sendMessageCommand, trackRecentCommand } from "../ipc/commands";
 import type { AskUserQuestionOutput, Block, Message, PermissionMode, PermissionRequestedPayload, } from "../ipc/types";
 
 // #region State shape
@@ -32,6 +32,7 @@ interface ConversationState
   messages: Message[];
   currentSessionId: string | null;
   permissionMode: PermissionMode;
+  inFlight: boolean;
   appendDelta: (turnId: string, text: string) => void;
   appendToolUseBlock: (turnId: string, toolUseId: string, name: string, input: unknown,) => void;
   appendToolResultBlock: (turnId: string, toolUseId: string, content: unknown, isError: boolean,) => void;
@@ -46,6 +47,7 @@ interface ConversationState
   loadHistory: (messages: Message[]) => void;
   setPermissionMode: (mode: PermissionMode) => void;
   setCurrentSessionId: (sessionId: string | null) => void;
+  endTurn: () => void;
   sendMessage: (text: string, attachmentPaths?: string[]) => Promise<void>;
 }
 
@@ -54,6 +56,24 @@ interface ConversationState
 // #region Helpers
 
 const makeLocalId = (prefix: string): string => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const extractLeadingSlashCommand = (text: string): string | null => {
+  const trimmed = text.trimStart();
+
+  if (!trimmed.startsWith("/"))
+  {
+    return null;
+  }
+
+  const firstToken = trimmed.slice(1).split(/\s/, 1)[0];
+
+  if (firstToken === undefined || firstToken.length === 0)
+  {
+    return null;
+  }
+
+  return firstToken;
+};
 
 const formatError = (err: unknown): string => {
   if (err instanceof Error)
@@ -116,10 +136,11 @@ const updateRequestBlock = (
 
 // #region Store
 
-export const useConversationStore = create<ConversationState>((set) => ({
+export const useConversationStore = create<ConversationState>((set, get) => ({
   messages: [],
   currentSessionId: null,
   permissionMode: "default",
+  inFlight: false,
   appendDelta: (turnId, text) =>
     set((state) => {
       const idx = state.messages.findIndex((m) => m.id === turnId);
@@ -227,6 +248,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
     })),
   markAllPendingRequestsInterrupted: () =>
     set((state) => ({
+      inFlight: false,
       messages: state.messages.map((msg) => ({
         ...msg,
         blocks: msg.blocks.map((b) =>
@@ -236,15 +258,22 @@ export const useConversationStore = create<ConversationState>((set) => ({
         ),
       })),
     })),
-  clearMessages: () => set({ messages: [] }),
-  loadHistory: (messages) => set({ messages }),
+  clearMessages: () => set({ messages: [], inFlight: false }),
+  loadHistory: (messages) => set({ messages, inFlight: false }),
   setPermissionMode: (mode) => set({ permissionMode: mode }),
   setCurrentSessionId: (sessionId) => set({ currentSessionId: sessionId }),
+  endTurn: () => set({ inFlight: false }),
   sendMessage: async (text, attachmentPaths = []) => {
     const trimmed = text.trim();
 
     if (!trimmed && attachmentPaths.length === 0)
     {
+      return;
+    }
+
+    if (get().inFlight)
+    {
+      console.debug("[conversation] sendMessage blocked — turn already in flight");
       return;
     }
 
@@ -254,11 +283,20 @@ export const useConversationStore = create<ConversationState>((set) => ({
       timestamp: Date.now(),
       blocks: [{ type: "text", text: trimmed }],
     };
-    set((state) => ({ messages: [...state.messages, userMsg] }));
+    set((state) => ({ messages: [...state.messages, userMsg], inFlight: true }));
 
     try
     {
       await sendMessageCommand(trimmed, attachmentPaths);
+
+      const slashCmd = extractLeadingSlashCommand(trimmed);
+
+      if (slashCmd !== null)
+      {
+        void trackRecentCommand(slashCmd).catch((err) => {
+          console.error("[conversation] trackRecentCommand failed:", err);
+        });
+      }
     }
     catch (err)
     {
@@ -268,7 +306,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
         timestamp: Date.now(),
         blocks: [{ type: "text", text: `error: ${formatError(err)}` }],
       };
-      set((state) => ({ messages: [...state.messages, errorMsg] }));
+      set((state) => ({ messages: [...state.messages, errorMsg], inFlight: false }));
     }
   },
 }));

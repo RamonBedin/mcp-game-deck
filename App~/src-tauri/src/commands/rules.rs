@@ -498,6 +498,45 @@ pub fn toggle_rule(name: String, enabled: bool) -> Result<(), AppError> {
 
 // endregion
 
+// region: preview_rules_bundle (B.06)
+
+/// Reads the current `rules-bundle.md` produced by `rules_bundle::recompose`
+/// and returns its text. Empty string when no rules are enabled (the
+/// bundle file doesn't exist in that case — handled the same way as
+/// the SDK side does at `appendSystemPromptFile` time).
+///
+/// Powers the v2.0 Rules Active Bundle panel (B.06 backend ask). The
+/// React side fetches once when the Rules route mounts and re-fetches
+/// whenever `rules-changed` lands.
+///
+/// # Errors
+///
+/// `AppError::Internal` when no project root resolves. IO errors other
+/// than "file not found" surface as `Internal` too; the missing-file
+/// case is normal and returns an empty string.
+#[tauri::command]
+pub fn preview_rules_bundle() -> Result<String, AppError> {
+    let Some(project_root) = try_resolve_project_root() else {
+        return Err(AppError::Internal(
+            "No active Unity project — bundle preview unavailable.".into(),
+        ));
+    };
+
+    let path = crate::rules_bundle::bundle_path(&project_root);
+
+    match fs::read_to_string(&path) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(AppError::Internal(format!(
+            "Failed to read rules bundle '{}': {}",
+            path.display(),
+            e
+        ))),
+    }
+}
+
+// endregion
+
 #[cfg(test)]
 mod tests {
     use super::*;

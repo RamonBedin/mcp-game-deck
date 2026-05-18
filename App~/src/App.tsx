@@ -1,44 +1,50 @@
 /**
- * Root layout component.
+ * Root layout
  *
- * Hosts the persistent left-rail navigation and the routed `<Outlet />`,
- * and owns three cross-cutting effects that need to live above any single
- * route: the connection-status poller, the supervisor status fast-path
- * subscription, and the Node SDK log → console forwarder.
+ * Replaces the old `slate-950` left sidebar with the new `HudStrip`
+ * (global state band) + `NavRail` (5-item navigation including the
+ * new Library tab). The cross-cutting effects (install poll, connection
+ * poll, supervisor fast path, single-instance route requests) are
+ * preserved verbatim from the previous App — they are not visual code
+ * and don't change with the design pass.
+ *
+ * Badges fed into NavRail:
+ *  - chat: pulse dot when an assistant turn is currently streaming
+ *  - plans: number of plans cached in plansStore
+ *  - rules: `enabled / cap` fraction
  */
 
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
 import ClaudeVersionWarningBanner from "./components/ClaudeVersionWarningBanner";
-import FirstRunPanel, {FirstRunCheckingScreen, isInstallReady,} from "./components/FirstRunPanel";
+import { BrandGradientDefs } from "./components/atoms/BrandHex";
+import StatusDot from "./components/atoms/StatusDot";
+import FirstRunPanel, { FirstRunCheckingScreen, isInstallReady } from "./components/firstrun/FirstRunPanel";
+import HudStrip from "./components/shell/HudStrip";
+import NavRail from "./components/shell/NavRail";
 import UpdateBanner from "./components/UpdateBanner";
 import { useCatalogSubscription } from "./hooks/useCatalogSubscription";
 import { usePlansSubscription } from "./hooks/usePlansSubscription";
 import { useRulesSubscription } from "./hooks/useRulesSubscription";
-import {checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus,} from "./ipc/commands";
+import { checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus } from "./ipc/commands";
 import { onRouteRequested, onSupervisorStatusChanged } from "./ipc/events";
 import type { ClaudeInstallStatus } from "./ipc/types";
 import { useConnectionStore } from "./stores/connectionStore";
 import { useConversationStore } from "./stores/conversationStore";
+import { usePlansStore } from "./stores/plansStore";
+import { useRulesStore } from "./stores/rulesStore";
 
 // #region Constants
 
-/** Items rendered in the left-rail navigation, in display order. */
-const NAV_ITEMS = [
-  { to: "/chat", label: "Chat" },
-  { to: "/plans", label: "Plans" },
-  { to: "/rules", label: "Rules" },
-  { to: "/settings", label: "Settings" },
-] as const;
-
 const CONNECTION_POLL_INTERVAL_MS = 2000;
 const INSTALL_POLL_INTERVAL_MS = 5000;
+const ENABLED_RULES_CAP = 10;
 
 // #endregion
 
 /**
- * Root layout. Renders the navigation rail and the active route, and runs
- * the cross-cutting effects described above.
+ * Root layout. Hosts the install gate, then renders the HUD + nav rail
+ * + routed outlet.
  *
  * @returns The root layout element.
  */
@@ -55,16 +61,13 @@ export default function App()
 
   // #region Effects
 
-  // Claude install-detection poll. Drives the FirstRunPanel gate. Runs
-  // every INSTALL_POLL_INTERVAL_MS while at least one prerequisite is
-  // missing; clears itself once everything reports ready. Defensive
-  // re-arming on later regressions (e.g., user logs out)
+  // Claude install-detection poll. Drives the FirstRunPanel gate.
   useEffect(() => {
     let cancelled = false;
     let intervalId: number | null = null;
 
     const tick = async () => {
-      try 
+      try
       {
         const status = await checkClaudeInstallStatus();
 
@@ -80,7 +83,7 @@ export default function App()
           window.clearInterval(intervalId);
           intervalId = null;
         }
-      } 
+      }
       catch (err)
       {
         console.error("[first-run] install check failed:", err);
@@ -99,15 +102,15 @@ export default function App()
     };
   }, []);
 
-  // Connection-status poll. Runs every CONNECTION_POLL_INTERVAL_MS as a
-  // backstop for the event-driven fast path below.
+  // Connection poll (every CONNECTION_POLL_INTERVAL_MS) — backstop for
+  // the supervisor fast path below.
   useEffect(() => {
     let cancelled = false;
 
     const tick = async () => {
       try
       {
-        const [unity, supervisor] = await Promise.all([getUnityStatus(), getSupervisorStatus(),]);
+        const [unity, supervisor] = await Promise.all([getUnityStatus(), getSupervisorStatus()]);
 
         if (cancelled)
         {
@@ -131,15 +134,12 @@ export default function App()
     };
   }, [setUnityStatus, setSupervisorStatus]);
 
-  // Fast-path supervisor transitions via Tauri events. Polling is the
-  // backstop; this catches Starting / Ready / Crashed within milliseconds
-  // instead of waiting up to 2s for the next tick.
+  // Supervisor fast path — sub-second transitions.
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 
     onSupervisorStatusChanged((payload) => {
-
       if (cancelled)
       {
         return;
@@ -162,7 +162,9 @@ export default function App()
           unlisten = u;
         }
       })
-      .catch((err) => {console.error("[app] failed to subscribe to supervisor-status-changed:", err);});
+      .catch((err) => {
+        console.error("[app] failed to subscribe to supervisor-status-changed:", err);
+      });
 
     return () => {
       cancelled = true;
@@ -170,9 +172,7 @@ export default function App()
     };
   }, [setSupervisorStatus]);
 
-  // Navigate the running window when a re-launched instance carries a
-  // --route= CLI argument; the single-instance callback (Rust side) emits
-  // the `route-requested` event and we consume it here.
+  // Single-instance --route= forwarder.
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -207,7 +207,22 @@ export default function App()
 
   // #endregion
 
-  if (installStatus === null) 
+  // #region NavRail badges
+
+  const isStreaming = useConversationStore((s) => s.inFlight);
+
+  const plansCount    = usePlansStore((s) => s.plans.length);
+  const rulesEnabled  = useRulesStore((s) => s.rules.filter((r) => r.enabled).length);
+
+  const badges = useMemo(() => ({
+    chat:  isStreaming ? <StatusDot status="busy" size={6} /> : undefined,
+    plans: plansCount > 0 ? plansCount : undefined,
+    rules: `${rulesEnabled}/${ENABLED_RULES_CAP}`,
+  }), [isStreaming, plansCount, rulesEnabled]);
+
+  // #endregion
+
+  if (installStatus === null)
   {
     return <FirstRunCheckingScreen />;
   }
@@ -218,34 +233,14 @@ export default function App()
   }
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-900 text-slate-100">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-bg-1 text-txt-1">
+      <BrandGradientDefs />
       <UpdateBanner />
       <ClaudeVersionWarningBanner />
+      <HudStrip />
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-[200px] shrink-0 border-r border-slate-800 bg-slate-950 p-4">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            MCP Game Deck
-          </h2>
-          <nav className="flex flex-col gap-1">
-            {NAV_ITEMS.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  [
-                    "rounded px-3 py-2 text-sm transition-colors",
-                    isActive
-                      ? "bg-slate-800 text-slate-100"
-                      : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200",
-                  ].join(" ")
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
-        <main className="flex-1 overflow-y-auto p-8">
+        <NavRail badges={badges} />
+        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
           <Outlet />
         </main>
       </div>

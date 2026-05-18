@@ -1,42 +1,31 @@
-import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-
-import type {
-  AskUserQuestionOutput,
-  AskUserRequestedPayload,
-} from "../../ipc/types";
-
-import { markdownRenderers } from "./markdown-renderers";
-import { RequestCard, type RequestCardState } from "./RequestCard";
-
 /**
- * Heuristic: detect whether an option in `AskUserQuestionInput` is a
- * free-text fallback. Two signals:
+ * surface.
  *
- * 1. `option.label` matches `/^other\b/i` — convention from the SDK's
- *    example prompts (e.g. "Other (specify)").
- * 2. `option.description` contains the literal substring "free text"
- *    — explicit hint from Claude's prompt formatting.
+ * Major changes from v1:
+ *   - **Options-as-cards**, not native radio/checkbox. The user clicks
+ *     a card-shaped row; selection state highlights with a brand
+ *     border + filled radio dot. Multi-select still cycles selection;
+ *     single-select replaces.
+ *   - **Header counts progress** ("0/2 answered") so the user knows
+ *     the card has more than one question.
+ *   - **Free-text input** appears below its triggering option, with
+ *     an active focus ring tied to the brand violet (not generic
+ *     border-slate-500).
+ *   - **Submit hint** in the footer surfaces ⌘⏎ for keyboard submit.
  *
- * Either signal flags the option as a free-text fallback. When the
- * user selects that option, the question card surfaces a text input
- * next to the radio/checkbox group; the typed value goes into
- * `AskUserQuestionOutput.answers[i].freeTextResponse`. The convention
- * is approximate — Anthropic's `AskUserQuestion` schema doesn't expose
- * an explicit "is free text" flag; refine here if real prompts surface.
- *
- * @param opt - One option from a question's `options` array.
- * @returns `true` when the option should trigger the free-text input.
+ * Wire payload (`AskUserRequestedPayload` / `AskUserQuestionOutput`)
+ * is unchanged.
  */
-function isFreeTextOption(opt: { label: string; description?: string; }): boolean
-{
-  if (/^other\b/i.test(opt.label))
-  {
-    return true;
-  }
 
-  return opt.description?.includes("free text") ?? false;
-}
+import { useMemo, useState } from "react";
+import type { AskUserQuestionOutput, AskUserRequestedPayload } from "../../ipc/types";
+import Avatar from "../atoms/Avatar";
+import Button from "../atoms/Button";
+import Pill from "../atoms/Pill";
+import RequestCard, { type RequestCardState } from "./RequestCard";
+
+// #region Types
+
 
 /**
  * Props for the `QuestionCard` component.
@@ -45,7 +34,7 @@ function isFreeTextOption(opt: { label: string; description?: string; }): boolea
  * lifecycle state for styling, and reports the submitted answer back to the
  * parent via `onSubmit`.
  */
-export interface QuestionCardProps
+interface QuestionCardProps
 {
   payload: AskUserRequestedPayload;
   state: RequestCardState;
@@ -53,85 +42,101 @@ export interface QuestionCardProps
   previousAnswer?: AskUserQuestionOutput;
 }
 
+// #endregion
+
+// #region Helpers
+
+const isFreeTextOption = (opt: { label: string; description?: string }): boolean => {
+  if (/^other\b/i.test(opt.label))
+  {
+    return true;
+  }
+
+  return opt.description?.includes("free text") ?? false;
+};
+
+// #endregion
+
 /**
- * Question card variant — surfaces an `ask-user-requested` event
- * (task 1.2) carrying one or more `AskUserQuestionInput` questions
- * as an inline card. Renders each question stacked vertically with
- * the response type Claude requested (single-select via radio,
- * multi-select via checkbox, or free-text fallback via text input
- * detected by {@link isFreeTextOption}). Composes `RequestCard`
- * for the chrome.
- *
- * Local state holds per-question selections and free-text values.
- * Component identity is expected to be keyed by `requestId` from the
- * parent `BlockView` so a new payload produces a fresh
- * instance — no `useEffect` reset.
+ * Renders the question card. Holds per-question selection + free-text
+ * state locally; expected to be keyed by `requestId` from the parent
+ * so a fresh card produces a fresh instance.
  *
  * @param props - See {@link QuestionCardProps}.
- * @returns The rendered question card.
+ * @returns The card element.
  */
-export function QuestionCard(props: QuestionCardProps)
+export default function QuestionCard({payload, state, onSubmit, previousAnswer,}: QuestionCardProps)
 {
-  const { payload, state, onSubmit, previousAnswer } = props;
   const isPending = state === "pending";
   const questions = payload.input.questions;
 
-  const [selectedOptions, setSelectedOptions] = useState<string[][]>(() => questions.map(() => []),);
-  const [freeText, setFreeText] = useState<string[]>(() => questions.map(() => ""),);
+  const [selectedOptions, setSelectedOptions] = useState<string[][]>(() => questions.map(() => []));
+  const [freeText, setFreeText] = useState<string[]>(() => questions.map(() => ""));
+
   const showAnsweredView = state === "answered" && previousAnswer !== undefined;
 
-  const toggleOption = (qIdx: number, label: string, multiSelect: boolean) =>
-  {
-    setSelectedOptions((prev) =>
-    {
+  // #region Handlers
+
+  const toggleOption = (qIdx: number, optionLabel: string, multiSelect: boolean) => {
+    setSelectedOptions((prev) => {
       const next = prev.map((arr) => [...arr]);
 
       if (multiSelect)
       {
-        next[qIdx] = next[qIdx].includes(label) ? next[qIdx].filter((l) => l !== label) : [...next[qIdx], label];
+        next[qIdx] = next[qIdx].includes(optionLabel) ? next[qIdx].filter((l) => l !== optionLabel) : [...next[qIdx], optionLabel];
       }
       else
       {
-        next[qIdx] = [label];
+        next[qIdx] = [optionLabel];
       }
 
       return next;
     });
   };
 
-  const setFreeTextAt = (qIdx: number, value: string) =>
-  {
-    setFreeText((prev) =>
-    {
+  const setFreeTextAt = (qIdx: number, value: string) => {
+    setFreeText((prev) => {
       const next = [...prev];
       next[qIdx] = value;
       return next;
     });
   };
 
-  const isFreeTextActive = (qIdx: number, selected: string[][] = selectedOptions,): boolean =>
-  {
+  const isFreeTextActive = (qIdx: number): boolean => {
     const opt = questions[qIdx].options.find(isFreeTextOption);
-    return opt !== undefined && (selected[qIdx] ?? []).includes(opt.label);
+    return opt !== undefined && (selectedOptions[qIdx] ?? []).includes(opt.label);
   };
 
-  const allAnswered = questions.every((_, idx) =>
-  {
-    const selLen = selectedOptions[idx]?.length ?? 0;
-    const freeLen = freeText[idx]?.trim().length ?? 0;
-    return selLen > 0 || (isFreeTextActive(idx) && freeLen > 0);
-  });
+  const answeredCount = useMemo(() => {
+    let count = 0;
 
-  const handleSubmit = () =>
-  {
+    for (let i = 0; i < questions.length; i += 1)
+    {
+      const sel = selectedOptions[i] ?? [];
+      const free = freeText[i]?.trim() ?? "";
+      const hasSelection = sel.length > 0;
+      const hasFree = isFreeTextActive(i) && free.length > 0;
+
+      if (hasSelection || hasFree)
+      {
+        count += 1;
+      }
+    }
+
+    return count;
+
+  }, [questions, selectedOptions, freeText]);
+
+  const allAnswered = answeredCount === questions.length;
+
+  const handleSubmit = () => {
     const answers: Record<string, string> = {};
 
-    questions.forEach((q, idx) =>
-    {
-      const free = freeText[idx]?.trim();
+    questions.forEach((q, idx) => {
+      const free = freeText[idx]?.trim() ?? "";
       const selected = selectedOptions[idx] ?? [];
 
-      if (isFreeTextActive(idx) && free !== undefined && free.length > 0)
+      if (isFreeTextActive(idx) && free.length > 0)
       {
         answers[q.question] = free;
       }
@@ -145,67 +150,73 @@ export function QuestionCard(props: QuestionCardProps)
       }
     });
 
-    const answer: AskUserQuestionOutput = { questions, answers };
-    onSubmit(answer);
+    onSubmit({ questions, answers });
   };
 
+  // #endregion
+
+  // #region Render parts
+
+  const label = (
+    <>
+      <Avatar variant="claude" initials="CC" size={24} />
+      <div className="flex flex-col min-w-0">
+        <span className="text-[13.5px] text-txt-1 font-medium leading-tight">
+          Claude has {questions.length} question{questions.length > 1 ? "s" : ""}
+        </span>
+        <span className="font-mono text-[10.5px] text-txt-3 mt-0.5">
+          {answeredCount}/{questions.length} answered
+        </span>
+      </div>
+    </>
+  );
+
+  const headerRight = payload.agentId !== null ? <Pill variant="brand" size="sm">via {payload.agentId}</Pill> : undefined;
+
   const body = (
-    <div>
-      {questions.map((q, idx) =>
-      {
+    <div className="flex flex-col gap-5">
+      {questions.map((q, idx) => {
         const selectedForQ = selectedOptions[idx] ?? [];
         const freeTextForQ = freeText[idx] ?? "";
-        const freeTextOpt = q.options.find(isFreeTextOption);
-        const showFreeText = freeTextOpt !== undefined && selectedForQ.includes(freeTextOpt.label);
-
+        const freeOpt = q.options.find(isFreeTextOption);
+        const showFreeText = freeOpt !== undefined && selectedForQ.includes(freeOpt.label);
         const previousAnswerStr = showAnsweredView ? previousAnswer.answers[q.question] ?? "" : null;
 
         return (
-          <div
-            key={idx}
-            className="my-3 first:mt-0 last:mb-0 pb-3 border-b border-slate-700 last:border-b-0"
-          >
-            {q.header && (
-              <div className="text-sm font-semibold mb-1 text-slate-200">
-                {q.header}
-              </div>
-            )}
-            <ReactMarkdown components={markdownRenderers}>
+          <div key={idx}>
+            <div className="flex items-baseline gap-2.5 mb-2">
+              <span className="font-hud text-[11px] tracking-[0.18em] uppercase text-brand-violet-soft">
+                Q{idx + 1}{q.multiSelect && " · multi-select"}
+              </span>
+              {q.header !== undefined && (
+                <span className="text-[12.5px] text-txt-3">{q.header}</span>
+              )}
+            </div>
+            <div className="text-[14.5px] text-txt-1 font-medium leading-snug mb-3">
               {q.question}
-            </ReactMarkdown>
+            </div>
+
             {showAnsweredView ? (
-              <div className="mt-2 text-sm text-slate-300 italic">
+              <div className="text-[13px] text-txt-2 italic">
                 {previousAnswerStr ?? "(no answer)"}
               </div>
             ) : (
-              <div className="mt-2 grid grid-cols-1 gap-1.5">
-                {q.options.map((opt) =>
-                {
+              <div className="flex flex-col gap-1.5">
+                {q.options.map((opt) => {
                   const isSelected = selectedForQ.includes(opt.label);
+                  const isFree = isFreeTextOption(opt);
+
                   return (
-                    <label
+                    <OptionRow
                       key={opt.label}
-                      className="flex items-start gap-2 rounded p-1.5 hover:bg-slate-800/40 cursor-pointer"
-                    >
-                      <input
-                        type={q.multiSelect ? "checkbox" : "radio"}
-                        name={`question-${idx}`}
-                        checked={isSelected}
-                        onChange={() =>
-                          toggleOption(idx, opt.label, q.multiSelect)
-                        }
-                        disabled={!isPending}
-                        className="mt-1"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-slate-200">{opt.label}</div>
-                        {opt.description && (
-                          <ReactMarkdown components={markdownRenderers}>
-                            {opt.description}
-                          </ReactMarkdown>
-                        )}
-                      </div>
-                    </label>
+                      label={opt.label}
+                      description={opt.description}
+                      multi={q.multiSelect}
+                      selected={isSelected}
+                      isFree={isFree}
+                      disabled={!isPending}
+                      onSelect={() => toggleOption(idx, opt.label, q.multiSelect)}
+                    />
                   );
                 })}
                 {showFreeText && (
@@ -213,9 +224,10 @@ export function QuestionCard(props: QuestionCardProps)
                     type="text"
                     value={freeTextForQ}
                     onChange={(e) => setFreeTextAt(idx, e.target.value)}
-                    placeholder="Type your custom answer..."
+                    placeholder="Type your custom answer…"
                     disabled={!isPending}
-                    className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-100 disabled:opacity-50"
+                    autoFocus
+                    className="mt-1 rounded-r-2 bg-bg-0 px-3 py-2 text-[13px] text-txt-1 font-body border border-brand-violet focus-ring outline-none disabled:opacity-50"
                   />
                 )}
               </div>
@@ -227,23 +239,101 @@ export function QuestionCard(props: QuestionCardProps)
   );
 
   const footer = (
-    <button
-      onClick={handleSubmit}
+    <Button
+      variant="primary"
+      size="sm"
       disabled={!allAnswered || !isPending}
-      className="rounded bg-sky-700 px-4 py-1.5 text-sm text-sky-50 hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed"
+      onClick={handleSubmit}
+      icon={<span style={{ fontSize: 12 }}>↗</span>}
     >
       {state === "answered" ? "Answered" : "Submit"}
-    </button>
+    </Button>
   );
+
+  const footerHint = isPending
+    ? (
+      <>
+        <Pill variant="subtle" size="sm">⌘⏎</Pill>
+        <span>submit</span>
+      </>
+    )
+    : undefined;
+
+  // #endregion
 
   return (
     <RequestCard
       variant="question"
-      label="Clarifying questions"
+      accent="violet"
+      label={label}
+      headerRight={headerRight}
       body={body}
-      agentId={payload.agentId}
-      state={state}
       footer={footer}
+      footerHint={footerHint}
+      state={state}
     />
   );
 }
+
+// #region OptionRow
+
+/**
+ * Props for the `OptionRow` component.
+ *
+ * Renders a single selectable option inside a question card's answer picker,
+ * supporting both single-select and multi-select modes, an optional free-text
+ * marker, and a disabled state for resolved or locked questions.
+ */
+interface OptionRowProps
+{
+  label: string;
+  description?: string;
+  multi: boolean;
+  selected: boolean;
+  isFree: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+}
+
+const OptionRow = ({label, description, multi, selected, isFree, disabled, onSelect,}: OptionRowProps) => (
+  <button
+    type="button"
+    role={multi ? "checkbox" : "radio"}
+    aria-checked={selected}
+    onClick={onSelect}
+    disabled={disabled}
+    className={[
+      "flex items-start gap-2.5 text-left rounded-r-2 px-3 py-2.5 transition-all duration-[120ms]",
+      selected
+        ? "bg-brand-violet/10 border border-brand-violet"
+        : "bg-bg-1 border border-line hover:bg-bg-3/40",
+      disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
+    ].join(" ")}
+  >
+    <span
+      aria-hidden="true"
+      className="inline-flex items-center justify-center shrink-0 mt-0.5"
+      style={{
+        width: 16,
+        height: 16,
+        borderRadius: multi ? "var(--r-1)" : "50%",
+        background: selected ? "var(--violet)" : "transparent",
+        border: selected ? "1px solid var(--violet)" : "1.5px solid var(--line-hard)",
+      }}
+    >
+      {selected && multi && <span className="text-white text-[9px] font-bold">✓</span>}
+      {selected && !multi && <span className="block rounded-full bg-white" style={{ width: 5, height: 5 }} />}
+    </span>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-2 text-[13.5px] leading-snug" style={{ color: selected ? "var(--txt-1)" : "var(--txt-2)", fontWeight: selected ? 500 : 400 }}>
+        {label}
+        {isFree && <Pill variant="subtle" size="sm">free text</Pill>}
+      </div>
+      {description !== undefined && description.length > 0 && (
+        <div className="text-[12px] text-txt-3 mt-1 leading-snug">{description}</div>
+      )}
+    </div>
+  </button>
+);
+
+// #endregion

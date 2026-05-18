@@ -1,47 +1,111 @@
 /**
- * Settings route — read-only summary plus dev-only diagnostic actions.
+ * Settings route — v2.0 UX Pass rewrite.
  *
- * Surfaces the live Unity / supervisor status, the active theme, a
- * "Restart Supervisor" button, and (in dev builds only) buttons to
- * emit a test status event and call a Unity MCP tool.
+ * Vertical sub-nav on the left, 5 panels on the right:
+ *
+ *   Connection  · live Unity + supervisor status, MCP server URL, project path
+ *   Appearance  · theme (dark locked in v2.0; light deferred to v2.3+)
+ *   Claude Code · CLI version, default permission mode picker, docs link
+ *   Plugin      · loaded agents / commands / knowledge counts, cross-links to Library
+ *   About       · package + app version, GitHub link, license, dev tools (gated)
+ *
+ * Dev tools moved into About → Diagnostics behind `import.meta.env.DEV`.
  */
 
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";
-import {
-  devCallUnityTool,
-  devEmitTestEvent,
-  restartSupervisor,
-} from "../ipc/commands";
+import { useNavigate } from "react-router-dom";
+import StatusDot from "../components/atoms/StatusDot";
+import Button from "../components/atoms/Button";
+import Pill from "../components/atoms/Pill";
+import PermissionModePicker from "../components/PermissionModePicker";
+import { SettingsGroup, SettingRow } from "../components/settings/SettingsGroup";
+import { useAgents } from "../hooks/useAgents";
+import { useCommands } from "../hooks/useCommands";
+import { checkClaudeInstallStatus, devCallUnityTool, devEmitTestEvent, listKnowledgeDocs, restartSupervisor, } from "../ipc/commands";
 import { onUnityStatusChanged } from "../ipc/events";
-import type { ConnectionStatus, SupervisorStatus } from "../ipc/types";
+import type { ClaudeInstallStatus, ConnectionStatus, SupervisorStatus, } from "../ipc/types";
 import { useConnectionStore } from "../stores/connectionStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
+// #region Constants
+
+const PANELS = [
+  { id: "connection",  label: "Connection" },
+  { id: "appearance",  label: "Appearance" },
+  { id: "claude-code", label: "Claude Code" },
+  { id: "plugin",      label: "Plugin" },
+  { id: "about",       label: "About" },
+] as const;
+
+type PanelId = typeof PANELS[number]["id"];
+
+const GITHUB_URL = "https://github.com/RamonBedin/mcp-game-deck";
+const LICENSE_URL = "https://github.com/RamonBedin/mcp-game-deck/blob/main/LICENSE";
+const CLAUDE_DOCS_URL = "https://docs.claude.com/en/docs/claude-code/overview";
+const DEFAULT_MCP_PORT = 8090;
+
+// #endregion
+
 // #region Helpers
 
-const unityStatusClass = (status: ConnectionStatus): string => {
-  switch (status) {
-    case "connected":
-      return "text-emerald-400";
-    case "busy":
-      return "text-amber-400";
-    case "disconnected":
-      return "text-rose-400";
+const connectionToDot = (s: ConnectionStatus): "ok" | "busy" | "down" => {
+  if (s === "connected")
+  { 
+    return "ok"; 
+  }
+
+  if (s === "busy")         
+  { 
+    return "busy"; 
+  }
+
+  return "down";
+};
+
+const supervisorToDot = (s: SupervisorStatus): "ok" | "busy" | "down" | "idle" => {
+  if (s === "ready")
+  { 
+    return "ok"; 
+  }
+
+  if (s === "starting")
+  {
+    return "busy"; 
+  }
+
+  if (s === "crashed" || s === "failed")
+  { 
+    return "down"; 
+  }
+
+  return "idle";
+};
+
+const formatError = (err: unknown): string => {
+  if (err instanceof Error)
+  {
+    return err.message;
+  }
+
+  if (typeof err === "string")
+  {
+    return err;
+  }
+  try
+  {
+    return JSON.stringify(err);
+  }
+  catch
+  {
+    return String(err);
   }
 };
 
-const supervisorStatusClass = (status: SupervisorStatus): string => {
-  switch (status) {
-    case "ready":
-      return "text-emerald-400";
-    case "idle":
-      return "text-slate-400";
-    case "starting":
-      return "text-amber-400";
-    case "crashed":
-    case "failed":
-      return "text-rose-400";
-  }
+const openExternal = (url: string) => {
+  void openUrl(url).catch((err) => {
+    console.error("[settings] open url failed:", err);
+  });
 };
 
 // #endregion
@@ -49,27 +113,102 @@ const supervisorStatusClass = (status: SupervisorStatus): string => {
 /**
  * Settings route component.
  *
- * @returns The settings view with status summary and (dev-only) diagnostics.
+ * @returns The route element.
  */
-export default function SettingsRoute() {
-  const theme = useSettingsStore((state) => state.settings.theme);
-  const unityStatus = useConnectionStore((s) => s.unityStatus);
-  const supervisorStatus = useConnectionStore((s) => s.supervisorStatus);
-  const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
+export default function SettingsRoute()
+{
+  const [active, setActive] = useState<PanelId>("connection");
 
-  // #region Local state
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="px-7 pt-5 pb-4 border-b border-line bg-bg-2 shrink-0">
+        <h1 className="m-0 font-hud text-[18px] font-bold tracking-[-0.005em] text-txt-1">
+          Settings
+        </h1>
+      </div>
+
+      <div className="flex flex-1 min-h-0">
+        <SettingsNav active={active} onChange={setActive} />
+        <section className="flex-1 overflow-auto bg-bg-1 px-12 pt-8 pb-16">
+          <div style={{ maxWidth: 720 }}>
+            {active === "connection"  && <ConnectionPanel />}
+            {active === "appearance"  && <AppearancePanel />}
+            {active === "claude-code" && <ClaudeCodePanel />}
+            {active === "plugin"      && <PluginPanel />}
+            {active === "about"       && <AboutPanel />}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// #region Sub-nav
+
+/**
+ * Props for the `SettingsNav` component.
+ *
+ * Renders the navigation column inside the settings panel, highlighting the
+ * active sub-panel and reporting user selections back to the parent.
+ */
+interface SettingsNavProps
+{
+  active: PanelId;
+  onChange: (id: PanelId) => void;
+}
+
+const SettingsNav = ({ active, onChange }: SettingsNavProps) => (
+  <aside
+    className="shrink-0 flex flex-col gap-0.5 border-r border-line bg-bg-0 px-3 py-5"
+    style={{ width: 200 }}
+  >
+    {PANELS.map((p) => {
+      const isActive = p.id === active;
+      return (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() => onChange(p.id)}
+          className={[
+            "rounded-r-1 px-3 py-2 text-left text-[13px] transition-colors duration-[120ms]",
+            isActive
+              ? "bg-bg-3 text-txt-1 font-medium shadow-[inset_2px_0_0_var(--violet)]"
+              : "text-txt-3 hover:bg-bg-3/60 hover:text-txt-2",
+          ].join(" ")}
+        >
+          {p.label}
+        </button>
+      );
+    })}
+  </aside>
+);
+
+// #endregion
+
+// #region Panel head
+
+const PanelHead = ({ title, body }: { title: string; body: string }) => (
+  <div className="mb-7">
+    <h2 className="m-0 mb-1 text-[22px] text-txt-1 font-semibold">{title}</h2>
+    <p className="m-0 text-[13.5px] text-txt-3">{body}</p>
+  </div>
+);
+
+// #endregion
+
+// #region Panel: Connection
+
+const ConnectionPanel = () => {
+  const unityStatus      = useConnectionStore((s) => s.unityStatus);
+  const supervisorStatus = useConnectionStore((s) => s.supervisorStatus);
+  const setUnityStatus   = useConnectionStore((s) => s.setUnityStatus);
+  const projectPath      = useSettingsStore((s) => s.settings.unityProjectPath);
 
   const [restartResult, setRestartResult] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
-  const [unityToolResult, setUnityToolResult] = useState<string | null>(null);
-  const [callingUnityTool, setCallingUnityTool] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // #endregion
-
-  // #region Effects
-
-  // Fast-path subscription to Unity status. App.tsx polls every 2s; this
-  // catches transitions within milliseconds.
+  // Fast-path Unity status subscription (App.tsx polls; this catches transitions in ms).
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -86,7 +225,7 @@ export default function SettingsRoute() {
         if (cancelled)
         {
           u();
-        } 
+        }
         else
         {
           unlisten = u;
@@ -102,33 +241,10 @@ export default function SettingsRoute() {
     };
   }, [setUnityStatus]);
 
-  // #endregion
-
-  // #region Handlers
-
-  const formatError = (err: unknown): string => {
-    if (err instanceof Error)
-    {
-      return err.message;
-    }
-    
-    if (typeof err === "string")
-    {
-      return err;
-    }
-    try
-    {
-      return JSON.stringify(err);
-    }
-    catch
-    {
-      return String(err);
-    }
-  };
-
   const handleRestart = async () => {
     setRestarting(true);
     setRestartResult("restarting…");
+
     try
     {
       await restartSupervisor();
@@ -144,6 +260,423 @@ export default function SettingsRoute() {
     }
   };
 
+  const mcpUrl = `http://localhost:${DEFAULT_MCP_PORT}`;
+
+  const handleCopyUrl = () => {
+    void navigator.clipboard.writeText(mcpUrl).then(() => {
+      setCopiedUrl(true);
+      window.setTimeout(() => setCopiedUrl(false), 2000);
+    }).catch((err) => {
+      console.error("[settings] copy mcp url failed:", err);
+    });
+  };
+
+  return (
+    <>
+      <PanelHead
+        title="Connection"
+        body="Status of Unity Editor, the Claude Code supervisor, and MCP server endpoints."
+      />
+
+      <SettingsGroup label="Live status">
+        <SettingRow
+          label="Unity Editor"
+          value={<StatusDot status={connectionToDot(unityStatus)} label={`${unityStatus.toUpperCase()} · ${DEFAULT_MCP_PORT}`} />}
+          meta="Polled every 2s · event-driven fast path active"
+        />
+        <SettingRow
+          label="Claude Supervisor"
+          value={<StatusDot status={supervisorToDot(supervisorStatus)} label={supervisorStatus.toUpperCase()} />}
+          meta="Spawned by Tauri at app launch"
+          action={
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => void handleRestart()}
+              disabled={restarting}
+            >
+              {restarting ? "Restarting…" : "Restart"}
+            </Button>
+          }
+        />
+        <SettingRow
+          label="MCP server URL"
+          value={
+            <code className="font-mono text-[12px] text-brand-cyan bg-bg-3 px-2.5 py-1 rounded-r-2 truncate">
+              {mcpUrl}
+            </code>
+          }
+          meta="Unity Editor MCP transport endpoint"
+          action={
+            <Button variant="ghost" size="sm" onClick={handleCopyUrl}>
+              {copiedUrl ? "Copied!" : "Copy"}
+            </Button>
+          }
+        />
+        {restartResult !== null && (
+          <div className="px-[18px] py-2 border-t border-line-soft font-mono text-[11px] text-txt-3">
+            {restartResult}
+          </div>
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup label="Active Unity project">
+        <SettingRow
+          label="Project path"
+          value={
+            <code className="rounded-r-2 bg-bg-3 px-2.5 py-1 text-[12px] text-txt-1 font-mono truncate">
+              {projectPath ?? "(not set)"}
+            </code>
+          }
+          meta="Set automatically when the Editor pin launches the app"
+        />
+      </SettingsGroup>
+    </>
+  );
+};
+
+// #endregion
+
+// #region Panel: Appearance
+
+const AppearancePanel = () => (
+  <>
+    <PanelHead
+      title="Appearance"
+      body="Theme + visual density. v2.0 is dark-only; the token layer is structured so a light theme is a one-screen change in v2.3+."
+    />
+
+    <SettingsGroup label="Theme">
+      <SettingRow
+        label="Color theme"
+        value={
+          <div
+            role="radiogroup"
+            aria-label="Theme"
+            className="inline-flex rounded-r-2 border border-line-hard bg-bg-1 p-0.5"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={true}
+              className="px-3 py-1 rounded-r-1 text-[12px] bg-bg-4 text-txt-1 font-medium"
+            >
+              Dark
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={false}
+              disabled
+              title="Light theme arrives in v2.3"
+              className="px-3 py-1 rounded-r-1 text-[12px] text-txt-4 cursor-not-allowed"
+            >
+              Light
+            </button>
+          </div>
+        }
+        meta="Light theme deferred to v2.3+. Tokens.css already namespaces the dark palette under `:root` so the swap stays trivial."
+      />
+
+      <SettingRow
+        label="Density"
+        value={<Pill variant="subtle" size="sm">compact</Pill>}
+        meta="Senior-dev density (Linear / Raycast tone). Spacious mode is not on the roadmap."
+      />
+    </SettingsGroup>
+
+    <SettingsGroup label="Typography">
+      <SettingRow
+        label="UI font"
+        value={
+          <code className="font-mono text-[12px] text-txt-2 bg-bg-3 px-2.5 py-1 rounded-r-2">
+            Inter
+          </code>
+        }
+        meta="Body copy, controls, headings"
+      />
+      <SettingRow
+        label="Mono font"
+        value={
+          <code className="font-mono text-[12px] text-txt-2 bg-bg-3 px-2.5 py-1 rounded-r-2">
+            JetBrains Mono
+          </code>
+        }
+        meta="Code, paths, tool names, timestamps"
+      />
+      <SettingRow
+        label="HUD font"
+        value={
+          <code className="font-mono text-[12px] text-txt-2 bg-bg-3 px-2.5 py-1 rounded-r-2">
+            Orbitron
+          </code>
+        }
+        meta="HUD strip text, section labels, brand mark"
+      />
+    </SettingsGroup>
+  </>
+);
+
+// #endregion
+
+// #region Panel: Claude Code
+
+const ClaudeCodePanel = () => {
+  const [installStatus, setInstallStatus] = useState<ClaudeInstallStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    checkClaudeInstallStatus()
+      .then((status) => {
+        if (cancelled)
+        {
+          return;
+        }
+        setInstallStatus(status);
+      })
+      .catch((err) => console.error("[settings] install status failed:", err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <>
+      <PanelHead
+        title="Claude Code"
+        body="The underlying CLI agent and the model running your chats."
+      />
+
+      <SettingsGroup label="CLI install">
+        <SettingRow
+          label="Claude CLI version"
+          value={
+            installStatus === null ? (
+              <span className="font-mono text-[11.5px] text-txt-4 italic">checking…</span>
+            ) : installStatus.claudeVersion !== null ? (
+              <code className="font-mono text-[12px] text-brand-cyan bg-bg-3 px-2.5 py-1 rounded-r-2">
+                {installStatus.claudeVersion}
+              </code>
+            ) : (
+              <Pill variant="tier-write" size="sm" dot>NOT DETECTED</Pill>
+            )
+          }
+          meta="Output of `claude --version` on this machine"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => openExternal(CLAUDE_DOCS_URL)}>
+              Docs ↗
+            </Button>
+          }
+        />
+        <SettingRow
+          label="Sign-in"
+          value={
+            installStatus === null ? (
+              <span className="font-mono text-[11.5px] text-txt-4 italic">checking…</span>
+            ) : installStatus.claudeAuthenticated ? (
+              <Pill variant="ok" size="sm" dot>SIGNED IN</Pill>
+            ) : (
+              <Pill variant="tier-write" size="sm" dot>SIGNED OUT</Pill>
+            )
+          }
+          meta="Run `claude /login` in a terminal to refresh credentials"
+        />
+        <SettingRow
+          label="Agent SDK"
+          value={
+            installStatus === null ? (
+              <span className="font-mono text-[11.5px] text-txt-4 italic">checking…</span>
+            ) : installStatus.sdkInstalled ? (
+              <Pill variant="ok" size="sm" dot>INSTALLED</Pill>
+            ) : (
+              <Pill variant="tier-write" size="sm" dot>MISSING</Pill>
+            )
+          }
+          meta="`@anthropic-ai/claude-agent-sdk` bundled with the app"
+        />
+      </SettingsGroup>
+
+      <SettingsGroup label="Behavior">
+        <SettingRow
+          label="Default permission mode"
+          value={<PermissionModePicker variant="inline" />}
+          meta="What Claude does on tool calls. Cycle with ⇧⇥ from the composer."
+        />
+      </SettingsGroup>
+    </>
+  );
+};
+
+// #endregion
+
+// #region Panel: Plugin
+
+const PluginPanel = () => {
+  const navigate = useNavigate();
+  const agents = useAgents();
+  const commands = useCommands();
+  const [knowledgeCount, setKnowledgeCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    listKnowledgeDocs()
+      .then((list) => {
+        if (cancelled)
+        {
+          return;
+        }
+        setKnowledgeCount(list.length);
+      })
+      .catch((err) => console.error("[settings] list knowledge failed:", err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <>
+      <PanelHead
+        title="Plugin"
+        body="What MCP Game Deck contributes to Claude Code at runtime — bundled agents, slash commands, and the knowledge base."
+      />
+
+      <SettingsGroup label="Loaded surfaces">
+        <SettingRow
+          label="Agents"
+          value={
+            <span className="font-mono text-[13px] text-txt-1">
+              {agents.length}
+            </span>
+          }
+          meta="Specialists invokable via @agent-<name>"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => navigate("/library")}>
+              Browse ↗
+            </Button>
+          }
+        />
+        <SettingRow
+          label="Slash commands"
+          value={
+            <span className="font-mono text-[13px] text-txt-1">
+              {commands.length}
+            </span>
+          }
+          meta="Plugin + built-in + user commands the autocomplete picks up"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => navigate("/library")}>
+              Browse ↗
+            </Button>
+          }
+        />
+        <SettingRow
+          label="Knowledge docs"
+          value={
+            knowledgeCount === null ? (
+              <span className="font-mono text-[11.5px] text-txt-4 italic">checking…</span>
+            ) : (
+              <span className="font-mono text-[13px] text-txt-1">{knowledgeCount}</span>
+            )
+          }
+          meta="Markdown reference docs under Plugin~/knowledge/"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => navigate("/library")}>
+              Read ↗
+            </Button>
+          }
+        />
+      </SettingsGroup>
+
+      <SettingsGroup label="Source">
+        <SettingRow
+          label="Package version"
+          value={
+            <code className="font-mono text-[12px] text-brand-cyan bg-bg-3 px-2.5 py-1 rounded-r-2">
+              v{__PACKAGE_VERSION__}
+            </code>
+          }
+          meta="Versioned by the repo-root package.json"
+        />
+      </SettingsGroup>
+    </>
+  );
+};
+
+// #endregion
+
+// #region Panel: About
+
+const AboutPanel = () => (
+  <>
+    <PanelHead
+      title="About"
+      body="Versions, license, and developer diagnostics."
+    />
+
+    <SettingsGroup label="Versions">
+      <SettingRow
+        label="Unity package"
+        value={
+          <code className="font-mono text-[12px] text-brand-cyan bg-bg-3 px-2.5 py-1 rounded-r-2">
+            v{__PACKAGE_VERSION__}
+          </code>
+        }
+        meta="From the repo root package.json"
+      />
+      <SettingRow
+        label="App"
+        value={
+          <code className="font-mono text-[12px] text-brand-cyan bg-bg-3 px-2.5 py-1 rounded-r-2">
+            v{__APP_VERSION__}
+          </code>
+        }
+        meta="External Tauri app version"
+      />
+    </SettingsGroup>
+
+    <SettingsGroup label="Project">
+      <SettingRow
+        label="License"
+        value={<Pill variant="subtle" size="sm">MIT</Pill>}
+        meta="Open source; see LICENSE for details"
+        action={
+          <Button variant="ghost" size="sm" onClick={() => openExternal(LICENSE_URL)}>
+            View ↗
+          </Button>
+        }
+      />
+      <SettingRow
+        label="Source"
+        value={
+          <code className="font-mono text-[12px] text-txt-2 bg-bg-3 px-2.5 py-1 rounded-r-2">
+            github.com/RamonBedin/mcp-game-deck
+          </code>
+        }
+        meta="Bug reports, PRs, releases"
+        action={
+          <Button variant="ghost" size="sm" onClick={() => openExternal(GITHUB_URL)}>
+            Open ↗
+          </Button>
+        }
+      />
+    </SettingsGroup>
+
+    {import.meta.env.DEV && <DevTools />}
+  </>
+);
+
+// #endregion
+
+// #region DevTools (gated by Vite DEV)
+
+const DevTools = () => {
+  const [callingUnityTool, setCallingUnityTool] = useState(false);
+  const [unityToolResult, setUnityToolResult] = useState<string | null>(null);
+
   const handleCallUnityTool = async () => {
     setCallingUnityTool(true);
     setUnityToolResult("…");
@@ -154,104 +687,54 @@ export default function SettingsRoute() {
       const elapsed = Math.round(performance.now() - start);
       const preview = JSON.stringify(result).slice(0, 240);
       setUnityToolResult(`(${elapsed}ms) ${preview}${preview.length === 240 ? "…" : ""}`);
-      console.log("[unity-tool] result:", result);
-    } 
+    }
     catch (err)
     {
       setUnityToolResult(`error: ${formatError(err)}`);
-    } 
-    finally 
+    }
+    finally
     {
       setCallingUnityTool(false);
     }
   };
 
-  // #endregion
-
   return (
-    <section>
-      <h1 className="text-2xl font-semibold">Settings</h1>
-      <p className="mt-2 text-slate-400">
-        Live connection status (polled every 2s, plus event-driven fast path).
-      </p>
-
-      <dl className="mt-6 grid grid-cols-[140px_1fr] gap-y-2 text-sm">
-        <dt className="text-slate-500">Theme</dt>
-        <dd className="text-slate-200">{theme}</dd>
-
-        <dt className="text-slate-500">Unity</dt>
-        <dd className={unityStatusClass(unityStatus)}>{unityStatus}</dd>
-
-        <dt className="text-slate-500">Supervisor</dt>
-        <dd className={supervisorStatusClass(supervisorStatus)}>{supervisorStatus}</dd>
-      </dl>
-
-      <div className="mt-6">
-        <button
-          type="button"
-          onClick={() => void handleRestart()}
-          disabled={restarting}
-          className="rounded bg-slate-700 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Restart Supervisor
-        </button>
-        {restartResult !== null && (
-          <p className="mt-1 font-mono text-xs text-slate-400">{restartResult}</p>
-        )}
-      </div>
-
-      {import.meta.env.DEV && (
-        <div className="mt-8 border-t border-slate-800 pt-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Dev tools
-          </h2>
-
-          <div className="mt-3 flex flex-col gap-3">
-            <div>
-              <button
-                type="button"
-                onClick={() => {
-                  void devEmitTestEvent().catch((err) =>
-                    console.error("[dev] emit test event failed:", err),
-                  );
-                }}
-                className="rounded bg-amber-700 px-3 py-1.5 text-sm text-amber-50 hover:bg-amber-600"
-              >
-                Emit unity-status-changed (disconnected)
-              </button>
-              <p className="mt-1 text-xs text-slate-500">
-                Polling reverts Unity to "connected" within ~2s.
-              </p>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => void handleCallUnityTool()}
-                disabled={callingUnityTool}
-                className="rounded bg-emerald-700 px-3 py-1.5 text-sm text-emerald-50 hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Call Unity tool (console-get-logs)
-              </button>
-              {unityToolResult !== null && (
-                <p className="mt-1 break-all font-mono text-xs text-slate-400">
-                  {unityToolResult}
-                </p>
-              )}
-              <p className="mt-1 text-xs text-slate-500">
-                Requires{" "}
-                <code className="text-slate-400">UNITY_PROJECT_PATH</code> env
-                var pointing to a Unity project running this package. Token
-                read from{" "}
-                <code className="text-slate-400">
-                  $UNITY_PROJECT_PATH/Library/GameDeck/auth-token
-                </code>
-                .
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
+    <SettingsGroup label="Diagnostics · dev only">
+      <SettingRow
+        label="Emit test event"
+        value="Simulate a Unity disconnect; polling reverts within 2s."
+        action={
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => {
+              void devEmitTestEvent().catch((err) => console.error("[dev] emit test event failed:", err));
+            }}
+          >
+            Emit
+          </Button>
+        }
+      />
+      <SettingRow
+        label="Call Unity tool"
+        value={
+          unityToolResult !== null
+            ? <code className="font-mono text-[11px] text-txt-2 truncate">{unityToolResult}</code>
+            : "Calls `console-get-logs` against the MCP server."
+        }
+        action={
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => void handleCallUnityTool()}
+            disabled={callingUnityTool}
+          >
+            Call
+          </Button>
+        }
+      />
+    </SettingsGroup>
   );
-}
+};
+
+// #endregion
