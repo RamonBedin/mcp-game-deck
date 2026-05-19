@@ -27,6 +27,8 @@
 
 **v2.0 (external app + orchestrator architecture) is the priority deliverable.** Tool consolidation work is paused and resumes in v2.1.x once v2.0 ships.
 
+**One-off exception (2026-05-18):** GameObject domain was consolidated against `plan-GameObject-20260425.md`. 22/24 findings executed; G4 (deferred to Component audit) and G6 (deferred to Transform audit) remain pending. Branch: `v2.2.x/tool-consolidation`. This is a single-domain exception, not a resumption — the pipeline remains paused for all other domains until v2.1.x.
+
 Roadmap: `docs/internal/roadmap.md`. v2.0 features documented per-feature in `docs/internal/v2-features/`.
 
 ---
@@ -102,10 +104,9 @@ When v2.1.x starts, the pipeline below picks up where it left off:
 
 **Existing artifacts to pick up when v2.1.x starts:**
 
-- 41 audits in `.claude/reports/audits/`
+- 41 audits in `.claude/reports/audits/` (GameObject already consumed by 2026-05-18 exception)
 - Animation review draft (Ramon-written, pre-auto-reviewer) in `.claude/reports/reviews/`
-- GameObject review draft (auto-reviewer + Ramon's escalation answers in chat history) — needs to be merged and finalized
-- Sentinel convention decision: nullable string `"true" | "false" | ""` for "leave unchanged" booleans
+- Sentinel convention decision: nullable string `"true" | "false" | ""` for "leave unchanged" booleans (now in production on `gameobject-update` as of 2026-05-18)
 
 The pipeline is generic — same agents work on every domain. When work resumes, prioritize Tier 1 domains (GameObject, Component, Prefab, Scene, Asset, Script, Editor, Selection) per the April 2026 batch summary.
 

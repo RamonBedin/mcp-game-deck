@@ -35,12 +35,13 @@ namespace GameDeck.Editor.Tools
         /// or an error when the searchMethod is invalid or the searchTerm is empty.
         /// </returns>
         [McpTool("gameobject-find", Title = "GameObject / Find", ReadOnlyHint = true)]
-        [Description("Searches all GameObjects in the active scene and returns name + instance ID for each match. " + "Search methods: 'by_name' (case-insensitive substring), 'by_tag' (exact tag), " + "'by_layer' (layer name or index), 'by_component' (type name). " + "Results are capped at maxResults.")]
+        [Description("Searches all GameObjects in the active scene and returns name + instance ID for each match. " + "Searches the active scene only — additively-loaded scenes are not traversed unless searchAllScenes=true. " + "Search methods: 'by_name' (case-insensitive substring), 'by_tag' (exact tag), " + "'by_layer' (layer name or index), 'by_component' (type name). " + "Results are capped at maxResults (hard cap 500).")]
         public ToolResponse FindGameObjects(
-            [Description("Value to search for. Meaning depends on searchMethod: " + "by_name = substring of name; by_tag = exact tag; " + "by_layer = layer name or index; by_component = component type name.")] string searchTerm,
+            [Description("Value to search for. Meaning depends on searchMethod: " + "by_name = substring of name; by_tag = exact tag; " + "by_layer = layer name or numeric index (layer names with spaces are accepted; an unknown name returns 'not found'); " + "by_component = component type name.")] string searchTerm,
             [Description("Search strategy: 'by_name', 'by_tag', 'by_layer', or 'by_component'. Default 'by_name'.")] string searchMethod = "by_name",
             [Description("When true, inactive GameObjects are included in results. Default false.")] bool includeInactive = false,
-            [Description("Maximum number of results to return. Default 50.")] int maxResults = 50
+            [Description("Maximum number of results to return. Default 50. Hard-capped at 500: values above 500 are silently clamped.")] int maxResults = 50,
+            [Description("When true, traverse ALL loaded scenes (active + additively loaded) instead of only the active scene. Default false.")] bool searchAllScenes = false
         )
         {
             return MainThreadDispatcher.Execute(() =>
@@ -69,7 +70,7 @@ namespace GameDeck.Editor.Tools
                     case "by_name":
                     {
                         string lower = searchTerm.ToLowerInvariant();
-                        var rootObjects = SceneManager.GetActiveScene().GetRootGameObjects();
+                        var rootObjects = GetSearchRoots(searchAllScenes);
                         found = SearchByName(rootObjects, lower, includeInactive, maxResults, sb);
                         break;
                     }
@@ -117,7 +118,7 @@ namespace GameDeck.Editor.Tools
                         {
                             return ToolResponse.Error($"Layer '{searchTerm}' not found. Provide a valid layer name or index.");
                         }
-                        var rootObjects = SceneManager.GetActiveScene().GetRootGameObjects();
+                        var rootObjects = GetSearchRoots(searchAllScenes);
                         found = SearchByLayer(rootObjects, layerIndex, includeInactive, maxResults, sb);
                         break;
                     }
@@ -129,7 +130,7 @@ namespace GameDeck.Editor.Tools
                         {
                             return ToolResponse.Error($"Could not resolve component type '{searchTerm}'. " + "Ensure the type name is correct and the assembly is loaded.");
                         }
-                        var rootObjects = SceneManager.GetActiveScene().GetRootGameObjects();
+                        var rootObjects = GetSearchRoots(searchAllScenes);
                         found = SearchByComponent(rootObjects, resolvedType, includeInactive, maxResults, sb);
                         break;
                     }
@@ -149,6 +150,35 @@ namespace GameDeck.Editor.Tools
         #endregion
 
         #region PRIVATE HELPERS
+
+        /// <summary>
+        /// Returns the root GameObjects of either the active scene only, or every loaded scene.
+        /// </summary>
+        /// <param name="allScenes">When true, aggregates roots from every loaded scene via SceneManager.sceneCount.</param>
+        /// <returns>An array of root GameObjects, in scene-order.</returns>
+        private static GameObject[] GetSearchRoots(bool allScenes)
+        {
+            if (!allScenes)
+            {
+                return SceneManager.GetActiveScene().GetRootGameObjects();
+            }
+
+            var aggregated = new System.Collections.Generic.List<GameObject>();
+
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+
+                if (!scene.isLoaded)
+                {
+                    continue;
+                }
+
+                aggregated.AddRange(scene.GetRootGameObjects());
+            }
+
+            return aggregated.ToArray();
+        }
 
         /// <summary>
         /// Attempts to resolve a component type by name for use in by_component searches.

@@ -25,7 +25,7 @@ namespace GameDeck.Editor.Tools
         /// <param name="relative">If true, adds the given values to the current position. If false, sets position directly.</param>
         /// <returns>A <see cref="ToolResponse"/> with the resulting position, or an error if the object is not found.</returns>
         [McpTool("transform-move", Title = "Transform / Move")]
-        [Description("Moves a GameObject to an absolute or relative position in world or local space. " + "Returns the resulting world position after the operation.")]
+        [Description("Moves a GameObject to an absolute or relative position in world or local space using explicit X/Y/Z values. " + "For named-direction moves (forward, up...) or moves expressed in another object's reference frame, use gameobject-move-relative instead. " + "Returns the resulting world position after the operation.")]
         public ToolResponse Move(
             [Description("Unity instance ID of the target GameObject. Pass 0 to use objectPath instead.")] int instanceId = 0,
             [Description("Hierarchy path of the target GameObject (e.g. 'Parent/Child'). Used when instanceId is 0.")] string objectPath = "",

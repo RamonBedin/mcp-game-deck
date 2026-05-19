@@ -25,7 +25,7 @@ namespace GameDeck.Editor.Tools
         /// <param name="relative">If true, adds the given angles to the current rotation. If false, sets rotation directly.</param>
         /// <returns>A <see cref="ToolResponse"/> with the resulting Euler angles, or an error if the object is not found.</returns>
         [McpTool("transform-rotate", Title = "Transform / Rotate")]
-        [Description("Rotates a GameObject to an absolute or relative orientation in world or local space " + "using Euler angles in degrees. Returns the resulting rotation after the operation.")]
+        [Description("Rotates a GameObject to an absolute or relative orientation in world or local space using Euler angles in degrees. " + "Use this tool when you have explicit Euler angles; if you have a target position to face, use gameobject-look-at instead. " + "Returns the resulting rotation after the operation.")]
         public ToolResponse Rotate(
             [Description("Unity instance ID of the target GameObject. Pass 0 to use objectPath instead.")] int instanceId = 0,
             [Description("Hierarchy path of the target GameObject (e.g. 'Parent/Child'). Used when instanceId is 0.")] string objectPath = "",
