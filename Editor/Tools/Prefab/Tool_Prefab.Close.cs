@@ -9,7 +9,8 @@ namespace GameDeck.Editor.Tools
 {
     /// <summary>
     /// MCP tools for creating, opening, editing, saving, instantiating, and closing Unity Prefabs.
-    /// Covers prefab asset creation, prefab stage management, content modification, and scene instantiation.
+    /// Covers prefab asset creation (including variants), prefab stage management, content modification,
+    /// scene instantiation, unpack, and override management (list / apply / revert).
     /// </summary>
     [McpToolType]
     public partial class Tool_Prefab

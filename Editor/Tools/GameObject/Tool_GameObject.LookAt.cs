@@ -27,14 +27,14 @@ namespace GameDeck.Editor.Tools
         /// or an error when either GameObject cannot be located.
         /// </returns>
         [McpTool("gameobject-look-at", Title = "GameObject / Look At")]
-        [Description("Rotates a GameObject so its forward axis faces a world-space point or another GameObject. " + "Provide instanceId or objectPath to identify the source. " + "Provide targetName (hierarchy path) to look at another GO, or set targetX/Y/Z for a world position. " + "Registers the rotation with Undo.")]
+        [Description("Rotates a GameObject so its forward axis faces a world-space point or another GameObject. " + "Provide instanceId or objectPath to identify the source. " + "Provide targetName (hierarchy path) to look at another GO, or set targetX/Y/Z for a world position. " + "When neither targetName nor explicit target coordinates are provided, the source object will look at world origin (0,0,0). " + "Use look-at when you have a target position; for explicit Euler angles use transform-rotate. " + "Registers the rotation with Undo.")]
         public ToolResponse LookAt(
             [Description("Unity instance ID of the GameObject to rotate. Pass 0 to use objectPath.")] int instanceId = 0,
             [Description("Hierarchy path of the GameObject to rotate (e.g. 'Enemy/Head'). Used when instanceId is 0.")] string objectPath = "",
             [Description("World-space X of the look-at target. Ignored when targetName is set.")] float targetX = 0f,
             [Description("World-space Y of the look-at target. Ignored when targetName is set.")] float targetY = 0f,
             [Description("World-space Z of the look-at target. Ignored when targetName is set.")] float targetZ = 0f,
-            [Description("Name or hierarchy path of a target GameObject. When non-empty, overrides targetX/Y/Z.")] string targetName = ""
+            [Description("Name or hierarchy path of a target GameObject. When non-empty, overrides targetX/Y/Z. " + "Ambiguous names target the first match in undefined hierarchy order — use a full path for deterministic targeting.")] string targetName = ""
         )
         {
             return MainThreadDispatcher.Execute(() =>

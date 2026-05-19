@@ -32,7 +32,7 @@ AVAILABLE RESOURCES:
 AVAILABLE TOOLS:
 - gameobject-create — create new GameObjects
 - update_component — add or modify components on a GameObject
-- add-asset-to-scene — instantiate prefabs into the scene
+- prefab-instantiate — instantiate prefabs or model assets into the scene
 - physics-* tools — configure physics components
 - camera-* tools — configure cameras
 

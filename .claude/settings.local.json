@@ -35,7 +35,8 @@
       "Bash(echo \"tsc=$?\")",
       "Bash(echo \"cargo=$?\")",
       "Bash(awk '{print $2}')",
-      "Bash(awk '{sum+=$1; print $1, $2} END {print \"TOTAL\", sum, \"bytes\"}')"
+      "Bash(awk '{sum+=$1; print $1, $2} END {print \"TOTAL\", sum, \"bytes\"}')",
+      "Bash(where dotnet *)"
     ]
   }
 }
