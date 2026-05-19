@@ -19,7 +19,7 @@ namespace GameDeck.Editor.Tools
         [McpTool("asset-refresh", Title = "Asset / Refresh")]
         [Description("Refreshes the Asset Database to detect new or changed files on disk.")]
         public ToolResponse Refresh(
-            [Description("Force reimport all assets. Default false.")] bool forceUpdate = false
+            [Description("When true, reimports EVERY asset in the project — can take several minutes on medium projects and locks the Editor while running. Use false (default) for the normal change-detection pass. Only set true when troubleshooting stale imports.")] bool forceUpdate = false
         )
         {
             return MainThreadDispatcher.Execute(() =>

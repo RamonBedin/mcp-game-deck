@@ -8,8 +8,11 @@ using UnityEditor;
 namespace GameDeck.Editor.Tools
 {
     /// <summary>
-    /// MCP tools for managing Unity project assets — find, create, copy, move, rename,
-    /// delete, refresh, inspect metadata, and read/write importer settings.
+    /// MCP tools for managing Unity project assets — find / inspect / copy / move / rename / delete /
+    /// refresh / read-write importer settings / set labels / find references / check existence /
+    /// create folders / create RenderTextures. Type-specific creation lives in the type's own domain
+    /// (Material → material-create; PhysicsMaterial → physics-create-material; ScriptableObject →
+    /// scriptableobject-create; AnimatorController → animation-configure-controller).
     /// </summary>
     [McpToolType]
     public partial class Tool_Asset

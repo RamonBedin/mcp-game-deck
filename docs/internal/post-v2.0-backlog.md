@@ -167,6 +167,8 @@ production context. Pipeline already built in `.claude/agents/`.
 | GameObject consolidation cycle | M | `roadmap.md::v2.2.x` + `.claude/reports/reviews/` | Review with escalations already answered (April 2026) — pick up here |
 | Prefab + AddAssetToScene cycle (cross-cutting decision: merge vs fold) | M | `roadmap.md::v2.2.x::Cross-cutting decisions` | |
 | Asset consolidation cycle | M | `roadmap.md::v2.2.x` | |
+| Asset — batch CRUD ops (G5 deferral) | M | `.claude/reports/reviews/review-Asset-20260519.md` (E6) | Batch move/delete/copy/rename for Asset domain. Pre-req: verify `BatchExecute` infrastructure handles AssetDatabase ops on main thread; if confirmed, route through `BatchExecute` rather than adding asset-specific batch tools. Decision deferred from Asset E6 on 2026-05-19. |
+| Asset — sprite slicing verification (G7 deferral) | S | `.claude/reports/reviews/review-Asset-20260519.md` (E7) | Texture-domain audit must verify whether sprite-sheet slicing (`SpriteMetaData[]` construction on `TextureImporter`) is covered by `Tool_Texture.ApplyPattern.cs`. If yes, G7 closed-elsewhere; if no, Texture audit picks it up as its own finding. |
 | Script consolidation cycle | M | `roadmap.md::v2.2.x` | |
 | Component consolidation cycle | M | `roadmap.md::v2.2.x` | Object ↔ ScriptableObject ↔ Component generic-modifier triangle |
 | Editor consolidation cycle | M | `roadmap.md::v2.2.x` | |
