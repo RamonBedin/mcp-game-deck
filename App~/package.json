@@ -9,8 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "icons": "node scripts/generate-icons.mjs",
-    "postinstall": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
