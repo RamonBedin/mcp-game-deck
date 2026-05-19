@@ -7,9 +7,11 @@ using UnityEngine.Networking;
 namespace GameDeck.Editor.Utils
 {
     /// <summary>
-    /// Checks GitHub for newer releases of MCP Game Deck and logs a console
-    /// message when an update is available. Runs once per editor session
-    /// (or once per day if the editor stays open).
+    /// Checks GitHub for newer releases of MCP Game Deck and writes the result to
+    /// EditorPrefs (<c>MCPGameDeck.UpdateAvailable</c>, <c>MCPGameDeck.LatestVersion</c>,
+    /// <c>MCPGameDeck.ReleaseUrl</c>) so consumers (toolbar pin, Tauri env vars) can
+    /// surface the signal without polling GitHub themselves. Runs once per editor
+    /// session (or once per day if the editor stays open).
     /// </summary>
     [InitializeOnLoad]
     public static class UpdateChecker
@@ -27,8 +29,9 @@ namespace GameDeck.Editor.Utils
 
         private const string GITHUB_API_URL = "https://api.github.com/repos/RamonBedin/mcp-game-deck/releases/latest";
         private const string LAST_CHECK_PREF = "GameDeck_LastUpdateCheck";
-        private const string LATEST_VERSION_PREF = "GameDeck_LatestVersion";
-        private const string RELEASE_URL_PREF = "GameDeck_ReleaseUrl";
+        private const string LATEST_VERSION_PREF = "MCPGameDeck.LatestVersion";
+        private const string RELEASE_URL_PREF = "MCPGameDeck.ReleaseUrl";
+        private const string UPDATE_AVAILABLE_PREF = "MCPGameDeck.UpdateAvailable";
         private const double CHECK_INTERVAL_HOURS = 24;
 
         #endregion
@@ -76,10 +79,6 @@ namespace GameDeck.Editor.Utils
 
             if (!string.IsNullOrEmpty(lastCheckStr) && DateTime.TryParse(lastCheckStr, out DateTime lastCheck) && (DateTime.UtcNow - lastCheck).TotalHours < CHECK_INTERVAL_HOURS)
             {
-                if (IsUpdateAvailable)
-                {
-                    LogUpdateAvailable();
-                }
                 return;
             }
 
@@ -120,25 +119,14 @@ namespace GameDeck.Editor.Utils
                     EditorPrefs.SetString(RELEASE_URL_PREF, htmlUrl);
                     EditorPrefs.SetString(LAST_CHECK_PREF, DateTime.UtcNow.ToString("O"));
 
-                    if (CompareVersions(version, CurrentVersion) > 0)
-                    {
-                        LogUpdateAvailable();
-                    }
+                    bool hasUpdate = CompareVersions(version, CurrentVersion) > 0;
+                    EditorPrefs.SetBool(UPDATE_AVAILABLE_PREF, hasUpdate);
                 }
                 finally
                 {
                     request.Dispose();
                 }
             };
-        }
-
-        /// <summary>
-        /// Logs an update notification to the Unity console.
-        /// </summary>
-        private static void LogUpdateAvailable()
-        {
-            Debug.Log($"[Game Deck] Update available: v{LatestVersion} (current: v{CurrentVersion}). " +
-                      $"Update in Packages/manifest.json or visit: {ReleaseUrl}");
         }
 
         /// <summary>

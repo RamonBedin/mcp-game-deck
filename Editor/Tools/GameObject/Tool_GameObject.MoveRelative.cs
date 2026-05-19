@@ -31,7 +31,7 @@ namespace GameDeck.Editor.Tools
         /// <param name="worldSpace">When true and no referenceObject is set, moves along world axes. Default true.</param>
         /// <returns>A <see cref="ToolResponse"/> confirming the new position, or an error when the target is not found.</returns>
         [McpTool("gameobject-move-relative", Title = "GameObject / Move Relative")]
-        [Description("Translates a GameObject in a named direction (forward/back/left/right/up/down) by a given " + "distance. The orientation frame is taken from a reference object, world space, or the object's own " + "transform. Registers the move with Undo.")]
+        [Description("Translates a GameObject in a named direction (forward/back/left/right/up/down) by a given distance. " + "Orientation-frame priority: (1) referenceObject when non-empty, (2) world axes when worldSpace=true, (3) the object's own transform axes. " + "Use this tool for named-direction moves (forward, up...) and reference-frame pivots; for explicit XYZ deltas use transform-move with relative=true. " + "Registers the move with Undo.")]
         public ToolResponse MoveRelative(
             [Description("Unity instance ID of the target GameObject. Pass 0 to use objectPath.")] int instanceId = 0,
             [Description("Hierarchy path of the target GameObject (e.g. 'World/Player'). Used when instanceId is 0.")] string objectPath = "",

@@ -1,0 +1,40 @@
+{
+  "$comment": "Shared permission config for Claude Code in this repo. Versioned. Do NOT remove deny entries without explicit approval from Ramon. Ramon owns all git operations via VS Code Source Control.",
+
+  "permissions": {
+    "deny": [
+      "Bash(git:*)",
+      "Bash(git)",
+      "Bash(gh:*)",
+      "Bash(gh)",
+      "Bash(rm -rf:*)",
+      "Bash(rm -f:*)",
+      "Bash(rm -r:*)"
+    ],
+
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet --version)",
+      "Bash(npm run build:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run test:*)",
+      "Bash(tsc:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node --version)",
+      "Write(.claude/reports/**)",
+      "Write(.claude/reports/audits/**)",
+      "Write(.claude/reports/reviews/**)",
+      "Write(.claude/reports/plans/**)",
+      "Write(.claude/reports/validations/**)",
+      "Write(.claude/state/**)",
+      "Read(.claude/**)",
+      "Read(Editor/**)",
+      "Read(Server~/**)",
+      "Read(docs/**)",
+      "Edit(.claude/state/**)",
+      "Edit(Editor/**)",
+      "Write(Editor/**)"
+    ]
+  }
+}
