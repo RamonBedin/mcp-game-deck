@@ -17,19 +17,19 @@ namespace GameDeck.Editor.Tools
         /// </summary>
         /// <param name="instanceId">Unity instance ID of the source GameObject. Pass 0 to use objectPath instead.</param>
         /// <param name="objectPath">Hierarchy path of the source GameObject. Used when instanceId is 0.</param>
-        /// <param name="savePath">Asset path to save the prefab (e.g. "Assets/Prefabs/Player.prefab"). Defaults to "Assets/{name}.prefab".</param>
-        /// <param name="keepConnection">When true, connects the scene object to the new prefab asset. Default true.</param>
+        /// <param name="savePath">Asset path to save the prefab (e.g. "Assets/Prefabs/Player.prefab"). Default empty: resolves to "Assets/{go.name}.prefab" at the project root.</param>
+        /// <param name="keepConnection">Keep prefab connection on the scene object so future edits to the prefab asset propagate. Default true. Set false only when you want a one-shot snapshot with no link back.</param>
         /// <returns>
         /// A <see cref="ToolResponse"/> confirming the prefab name and saved path,
         /// or an error if the GameObject is not found, the path is invalid, or creation fails.
         /// </returns>
         [McpTool("prefab-create", Title = "Prefab / Create")]
-        [Description("Creates a Prefab asset from a scene GameObject and saves it to the project.")]
+        [Description("Creates a Prefab asset from a scene GameObject and saves it to the project. " + "One of 'instanceId' or 'objectPath' is required. Prefer 'instanceId' if known from a recent tool call; otherwise use 'objectPath'.")]
         public ToolResponse Create(
             [Description("Instance ID of the source GameObject. 0 to use objectPath.")] int instanceId = 0,
             [Description("Hierarchy path of the source GameObject.")] string objectPath = "",
-            [Description("Asset path to save the prefab (e.g. 'Assets/Prefabs/Player.prefab').")] string savePath = "",
-            [Description("Keep prefab connection on the scene object. Default true.")] bool keepConnection = true
+            [Description("Asset path to save the prefab (e.g. 'Assets/Prefabs/Player.prefab'). Default empty: resolves to 'Assets/{go.name}.prefab' at the project root.")] string savePath = "",
+            [Description("Keep prefab connection on the scene object so future edits to the prefab asset propagate. Default true. Set false only when you want a one-shot snapshot with no link back.")] bool keepConnection = true
         )
         {
             return MainThreadDispatcher.Execute(() =>

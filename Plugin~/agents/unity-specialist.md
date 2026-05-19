@@ -41,7 +41,7 @@ Use these tools via MCP when working with Unity:
 - **Reflect**: `reflect-get-type`, `reflect-search`, `reflect-call-method` — introspect assemblies, types, namespaces
 - **Batch Execute**: `batch-execute` — multiple operations in one call
 - **Recompile**: `recompile-scripts` — force script recompilation
-- **Add Asset**: `add-asset-to-scene` — instantiate assets in scene
+- **Add Asset**: `prefab-instantiate` — instantiate prefabs or model assets in scene
 - **Camera**: `camera-get`, `camera-create`, `camera-set-fov`, `camera-screenshot` — cameras
 - **Graphics**: `graphics-get-settings`, `graphics-set-quality`, `graphics-stats`, `graphics-bake-start` — rendering
 - **Screenshot**: `screenshot-camera`, `screenshot-gameview`, `screenshot-sceneview` — capture screenshots for inspection

@@ -30,19 +30,19 @@ CREATING A NEW PREFAB:
 2. Use script-update-or-create to write any needed MonoBehaviour scripts
 3. Wait for compilation (recompile-status to verify)
 4. Add custom components to the GameObject
-5. Configure all serialized fields via update_component
-6. Save as prefab using create_prefab tool
+5. Configure all serialized fields via component-update
+6. Save as prefab using prefab-create
 7. Verify the prefab asset exists via mcp-game-deck://assets/t:Prefab
 
 EDITING AN EXISTING PREFAB:
 1. Check if prefab exists: mcp-game-deck://assets/t:Prefab filter by name
-2. Instantiate into scene with add-asset-to-scene
+2. Instantiate into scene with prefab-instantiate
 3. Make modifications (add/remove components, change values)
-4. Apply changes back to prefab (apply_prefab_overrides)
+4. Apply changes back to prefab (prefab-override with action ""apply-instance"")
 5. Remove the scene instance if no longer needed
 
 PREFAB VARIANTS:
-1. Load base prefab with add-asset-to-scene
+1. Load base prefab with prefab-instantiate
 2. Modify only the variant-specific properties
 3. Save as new prefab variant
 
@@ -54,7 +54,7 @@ GUIDELINES:
 - Test the prefab by instantiating and checking in Play mode
 
 TOOLS TO USE:
-- add-asset-to-scene — instantiate prefabs
+- prefab-instantiate — instantiate prefabs or model assets
 - scriptableobject-create/modify — create config assets
 - recompile-scripts, recompile-status — ensure scripts compile
 - reflect-get-type — verify component types exist";

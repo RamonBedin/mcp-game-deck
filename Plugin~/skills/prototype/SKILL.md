@@ -12,7 +12,7 @@ When this skill is invoked:
 
 2. **Rapid implementation** (throwaway code, skip normal standards):
    - Create scripts in a `Prototypes/` folder
-   - Use MCP tools to set up scene quickly (batch-execute, add-asset-to-scene)
+   - Use MCP tools to set up scene quickly (batch-execute, prefab-instantiate)
    - Use ScriptableObjects for quick config via scriptableobject-create/scriptableobject-modify
    - Skip documentation, skip tests, skip polish
 

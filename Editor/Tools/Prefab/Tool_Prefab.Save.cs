@@ -23,7 +23,7 @@ namespace GameDeck.Editor.Tools
         /// is currently active or the save operation fails.
         /// </returns>
         [McpTool("prefab-save", Title = "Prefab / Save")]
-        [Description("Saves the Prefab currently open in Prefab Edit Mode back to disk. " + "No-ops and returns an error when no Prefab Edit Mode stage is active.")]
+        [Description("Saves the Prefab currently open in Prefab Edit Mode back to disk. " + "Call after 'prefab-open' and your modifications. Do NOT call after 'prefab-modify-contents' (which saves on its own). " + "No-ops and returns an error when no Prefab Edit Mode stage is active.")]
         public ToolResponse Save()
         {
             return MainThreadDispatcher.Execute(() =>

@@ -50,7 +50,7 @@ Example (Portuguese user): "💡 Para essa tarefa, recomendo trocar para o agent
 **GameObject**: gameobject-create, -update, -get, -delete, -select, -duplicate, -find, -set-parent, -look-at, -move-relative
 **Transform**: transform-move, -rotate, -scale
 **Component**: component-add, -update, -get, -remove, -list
-**Scene**: scene-create, -load, -save, -delete, -unload, -get-info, -list, -get-hierarchy, -view-frame, add-asset-to-scene
+**Scene**: scene-create, -load, -save, -delete, -unload, -get-info, -list, -get-hierarchy, -view-frame
 **Prefab**: prefab-create, -instantiate, -open, -save, -close, -get-info, -modify-contents
 **Material**: material-create, -assign, -update, -get-info
 **Asset**: asset-find, -get-info, -create, -create-folder, -rename, -move, -copy, -delete, -refresh, -get-import-settings, -set-import-settings

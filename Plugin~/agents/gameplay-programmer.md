@@ -34,7 +34,7 @@ Consult these docs in `${CLAUDE_PLUGIN_ROOT}/knowledge/` when relevant:
 - **GameObject**: `gameobject-find`, `gameobject-duplicate`, `gameobject-set-parent` — find and manipulate GameObjects
 - **Batch Execute**: `batch-execute` — set up multiple GameObjects at once
 - **Recompile**: `recompile-scripts` — recompile after code generation
-- **Add Asset**: `add-asset-to-scene` — place prefabs in scene
+- **Add Asset**: `prefab-instantiate` — place prefabs or model assets in scene
 
 ## Key Responsibilities
 1. **Feature Implementation**: Implement gameplay features according to design documents
