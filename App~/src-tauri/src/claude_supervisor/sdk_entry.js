@@ -974,13 +974,31 @@ function buildMcpServers()
     return undefined;
   }
 
+  let authToken = process.env.UNITY_MCP_AUTH_TOKEN ?? "";
+
+  if (authToken === "" && projectPath)
+  {
+    try
+    {
+      const tokenPath = path.join(projectPath, "Library", "GameDeck", "auth-token");
+      authToken = fsSync.readFileSync(tokenPath, "utf8").trim();
+    }
+    catch
+    {
+      // Token file absent or unreadable — proxy falls back to unauthenticated requests.
+    }
+  }
+
   return {
     "game-deck": {
       command: "node",
       args: [proxyPath],
+      alwaysLoad: true,
       env: {
         UNITY_MCP_HOST: process.env.UNITY_MCP_HOST ?? "",
         UNITY_MCP_PORT: process.env.UNITY_MCP_PORT ?? "",
+        UNITY_MCP_AUTH_TOKEN: authToken,
+        PROJECT_CWD: process.env.UNITY_PROJECT_PATH ?? "",
       },
     },
   };

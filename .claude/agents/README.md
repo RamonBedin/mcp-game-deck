@@ -62,6 +62,24 @@ Or natural language:
 > "Use tool-consolidator with the Animation plan from 2026-04-17"
 > "Use build-validator on the Animation changes"
 
+## Known Pitfalls (auditors and planners must read)
+
+### JSON-invalid float sentinels in tool defaults
+
+Defaults of `float.NaN`, `float.PositiveInfinity`, `float.NegativeInfinity` (and the `double` equivalents) used as "not provided" markers serialize to invalid JSON literals (`-Infinity`, `NaN`) that strict MCP-SDK parsers reject. When this happens the C# server keeps reporting `connected`, but the CLI silently registers **zero tools** for the entire server — no surface error, just absence.
+
+This bit MCP Game Deck in May 2026 (KI-001b). The schema serializer in `Editor/MCP/Utils/JsonHelper.cs` now guards against non-finite floats via `IsValidJsonDefault`, so existing tools are safe. But **a new tool that introduces another such sentinel will reopen the same bug** if the guard ever regresses.
+
+`tool-auditor` Phase 4 has a mandatory check for these sentinels — see [tool-auditor.md](./tool-auditor.md#json-invalid-sentinel-pitfall-required-reading). `consolidation-planner` and `tool-consolidator` should refuse to introduce them when designing or applying refactors.
+
+Recommended alternatives:
+- `int` parameters: `int.MinValue` (excluded from natural range)
+- `string` parameters: `""` (documented semantics)
+- `bool` parameters: nullable string sentinel `"true" | "false" | ""` (already the project convention)
+- `float`/`double` parameters: prefer a companion `bool setX` flag, OR a `string`-typed param parsed by the tool, OR redesign the action signature to make the field always meaningful
+
+See [docs/internal/known-issues.md](../../docs/internal/known-issues.md) → Resolved → KI-001b for the full incident write-up.
+
 ## Design Principles
 
 1. **Narrow mission.** Each agent does ONE thing well.

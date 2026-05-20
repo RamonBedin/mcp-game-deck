@@ -147,6 +147,28 @@ For each parameter, check:
 - **Required but commonly same value:** params with no default that 90% of callers would pass the same value for. Suggest what a sensible default would be (but don't write code).
 - **Default that doesn't match common case:** flag if a default path or value doesn't match typical usage.
 - **Magic defaults:** defaults that are valid but non-obvious. These need documentation.
+- **JSON-invalid sentinels (P0 — flag immediately, do NOT downgrade):** any default that is `float.NaN`, `float.PositiveInfinity`, `float.NegativeInfinity`, `double.NaN`, `double.PositiveInfinity`, or `double.NegativeInfinity` — used as "not provided" markers. See *JSON-invalid sentinel pitfall* below for why these are catastrophic.
+
+#### JSON-invalid sentinel pitfall (REQUIRED READING)
+
+`Infinity`, `-Infinity`, and `NaN` are **not valid JSON tokens** per RFC 8259 §6. When the C# MCP server serializes a tool schema with one of these as a default, the published JSON for `tools/list` becomes literally `"default":-Infinity` (no quotes). Strict JSON parsers like the MCP SDK's reject the entire response, the proxy returns an error, and the `claude` CLI registers **zero tools** for the server — while the server itself still shows `status: "connected"` because the `initialize` handshake had already succeeded. No surface error reaches the user; tools just don't exist.
+
+This bug bit MCP Game Deck in May 2026 (`Tool_Prefab.ModifyContents.cs` had `float fieldValueFloat = float.NegativeInfinity`). Diagnosis took multiple hours because:
+
+- Direct POST tests with `Invoke-RestMethod` succeeded — PowerShell's JSON parser is tolerant.
+- The server appeared healthy (274 tools listed when probed manually).
+- The SDK's strict parser silently dropped the whole response on the proxy → CLI hop.
+
+The fix in `Editor/MCP/Utils/JsonHelper.cs` (method `IsValidJsonDefault`) now guards `AppendInputSchema` so non-finite floats omit the `default` field rather than emitting an invalid token. That fix is upstream; this rule exists so a NEW tool that introduces another such sentinel is caught at audit time, not in production.
+
+**What to flag.** If you find ANY default of `float.NaN`, `±Infinity`, `double.NaN`, `±Infinity` in a tool parameter:
+
+- Mark the finding as `Confidence: high` and `Impact: 5` (this can silently kill the entire server's tool registration if the schema guard ever regresses).
+- Name the file:line of the offending parameter.
+- Recommend an alternative sentinel: `string` empty-string with documented semantics, or `int.MinValue` for integer ranges that exclude it, or a separate boolean `setX` companion param. **Never** suggest replacing one float sentinel with another.
+- Cite the May 2026 incident: "see KI-001b in `docs/internal/known-issues.md`" so reviewers have the full context.
+
+This check is mandatory for every audit, even when no other Phase 4 findings exist.
 - **Missing defaults on truly optional params:** params marked optional by intent but declared as required.
 
 ### Phase 5 — Capability Gaps
