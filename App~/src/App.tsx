@@ -24,6 +24,7 @@ import HudStrip from "./components/shell/HudStrip";
 import NavRail from "./components/shell/NavRail";
 import UpdateBanner from "./components/UpdateBanner";
 import { useCatalogSubscription } from "./hooks/useCatalogSubscription";
+import { useConversationSubscription } from "./hooks/useConversationSubscription";
 import { usePlansSubscription } from "./hooks/usePlansSubscription";
 import { useRulesSubscription } from "./hooks/useRulesSubscription";
 import { checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus } from "./ipc/commands";
@@ -58,6 +59,7 @@ export default function App()
   usePlansSubscription();
   useRulesSubscription();
   useCatalogSubscription();
+  useConversationSubscription();
 
   // #region Effects
 

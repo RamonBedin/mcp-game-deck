@@ -136,6 +136,14 @@ export default function SessionList({ onCollapse }: SessionListProps = {})
       return;
     }
 
+    const conversation = useConversationStore.getState();
+    
+    if (conversation.inFlight || conversation.messages.length > 0)
+    {
+      autoResumedRef.current = true;
+      return;
+    }
+
     const mostRecent = sessions.reduce((acc, s) => s.lastModified > acc.lastModified ? s : acc,);
     autoResumedRef.current = true;
     void handleResume(mostRecent.id);

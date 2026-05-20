@@ -1,6 +1,5 @@
 /**
- * Owns the agent-message subscription and renders the conversation
- * with new visual atoms:
+ * Renders the conversation with the new visual atoms:
  *
  *   - Empty state replaced by `ChatLaunchpad`.
  *   - `tool-use` + `tool-result` blocks pair into a single
@@ -28,8 +27,7 @@ import QuestionCard from "../components/requests/QuestionCard";
 import SessionList from "../components/SessionList";
 import Avatar from "../components/atoms/Avatar";
 import { useCollapsedColumn } from "../hooks/useCollapsedColumn";
-import { cancelCurrentTurn, respondToRequest, startNewSession } from "../ipc/commands";
-import { onAgentMessage } from "../ipc/events";
+import { cancelCurrentTurn, respondToRequest } from "../ipc/commands";
 import type { AskUserQuestionOutput, AskUserRequestedPayload, Block, Message, PermissionRequestedPayload,} from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
@@ -135,142 +133,13 @@ const pairToolBlocks = (blocks: Block[]): RenderedBlock[] => {
 export default function ChatRoute()
 {
   const messages = useConversationStore((s) => s.messages);
-  const appendDelta = useConversationStore((s) => s.appendDelta);
-  const appendToolUseBlock = useConversationStore((s) => s.appendToolUseBlock);
-  const appendToolResultBlock = useConversationStore((s) => s.appendToolResultBlock);
-  const completeTurn = useConversationStore((s) => s.completeTurn);
-  const appendErrorMessage = useConversationStore((s) => s.appendErrorMessage);
-  const appendRequestBlock = useConversationStore((s) => s.appendRequestBlock);
-  const appendAutoAllowedBlock = useConversationStore((s) => s.appendAutoAllowedBlock);
   const markRequestAnswered = useConversationStore((s) => s.markRequestAnswered);
-  const endTurn = useConversationStore((s) => s.endTurn);
   const inFlight = useConversationStore((s) => s.inFlight);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const [sessionsCollapsed, toggleSessionsCollapsed] = useCollapsedColumn("sessions");
 
   // #region Effects
-
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    onAgentMessage((payload) => {
-      if (cancelled)
-      {
-        return;
-      }
-
-      const m = payload.message;
-      switch (m.type)
-      {
-        case "text-delta":
-          appendDelta(m.turnId, m.text);
-          break;
-        case "tool-use":
-          appendToolUseBlock(m.turnId, m.toolUseId, m.name, m.input);
-          break;
-        case "tool-result":
-          appendToolResultBlock(m.turnId, m.toolUseId, m.content, m.isError);
-          break;
-        case "assistant-turn-complete":
-          completeTurn(m.turnId);
-          endTurn();
-          break;
-        case "error":
-          appendErrorMessage(m.message);
-          endTurn();
-
-          if (/no conversation found with session id/i.test(m.message))
-          {
-            void startNewSession().catch((err) => {
-              console.error("[chat] auto-recover startNewSession failed:", err);
-            });
-            useConversationStore.getState().setCurrentSessionId(null);
-          }
-          break;
-        case "permission-requested":
-          appendRequestBlock(m.turnId, {
-            type: "request",
-            requestId: m.requestId,
-            subtype: "permission",
-            payload: {
-              requestId:      m.requestId,
-              turnId:         m.turnId,
-              agentId:        m.agentId,
-              toolName:       m.toolName,
-              input:          m.input,
-              blockedPath:    m.blockedPath,
-              decisionReason: m.decisionReason,
-            },
-            state: "pending",
-          });
-          break;
-        case "ask-user-requested":
-          appendRequestBlock(m.turnId, {
-            type:      "request",
-            requestId: m.requestId,
-            subtype:   "question",
-            payload: {
-              requestId: m.requestId,
-              turnId:    m.turnId,
-              agentId:   m.agentId,
-              input:     m.input,
-            },
-            state: "pending",
-          });
-          break;
-        case "request-resolved":
-          if (m.outcome === "auto-allowed")
-          {
-            if (m.turnId !== null && m.toolName !== null)
-            {
-              appendAutoAllowedBlock(m.turnId, m.requestId, m.toolName);
-            }
-          }
-          else
-          {
-            markRequestAnswered(m.requestId, m.answer ?? undefined, m.outcome);
-          }
-          break;
-        case "ready":
-        case "assistant-text":
-        case "permission-mode-changed":
-        case "health-ok":
-        case "health-failed":
-        case "catalog-ready":
-          break;
-      }
-    })
-      .then((u) => {
-        if (cancelled)
-        {
-          u();
-        }
-        else
-        {
-          unlisten = u;
-        }
-      })
-      .catch((err) => {
-        console.error("[chat] failed to subscribe to agent-message:", err);
-      });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [
-    appendDelta,
-    appendToolUseBlock,
-    appendToolResultBlock,
-    completeTurn,
-    appendErrorMessage,
-    appendRequestBlock,
-    appendAutoAllowedBlock,
-    markRequestAnswered,
-    endTurn,
-  ]);
 
   // Pin scroll to bottom on new messages.
   useEffect(() => {
