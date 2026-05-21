@@ -21,3 +21,22 @@
 pub fn get_env_var(name: String) -> Option<String> {
     std::env::var(name).ok()
 }
+
+/// Reads the OS user's login name from `USERNAME` (Windows) or `USER`
+/// (Unix). Used by the React side to derive avatar initials for user
+/// messages instead of the hardcoded `"RB"` placeholder.
+///
+/// # Returns
+///
+/// `Some(name)` when the platform-appropriate env var is set and
+/// non-empty; `None` otherwise. The frontend treats `None` and `""` the
+/// same — both fall back to a generic `"??"` avatar.
+#[tauri::command]
+pub fn get_os_username() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    let var = "USERNAME";
+    #[cfg(not(target_os = "windows"))]
+    let var = "USER";
+
+    std::env::var(var).ok().filter(|s| !s.is_empty())
+}

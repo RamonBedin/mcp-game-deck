@@ -15,27 +15,6 @@ Entries are append-only by ID. When an issue is resolved, move its entry from **
 
 ## Open
 
-### KI-006 — User avatar initials hardcoded to "RB"
-
-- **Priority:** P1
-- **Scope:** XS
-- **Status:** open
-- **Discovered:** Nicollas dogfood, May 2026
-
-**Symptom.** Every user message shows "RB" as the avatar initials regardless of OS user. Nicollas sees "RB" in his sessions — Ramon's initials baked into the JSX.
-
-**Diagnosis (confirmed in code).** `App~/src/routes/ChatRoute.tsx` MessageView for user role:
-
-```tsx
-<Avatar variant="user" initials="RB" size={28} />
-```
-
-Literal string hardcoded.
-
-**Fix direction.** Add a Tauri command that returns the OS user's display name (or fall back to `USERNAME` / `USER` env), generate initials from first + last token, expose via a small hook or a one-shot at app boot stored in `settingsStore`. Fallback to first two chars of the username if the name has only one token.
-
----
-
 ### KI-007 — No visible confirmation after Allow / Deny
 
 - **Priority:** P1
@@ -79,6 +58,22 @@ Same limitation hits `plugin_dir()` ([paths.rs:92-94](../../App~/src-tauri/src/c
 ---
 
 ## Resolved
+
+### KI-006 — User avatar initials hardcoded to "RB"
+
+- **Priority:** P1
+- **Scope:** XS
+- **Status:** resolved 2026-05-21
+- **Discovered:** Nicollas dogfood, May 2026
+- **Fixed in:** [App~/src-tauri/src/commands/env.rs](../../App~/src-tauri/src/commands/env.rs), [App~/src-tauri/src/lib.rs](../../App~/src-tauri/src/lib.rs), [App~/src/ipc/commands.ts](../../App~/src/ipc/commands.ts), [App~/src/utils/initials.ts](../../App~/src/utils/initials.ts) (new), [App~/src/hooks/useUserInitials.ts](../../App~/src/hooks/useUserInitials.ts) (new), [App~/src/routes/ChatRoute.tsx](../../App~/src/routes/ChatRoute.tsx)
+
+**Symptom (historical).** Every user message showed "RB" as the avatar initials regardless of OS user — Ramon's initials baked into the JSX at [ChatRoute.tsx:282](../../App~/src/routes/ChatRoute.tsx#L282) as a literal string. Nicollas saw "RB" in his sessions.
+
+**Resolution.** New Tauri command `get_os_username` returns `USERNAME` (Windows) or `USER` (Unix), filtering empty strings to `None`. Frontend wraps it via `getOsUsername()`, derives 2-letter initials with a new `deriveInitials` util (splits on whitespace / `.` / `_` / `-`: 2+ tokens → first letter of first + last, single token → first 2 chars, else `"??"`), and exposes the result through a `useUserInitials` hook with module-level caching — one Tauri roundtrip per app lifetime, shared across components. `ChatRoute` calls the hook once and passes the initials down to `MessageView` as a prop.
+
+Skipped Win32 `GetUserNameExW` for the OS display name — the login-name env var is sufficient for the avatar use case and avoids platform-specific FFI for one cosmetic surface. Initial render shows `"??"` until the fetch resolves (sub-frame on Tauri's IPC), no layout shift since the Avatar box is fixed-size.
+
+---
 
 ### KI-009 — Built-in commands don't render in the Tauri app
 

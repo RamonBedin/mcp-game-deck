@@ -159,6 +159,8 @@ export const updateSettings = (patch: AppSettingsPatch): Promise<void> => invoke
 
 export const getEnvVar = (name: string): Promise<string | null> => invoke("get_env_var", { name });
 
+export const getOsUsername = (): Promise<string | null> => invoke("get_os_username");
+
 // #endregion
 
 // #region Dev-only

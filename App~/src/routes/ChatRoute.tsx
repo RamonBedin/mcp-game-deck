@@ -33,6 +33,7 @@ import QuestionCard from "../components/requests/QuestionCard";
 import SessionList from "../components/SessionList";
 import Avatar from "../components/atoms/Avatar";
 import { useCollapsedColumn } from "../hooks/useCollapsedColumn";
+import { useUserInitials } from "../hooks/useUserInitials";
 import { cancelCurrentTurn, respondToRequest } from "../ipc/commands";
 import type { AskUserQuestionOutput, AskUserRequestedPayload, Block, Message, PermissionRequestedPayload, PlanSummaryPayload, SubagentPhase, SubagentUsage, SystemMessageSource,} from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
@@ -165,6 +166,7 @@ export default function ChatRoute()
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const [sessionsCollapsed, toggleSessionsCollapsed] = useCollapsedColumn("sessions");
+  const userInitials = useUserInitials();
 
   // #region Effects
 
@@ -241,6 +243,7 @@ export default function ChatRoute()
               <MessageView
                 key={m.id}
                 message={m}
+                userInitials={userInitials}
                 onPermissionDecision={handlePermissionDecision}
                 onQuestionSubmit={handleQuestionSubmit}
               />
@@ -267,11 +270,12 @@ export default function ChatRoute()
 interface MessageViewProps
 {
   message: Message;
+  userInitials: string;
   onPermissionDecision: (block: Extract<Block, { type: "request" }>, outcome: "allow" | "allow-always" | "deny") => void;
   onQuestionSubmit:    (block: Extract<Block, { type: "request" }>, answer: AskUserQuestionOutput) => void;
 }
 
-const MessageView = ({ message, onPermissionDecision, onQuestionSubmit }: MessageViewProps) => {
+const MessageView = ({ message, userInitials, onPermissionDecision, onQuestionSubmit }: MessageViewProps) => {
   if (message.role === "user")
   {
     return (
@@ -279,7 +283,7 @@ const MessageView = ({ message, onPermissionDecision, onQuestionSubmit }: Messag
         <div className="rounded-r-3 border border-line bg-bg-3 px-3.5 py-2.5 text-[13.5px] leading-relaxed text-txt-1 max-w-full">
           {message.blocks.map((b, i) => b.type === "text" ? <span key={i} className="whitespace-pre-wrap">{b.text}</span> : null)}
         </div>
-        <Avatar variant="user" initials="RB" size={28} />
+        <Avatar variant="user" initials={userInitials} size={28} />
       </div>
     );
   }

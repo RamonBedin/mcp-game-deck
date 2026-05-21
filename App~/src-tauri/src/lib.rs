@@ -180,6 +180,7 @@ pub fn run() {
             commands::dev::dev_emit_test_event,
             commands::dev::dev_call_unity_tool,
             commands::env::get_env_var,
+            commands::env::get_os_username,
             commands::install::check_claude_install_status,
             commands::install::start_sdk_install,
             commands::knowledge::list_knowledge_docs,
