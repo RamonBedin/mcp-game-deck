@@ -9,6 +9,7 @@
  */
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Plan } from "../ipc/types";
 import { markdownRenderers } from "./requests/markdown-renderers";
 
@@ -32,7 +33,7 @@ export default function PlanViewer({ plan }: PlanViewerProps)
 {
   return (
     <div className="flex-1 overflow-y-auto p-4">
-      <ReactMarkdown components={markdownRenderers}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownRenderers}>
         {plan.content}
       </ReactMarkdown>
     </div>

@@ -86,4 +86,27 @@ export const markdownRenderers: Components = {
       {children}
     </blockquote>
   ),
+  del: ({ children }) => (
+    <del className="text-slate-400 line-through">{children}</del>
+  ),
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="w-full border-collapse text-sm text-slate-200">
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }) => (
+    <thead className="border-b border-slate-600 bg-slate-900/40">{children}</thead>
+  ),
+  tbody: ({ children }) => <tbody>{children}</tbody>,
+  tr: ({ children }) => (
+    <tr className="border-b border-slate-800 last:border-b-0">{children}</tr>
+  ),
+  th: ({ children }) => (
+    <th className="px-2 py-1.5 text-left font-semibold text-slate-100">{children}</th>
+  ),
+  td: ({ children }) => (
+    <td className="px-2 py-1.5 align-top">{children}</td>
+  ),
 };

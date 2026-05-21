@@ -15,21 +15,6 @@ Entries are append-only by ID. When an issue is resolved, move its entry from **
 
 ## Open
 
-### KI-005 — Markdown tables not rendered
-
-- **Priority:** P1
-- **Scope:** XS
-- **Status:** open
-- **Discovered:** Nicollas dogfood, May 2026
-
-**Symptom.** Markdown tables in assistant messages render as literal pipe-separated text instead of a styled table.
-
-**Preliminary diagnosis.** `App~/src/components/requests/markdown-renderers.tsx` likely uses `react-markdown` without `remark-gfm` (GitHub-Flavored Markdown). Tables, strikethrough, task-lists, and autolinks are GFM features.
-
-**Fix direction.** Add `remark-gfm` to the renderer's `remarkPlugins`. Confirm by reading the file before fixing.
-
----
-
 ### KI-006 — User avatar initials hardcoded to "RB"
 
 - **Priority:** P1
@@ -121,6 +106,27 @@ Same limitation hits `plugin_dir()` ([paths.rs:92-94](../../App~/src-tauri/src/c
 4. `plan-summary` — see [[KI-004]] (same patch landed both).
 
 Stale `BUILTIN_COMMANDS` entries trimmed. The 3 `[probe-ki009]` catch-alls were removed after the fix landed.
+
+---
+
+### KI-005 — Markdown tables not rendered (root cause: assistant chat text wasn't going through `react-markdown` at all)
+
+- **Priority:** P1
+- **Scope:** XS
+- **Status:** resolved 2026-05-21
+- **Discovered:** Nicollas dogfood, May 2026
+- **Fixed in:** [App~/package.json](../../App~/package.json), [App~/src/components/requests/markdown-renderers.tsx](../../App~/src/components/requests/markdown-renderers.tsx), [App~/src/routes/ChatRoute.tsx](../../App~/src/routes/ChatRoute.tsx), [App~/src/components/PlanViewer.tsx](../../App~/src/components/PlanViewer.tsx), [App~/src/components/RuleViewer.tsx](../../App~/src/components/RuleViewer.tsx), [App~/src/components/library/KnowledgeReader.tsx](../../App~/src/components/library/KnowledgeReader.tsx), [App~/src/components/chat/SystemMessageBlock.tsx](../../App~/src/components/chat/SystemMessageBlock.tsx), [App~/src/components/requests/PlanSummaryCard.tsx](../../App~/src/components/requests/PlanSummaryCard.tsx)
+
+**Symptom (historical).** Markdown tables in assistant messages rendered as literal pipe-separated text instead of styled tables. Strikethrough, task-lists and other GFM features would also have shown as literals — only tables were loud enough for the dogfooder to flag.
+
+**Root cause (corrected diagnosis).** The KI's preliminary note ("`markdown-renderers.tsx` missing `remark-gfm`") was incomplete. Two separate gaps compounded:
+
+1. **Assistant chat text never passed through `react-markdown` at all.** [ChatRoute.tsx](../../App~/src/routes/ChatRoute.tsx) rendered the `text` block of an assistant message as plain text inside a `<div className="whitespace-pre-wrap">`. Tables showed as pipes because no markdown was being rendered — full stop. `**bold**`, `## headings`, `- lists` would have shown as literals too if a user had thought to check.
+2. **The 5 callsites that *did* use `react-markdown`** (PlanViewer, RuleViewer, KnowledgeReader, SystemMessageBlock, PlanSummaryCard) did not pass `remarkPlugins`, so GFM features were off even where markdown rendering existed.
+
+**Resolution.** Added `remark-gfm` as a dependency. Wrapped the assistant text block in [ChatRoute.tsx](../../App~/src/routes/ChatRoute.tsx) in `<ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownRenderers}>` and removed the now-conflicting `whitespace-pre-wrap` from the wrapper (react-markdown's `<p>` controls spacing). Added `remarkPlugins={[remarkGfm]}` to all 5 existing callsites. Extended both renderer maps (the shared [markdownRenderers](../../App~/src/components/requests/markdown-renderers.tsx) and KnowledgeReader's own [buildRenderers](../../App~/src/components/library/KnowledgeReader.tsx)) with `table` / `thead` / `tbody` / `tr` / `th` / `td` / `del` overrides — slate tokens in the shared map, `txt-*` / `bg-*` / `line-*` tokens in the reader (which also wraps cell content with its search-highlight helper).
+
+**Lesson.** A KI's "preliminary diagnosis" pointing at a single file needs to be confirmed end-to-end. The renderer module was a real gap, but the louder bug was that the chat surface had no markdown rendering at all — indistinguishable from the reporter's perspective ("tables aren't styled" vs "tables aren't rendered" both show pipes).
 
 ---
 

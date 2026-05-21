@@ -18,12 +18,15 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import ChatInput from "../components/ChatInput";
 import ChatLaunchpad from "../components/chat/ChatLaunchpad";
 import SubagentStatusPanel from "../components/chat/SubagentStatusPanel";
 import SystemMessageBlock from "../components/chat/SystemMessageBlock";
 import ToolCallNarrativeBlock, { type ToolCallStatus } from "../components/chat/ToolCallNarrativeBlock";
 import WorkingStrip from "../components/chat/WorkingStrip";
+import { markdownRenderers } from "../components/requests/markdown-renderers";
 import PermissionRequestCard from "../components/requests/PermissionRequestCard";
 import PlanSummaryCard from "../components/requests/PlanSummaryCard";
 import QuestionCard from "../components/requests/QuestionCard";
@@ -300,8 +303,10 @@ const MessageView = ({ message, onPermissionDecision, onQuestionSubmit }: Messag
           if (r.kind === "text")
           {
             return (
-              <div key={i} className="text-[14px] leading-relaxed text-txt-1 whitespace-pre-wrap">
-                {r.text}
+              <div key={i} className="text-[14px] leading-relaxed text-txt-1">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownRenderers}>
+                  {r.text}
+                </ReactMarkdown>
               </div>
             );
           }

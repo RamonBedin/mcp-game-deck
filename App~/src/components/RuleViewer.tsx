@@ -16,6 +16,7 @@
  */
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Rule } from "../ipc/types";
 import { markdownRenderers } from "./requests/markdown-renderers";
 
@@ -57,7 +58,7 @@ export default function RuleViewer({ rule }: RuleViewerProps)
   const appliesTo = extractAppliesTo(rule);
   return (
     <div className="flex-1 overflow-y-auto p-4">
-      <ReactMarkdown components={markdownRenderers}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownRenderers}>
         {rule.content}
       </ReactMarkdown>
       {appliesTo.length > 0 && (

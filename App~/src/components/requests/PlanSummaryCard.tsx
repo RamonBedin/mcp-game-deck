@@ -16,6 +16,7 @@
  */
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { PlanSummaryPayload } from "../../ipc/types";
 import Button from "../atoms/Button";
 import Pill from "../atoms/Pill";
@@ -70,7 +71,7 @@ export default function PlanSummaryCard({payload, state, outcome, onDecision,}: 
   const body = (
     <div className="rounded-r-2 bg-bg-0 border border-line-soft px-3.5 py-2.5 max-h-96 overflow-y-auto text-[13px] leading-relaxed text-txt-1">
       {payload.plan.length > 0
-        ? <ReactMarkdown components={markdownRenderers}>{payload.plan}</ReactMarkdown>
+        ? <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownRenderers}>{payload.plan}</ReactMarkdown>
         : <span className="text-txt-4 italic">(empty plan)</span>}
     </div>
   );

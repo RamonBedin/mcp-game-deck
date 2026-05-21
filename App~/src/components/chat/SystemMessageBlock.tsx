@@ -15,6 +15,7 @@
  */
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { SystemMessageSource } from "../../ipc/types";
 import Pill from "../atoms/Pill";
 import { markdownRenderers } from "../requests/markdown-renderers";
@@ -58,7 +59,7 @@ export default function SystemMessageBlock({ text, source }: SystemMessageBlockP
         <span className="font-mono text-[10.5px] text-txt-5 ml-auto">{labelFor(source)}</span>
       </div>
       <div className="px-3 py-2 font-mono text-[12px] leading-relaxed text-txt-2">
-        <ReactMarkdown components={markdownRenderers}>{text}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownRenderers}>{text}</ReactMarkdown>
       </div>
     </div>
   );

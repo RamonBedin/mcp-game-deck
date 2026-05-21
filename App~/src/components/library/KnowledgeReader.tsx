@@ -14,6 +14,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { highlightInChildren } from "../../lib/highlightMatch";
 import Button from "../atoms/Button";
 import IconButton from "../atoms/IconButton";
@@ -176,6 +177,29 @@ function buildRenderers(query: string): Components
       </blockquote>
     ),
     hr: () => <hr className="my-6 border-t border-line-soft" />,
+    del: ({ children }) => (
+      <del className="text-txt-4 line-through">{wrap(children)}</del>
+    ),
+    table: ({ children }) => (
+      <div className="my-3.5 overflow-x-auto">
+        <table className="w-full border-collapse text-[13.5px] text-txt-2">
+          {children}
+        </table>
+      </div>
+    ),
+    thead: ({ children }) => (
+      <thead className="border-b border-line-hard bg-bg-0/50">{children}</thead>
+    ),
+    tbody: ({ children }) => <tbody>{children}</tbody>,
+    tr: ({ children }) => (
+      <tr className="border-b border-line-soft last:border-b-0">{children}</tr>
+    ),
+    th: ({ children }) => (
+      <th className="px-3 py-2 text-left font-semibold text-txt-1">{wrap(children)}</th>
+    ),
+    td: ({ children }) => (
+      <td className="px-3 py-2 align-top leading-[1.6]">{wrap(children)}</td>
+    ),
   };
 }
 
@@ -321,7 +345,7 @@ export default function KnowledgeReader({docs, initialDocId, onOpenInChat, highl
         <div ref={bodyRef} className="flex-1 overflow-auto px-12 py-8">
           <div className="mx-auto" style={{ maxWidth: 760 }}>
             {selectedDoc !== null && (
-              <ReactMarkdown components={renderers}>{selectedDoc.body}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={renderers}>{selectedDoc.body}</ReactMarkdown>
             )}
           </div>
         </div>
