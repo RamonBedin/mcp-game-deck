@@ -3,10 +3,13 @@
  * current session is using. Mounted in the right-aligned section of
  * `HudStrip` next to the session label.
  *
- * Reads `turnUsage` + `turnUsageModel` from `conversationStore`, which
- * are written every time the supervisor emits a `usage-update`
+ * Reads `turnUsage` + `turnContextWindow` from `conversationStore`,
+ * both written every time the supervisor emits a `usage-update`
  * envelope (end of each turn). The arc fills proportional to
- * `input + cache_read + cache_creation` over the model's max context.
+ * `input + cache_read + cache_creation` over `turnContextWindow` —
+ * which is the SDK's `result.modelUsage[<model>].contextWindow`, the
+ * authoritative max for whatever model the turn used. No per-model
+ * limits are hardcoded here.
  *
  * Color band tracks risk:
  *   <  50% → info (cyan)
@@ -24,19 +27,6 @@ import type { TurnUsage } from "../../ipc/types";
 import { useConversationStore } from "../../stores/conversationStore";
 
 // #region Helpers
-
-const modelMaxTokens = (model: string | null): number => {
-  if (model === null || model.length === 0)
-  {
-    return 200_000;
-  }
-
-  if (model.includes("[1m]") || /\b1m\b/i.test(model))
-  {
-    return 1_000_000;
-  }
-  return 200_000;
-};
 
 const usedTokens = (usage: TurnUsage): number => {
   const input         = typeof usage.input_tokens                 === "number" ? usage.input_tokens                 : 0;
@@ -76,28 +66,28 @@ const arcColor = (pct: number): string => {
 // #region Component
 
 /**
- * Renders the context ring. Returns `null` until the first
- * `usage-update` arrives — no value to show on a fresh session.
+ * Renders the ring. Returns `null` until both a turn `usage` and a
+ * `contextWindow` are available — no value to show on a fresh session
+ * or while the first turn is still streaming.
  *
  * @returns The ring element, or `null` when no usage data is available.
  */
 export default function ContextRing()
 {
   const turnUsage = useConversationStore((s) => s.turnUsage);
-  const turnUsageModel = useConversationStore((s) => s.turnUsageModel);
+  const turnContextWindow = useConversationStore((s) => s.turnContextWindow);
   const sendMessage = useConversationStore((s) => s.sendMessage);
 
   const view = useMemo(() => {
-    if (turnUsage === null)
+    if (turnUsage === null || turnContextWindow === null || turnContextWindow <= 0)
     {
       return null;
     }
 
-    const max = modelMaxTokens(turnUsageModel);
     const used = usedTokens(turnUsage);
-    const pct = Math.max(0, Math.min(100, (used / max) * 100));
-    return { used, max, pct, color: arcColor(pct) };
-  }, [turnUsage, turnUsageModel]);
+    const pct = Math.max(0, Math.min(100, (used / turnContextWindow) * 100));
+    return { used, max: turnContextWindow, pct, color: arcColor(pct) };
+  }, [turnUsage, turnContextWindow]);
 
   if (view === null)
   {

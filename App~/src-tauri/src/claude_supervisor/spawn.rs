@@ -13,11 +13,13 @@ use tokio::sync::mpsc;
 
 use crate::claude_supervisor::{lifecycle, paths};
 use crate::events::{
-    emit_agent_message, emit_permission_mode_changed, emit_supervisor_status_changed,
+    emit_agent_message, emit_model_changed, emit_models_available,
+    emit_permission_mode_changed, emit_supervisor_status_changed,
 };
 use crate::types::{
-    AgentMessage, AgentMessagePayload, PermissionMode, PermissionModeChangedPayload,
-    SupervisorStatus, SupervisorStatusChangedPayload,
+    AgentMessage, AgentMessagePayload, ModelChangedPayload, ModelsAvailablePayload,
+    PermissionMode, PermissionModeChangedPayload, SupervisorStatus,
+    SupervisorStatusChangedPayload,
 };
 
 // region: MCP proxy resolution
@@ -185,6 +187,7 @@ pub async fn read_stdout(
     app: AppHandle,
     status: Arc<StdMutex<SupervisorStatus>>,
     permission_mode: Arc<StdMutex<PermissionMode>>,
+    model: Arc<StdMutex<Option<String>>>,
     stdin_tx: mpsc::UnboundedSender<String>,
 ) {
     let mut reader = BufReader::new(stdout).lines();
@@ -245,6 +248,24 @@ pub async fn read_stdout(
                 let _ = emit_permission_mode_changed(
                     &app,
                     PermissionModeChangedPayload { mode: *mode },
+                );
+            }
+            AgentMessage::ModelsAvailable { models } => {
+                let _ = emit_models_available(
+                    &app,
+                    ModelsAvailablePayload { models: models.clone() },
+                );
+            }
+            AgentMessage::ModelChanged { model: new_model } => {
+                {
+                    let mut current = model
+                        .lock()
+                        .expect("supervisor model mutex poisoned");
+                    *current = new_model.clone();
+                }
+                let _ = emit_model_changed(
+                    &app,
+                    ModelChangedPayload { model: new_model.clone() },
                 );
             }
             AgentMessage::TextDelta { .. }

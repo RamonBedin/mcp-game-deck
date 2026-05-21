@@ -130,6 +130,37 @@ function emitPermissionModeChanged(mode)
 }
 
 /**
+ * Emits a `models-available` envelope: the SDK's `system/init` told us
+ * which models the current `claude` login can pick from. The Rust side
+ * re-emits this as a `models-available` Tauri event; React hydrates the
+ * model picker from it. Emitted at most once per supervisor session —
+ * `lastModelsJson` de-dupes identical lists across consecutive turns
+ * (every user-turn init re-asserts the same models).
+ *
+ * @param {Array<object>} models - The SDK's `ModelInfo[]` list.
+ * @returns {void}
+ */
+function emitModelsAvailable(models)
+{
+  emit({ type: "models-available", models });
+}
+
+/**
+ * Emits a `model-changed` envelope echoing the model that was just
+ * applied. `model` is `null` when the user reset to "CLI default".
+ * The Rust side translates this to the `model-changed` Tauri event so
+ * React's model picker can passively sync. Mirrors how
+ * `permission-mode-changed` works.
+ *
+ * @param {string | null} model - SDK model id or null.
+ * @returns {void}
+ */
+function emitModelChanged(model)
+{
+  emit({ type: "model-changed", model });
+}
+
+/**
  * Emits a `health-ok` envelope. The Rust side transitions the
  * supervisor status from `Starting` to `Ready` on receipt — Task 6.1.
  *
@@ -278,18 +309,24 @@ function emitSubagentStatus(turnId, phase, taskId, toolUseId, description, summa
  * the `/compact` affordance. Fired from the `result` SDK message
  * which carries the final consolidated counters.
  *
+ * `modelUsage` is the SDK's `Record<string, ModelUsage>` — keyed by
+ * model id, each entry carrying `contextWindow` + `maxOutputTokens`.
+ * The host reads `modelUsage[model].contextWindow` to size the
+ * context ring without hardcoding any per-model limits.
+ *
  * @param {string} turnId - Stable id of the just-completed turn.
  * @param {string | null} model - Model string from the SDK (e.g.
- *   `"claude-opus-4-7[1m]"`). The host derives the max-context
- *   denominator from this.
+ *   `"claude-opus-4-7[1m]"`).
  * @param {object} usage - The full `result.usage` payload — passed
  *   through verbatim so the host can pick fields without us
  *   committing to a shape that changes with SDK versions.
+ * @param {object | null | undefined} modelUsage - SDK's
+ *   `result.modelUsage` map keyed by model id.
  * @returns {void}
  */
-function emitUsageUpdate(turnId, model, usage)
+function emitUsageUpdate(turnId, model, usage, modelUsage)
 {
-  emit({ type: "usage-update", turnId, model, usage });
+  emit({ type: "usage-update", turnId, model, usage, modelUsage: modelUsage ?? null });
 }
 
 /**
@@ -354,6 +391,28 @@ const VALID_PERMISSION_MODES = new Set([
  * @type {string}
  */
 let currentPermissionMode = "default";
+
+/**
+ * Currently-selected model id (e.g. `"claude-sonnet-4-6"`), kept in
+ * sync with the Rust-side `ClaudeSupervisor.model` via stdin control
+ * messages (`{type:"setModel", model:"..."}`). Applied to every
+ * `query()` round-trip via `options.model` when non-null; null means
+ * "fall back to the CLI default" (the option is dropped from the
+ * call).
+ *
+ * @type {string | null}
+ */
+let currentModel = null;
+
+/**
+ * Last emitted `models-available` payload as JSON, for compare-and-skip.
+ * Every user-turn init re-asserts the same model list, so we only emit
+ * when the contents actually change. Reset to null on every fresh JS
+ * process (supervisor restart).
+ *
+ * @type {string | null}
+ */
+let lastModelsJson = null;
 
 /**
  * Maps the UI-level permission mode string to one the SDK's
@@ -568,6 +627,8 @@ async function runHealthCheck()
     return;
   }
 
+  void emitSupportedModels(q);
+
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(
@@ -770,6 +831,98 @@ function emitCatalogOnInit(initMessage)
       `${commands.length} commands, ${agents.length} agents`,
     );
   }
+}
+
+/**
+ * Calls `q.supportedModels()` on a live Query, normalizes each entry
+ * to our wire shape, and emits a `models-available` envelope when the
+ * list changes vs the last emit. Compare-and-skip via `lastModelsJson`
+ * so consecutive turns don't spam React with identical lists.
+ *
+ * Unlike `setModel()`, `supportedModels()` does **not** require
+ * streaming input mode — it works on any Query the moment after
+ * creation. Safe to call from `runHealthCheck` (one-shot) and from
+ * `handleInput` (which may or may not be streaming-input depending on
+ * attachments).
+ *
+ * The SDK's `ModelInfo` shape is `{value, displayName, description,
+ * supportsEffort?, supportsAdaptiveThinking?, supportsFastMode?,
+ * supportsAutoMode?}` — we pass it through verbatim; the React picker
+ * renders `displayName` + `description` directly.
+ *
+ * Failures are non-fatal: the model picker just stays in its loading
+ * state. Logged at debug level only.
+ *
+ * @param {object} q - A live Query object from `query(...)`.
+ * @returns {Promise<void>}
+ */
+async function emitSupportedModels(q)
+{
+  let rawModels;
+  try
+  {
+    rawModels = await q.supportedModels();
+  }
+  catch (err)
+  {
+    debug("supportedModels failed:", String(err));
+    return;
+  }
+
+  if (!Array.isArray(rawModels))
+  {
+    debug("supportedModels returned non-array:", typeof rawModels);
+    return;
+  }
+
+  const models = rawModels
+    .map((m) => {
+      if (typeof m !== "object" || m === null)
+      {
+        return null;
+      }
+      const value = typeof m.value === "string" ? m.value : "";
+      const displayName = typeof m.displayName === "string" ? m.displayName : value;
+      const description = typeof m.description === "string" ? m.description : "";
+
+      if (value.length === 0)
+      {
+        return null;
+      }
+      const entry = { value, displayName, description };
+
+      if (typeof m.supportsEffort === "boolean")
+      {
+        entry.supportsEffort = m.supportsEffort;
+      }
+
+      if (typeof m.supportsAdaptiveThinking === "boolean")
+      {
+        entry.supportsAdaptiveThinking = m.supportsAdaptiveThinking;
+      }
+
+      if (typeof m.supportsFastMode === "boolean")
+      {
+        entry.supportsFastMode = m.supportsFastMode;
+      }
+
+      if (typeof m.supportsAutoMode === "boolean")
+      {
+        entry.supportsAutoMode = m.supportsAutoMode;
+      }
+      return entry;
+    })
+    .filter((m) => m !== null);
+
+  const modelsJson = JSON.stringify(models);
+
+  if (modelsJson === lastModelsJson)
+  {
+    return;
+  }
+  lastModelsJson = modelsJson;
+  emitModelsAvailable(models);
+  debug("models emitted:", `${models.length} entries`);
 }
 
 /**
@@ -1233,6 +1386,11 @@ async function handleInput(text, attachments)
       canUseTool: canUseToolCallback,
     };
 
+    if (currentModel !== null && currentModel.length > 0)
+    {
+      queryOptions.model = currentModel;
+    }
+
     const rulesBundleContent = resolveRulesBundleContent();
     
     if (rulesBundleContent !== null)
@@ -1288,6 +1446,11 @@ async function handleInput(text, attachments)
     });
     currentQuery = q;
 
+    if (lastModelsJson === null)
+    {
+      void emitSupportedModels(q);
+    }
+
     for await (const msg of q)
     {
       // system/init from a user-turn query carries session_id (for
@@ -1323,7 +1486,7 @@ async function handleInput(text, attachments)
 
         if (msg.usage)
         {
-          emitUsageUpdate(turnId, msg.model ?? null, msg.usage);
+          emitUsageUpdate(turnId, msg.model ?? null, msg.usage, msg.modelUsage ?? null);
         }
         emitTurnComplete(turnId);
       }
@@ -1511,6 +1674,25 @@ for await (const line of rl)
     else
     {
       debug("ignored unknown permission mode:", parsed.mode);
+    }
+  }
+  else if (parsed?.type === "setModel")
+  {
+    if (parsed.model === null || parsed.model === undefined || parsed.model === "")
+    {
+      currentModel = null;
+      debug("model reset to CLI default");
+      emitModelChanged(null);
+    }
+    else if (typeof parsed.model === "string")
+    {
+      currentModel = parsed.model;
+      debug("model set:", parsed.model);
+      emitModelChanged(parsed.model);
+    }
+    else
+    {
+      debug("ignored invalid setModel payload:", parsed.model);
     }
   }
   else if (parsed?.type === "setResumeSession" && typeof parsed.sessionId === "string")

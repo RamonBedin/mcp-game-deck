@@ -8,10 +8,11 @@ use tauri::{AppHandle, Emitter};
 
 use crate::types::{
     AgentMessagePayload, AskUserRequestedPayload, ClaudeVersionOutOfRangePayload, Message,
-    MessageStreamChunkPayload, MessageStreamCompletePayload, PermissionModeChangedPayload,
-    PermissionRequestedPayload, PlansChangedPayload, ProjectFilesChangedPayload,
-    RouteRequestedPayload, RulesChangedPayload, SdkInstallFailedPayload,
-    SdkInstallProgressPayload, SupervisorStatusChangedPayload, UnityStatusChangedPayload,
+    MessageStreamChunkPayload, MessageStreamCompletePayload, ModelChangedPayload,
+    ModelsAvailablePayload, PermissionModeChangedPayload, PermissionRequestedPayload,
+    PlansChangedPayload, ProjectFilesChangedPayload, RouteRequestedPayload,
+    RulesChangedPayload, SdkInstallFailedPayload, SdkInstallProgressPayload,
+    SupervisorStatusChangedPayload, UnityStatusChangedPayload,
 };
 
 // region: Event names
@@ -55,6 +56,15 @@ pub const EVT_AGENT_MESSAGE: &str = "agent-message";
 /// Event name for `PermissionModeChangedPayload` — emitted when the
 /// supervisor confirms the JS side has applied a new permission mode.
 pub const EVT_PERMISSION_MODE_CHANGED: &str = "permission-mode-changed";
+
+/// Event name for `ModelsAvailablePayload` — emitted once per
+/// supervisor session when the SDK's first `system/init` carries
+/// the list of selectable models. Drives the React-side model picker.
+pub const EVT_MODELS_AVAILABLE: &str = "models-available";
+
+/// Event name for `ModelChangedPayload` — emitted when the supervisor
+/// confirms the JS side has applied a new model choice.
+pub const EVT_MODEL_CHANGED: &str = "model-changed";
 
 /// Event name for `ClaudeVersionOutOfRangePayload`.
 pub const EVT_CLAUDE_VERSION_OUT_OF_RANGE: &str = "claude-version-out-of-range";
@@ -305,6 +315,38 @@ pub fn emit_permission_mode_changed(
     payload: PermissionModeChangedPayload,
 ) -> tauri::Result<()> {
     app.emit(EVT_PERMISSION_MODE_CHANGED, payload)
+}
+
+/// Broadcasts the list of models the current `claude` login can pick
+/// from. Driven by `sdk-entry.js`'s parse of `system/init` —
+/// see `claude_supervisor::spawn::read_stdout` for the
+/// `AgentMessage::ModelsAvailable` translation. Emitted at most once
+/// per supervisor session (the JS side de-dupes identical lists).
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_models_available(
+    app: &AppHandle,
+    payload: ModelsAvailablePayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_MODELS_AVAILABLE, payload)
+}
+
+/// Broadcasts a model-selection change to the frontend. Driven by
+/// `sdk-entry.js`'s echo after applying a `setModel` control message —
+/// see `claude_supervisor::spawn::read_stdout` for the
+/// `AgentMessage::ModelChanged` translation. `model: None` means the
+/// next `query()` falls back to the CLI default.
+///
+/// # Errors
+///
+/// Returns `tauri::Error` when the underlying emitter fails.
+pub fn emit_model_changed(
+    app: &AppHandle,
+    payload: ModelChangedPayload,
+) -> tauri::Result<()> {
+    app.emit(EVT_MODEL_CHANGED, payload)
 }
 
 /// Broadcasts a Claude Code version-out-of-range warning to the

@@ -299,6 +299,33 @@ pub struct CatalogAgent {
 
 // endregion
 
+// region: Models
+
+/// One entry in the `models-available` agent message — a model the
+/// SDK reports as selectable on the current `claude` login.
+///
+/// Mirrors `ModelInfo` from `@anthropic-ai/claude-agent-sdk` so the
+/// React picker can render the SDK-provided `displayName` + `description`
+/// directly without translation. Capability flags pass through as
+/// `Option<bool>` — the SDK only fills them when applicable.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInfo {
+    pub value: String,
+    pub display_name: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_effort: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_adaptive_thinking: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_fast_mode: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_auto_mode: Option<bool>,
+}
+
+// endregion
+
 // region: Rules
 
 /// Lightweight metadata for a rule file (used in list views).
@@ -489,6 +516,27 @@ pub struct PermissionModeChangedPayload {
     pub mode: PermissionMode,
 }
 
+/// Payload for `models-available` — emitted once per supervisor
+/// session when the SDK's first `system/init` carries the list of
+/// models the current login can pick from. The React side hydrates
+/// the model picker from this; before it arrives the picker shows
+/// a placeholder.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelsAvailablePayload {
+    pub models: Vec<ModelInfo>,
+}
+
+/// Payload for `model-changed` — echoed by `sdk-entry.js` after
+/// applying a `setModel` control message. `model: None` means
+/// "fall back to the CLI default" (the `options.model` field is
+/// dropped from the next `query()` round-trip).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelChangedPayload {
+    pub model: Option<String>,
+}
+
 /// Tagged message envelope sent by `sdk-entry.js` over stdout, then
 /// re-emitted to React via the `agent-message` Tauri event.
 ///
@@ -575,6 +623,20 @@ pub enum AgentMessage {
         turn_id: String,
         model: Option<String>,
         usage: Value,
+        /// Per-model breakdown of token + cost spend for this turn,
+        /// keyed by model id. Each entry mirrors the SDK's
+        /// `ModelUsage` shape and carries `contextWindow` — the
+        /// authoritative max for the model used in this turn. The
+        /// host reads this to size the context ring without
+        /// hardcoding any per-model limits.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_usage: Option<Value>,
+    },
+    ModelsAvailable {
+        models: Vec<ModelInfo>,
+    },
+    ModelChanged {
+        model: Option<String>,
     },
     PlanSummary {
         request_id: String,

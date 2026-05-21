@@ -58,6 +58,9 @@ export const sendMessage = (
 export const setPermissionMode = (mode: PermissionMode): Promise<void> =>
   invoke("set_permission_mode", { mode });
 
+export const setModel = (model: string | null): Promise<void> =>
+  invoke("set_model", { model });
+
 export const respondToRequest = (requestId: string, decision: DecisionPayload,): Promise<void> => invoke("respond_to_request", { requestId, decision });
 export const cancelCurrentTurn = (): Promise<void> => invoke("cancel_current_turn");
 

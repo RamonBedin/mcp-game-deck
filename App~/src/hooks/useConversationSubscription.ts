@@ -136,7 +136,13 @@ export function useConversationSubscription(): void
           );
           break;
         case "usage-update":
-          store.setTurnUsage(m.model, m.usage);
+          store.setTurnUsage(m.model, m.usage, m.modelUsage);
+          break;
+        case "models-available":
+          store.setAvailableModels(m.models);
+          break;
+        case "model-changed":
+          store.setCurrentModel(m.model);
           break;
         case "plan-summary":
           store.appendPlanSummaryBlock(m.turnId, m.requestId, m.plan);

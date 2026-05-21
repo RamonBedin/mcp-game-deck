@@ -247,6 +247,48 @@ export interface CatalogAgent
 
 // #endregion
 
+// #region Models
+
+/**
+ * One entry in the `models-available` agent message. Mirrors `ModelInfo`
+ * from `@anthropic-ai/claude-agent-sdk` — `value` is the SDK id used
+ * in `setModel` calls, `displayName` and `description` drive the
+ * picker UI directly. Capability flags pass through as `boolean | undefined`
+ * since the SDK only fills them when applicable.
+ */
+export interface ModelInfo
+{
+  value: string;
+  displayName: string;
+  description: string;
+  supportsEffort?: boolean;
+  supportsAdaptiveThinking?: boolean;
+  supportsFastMode?: boolean;
+  supportsAutoMode?: boolean;
+}
+
+/**
+ * Per-model usage block from the SDK's `result.modelUsage` map. Keyed
+ * by model id, each entry carries `contextWindow` (the authoritative
+ * max for that model) plus the granular token breakdown. The host
+ * reads `contextWindow` to size the context ring without hardcoding
+ * any per-model limits.
+ */
+export interface TurnModelUsage
+{
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  webSearchRequests?: number;
+  costUSD?: number;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  [key: string]: unknown;
+}
+
+// #endregion
+
 // #region Rules
 
 /**
@@ -524,7 +566,9 @@ export type AgentMessage =
   | { type: "catalog-ready"; commands: CatalogCommand[]; agents: CatalogAgent[] }
   | { type: "system-message"; turnId: string; text: string; source: SystemMessageSource }
   | { type: "subagent-status"; turnId: string; phase: SubagentPhase; taskId: string | null; toolUseId: string | null; description: string; summary: string | null; usage: SubagentUsage | null; lastToolName: string | null }
-  | { type: "usage-update"; turnId: string; model: string | null; usage: TurnUsage }
+  | { type: "usage-update"; turnId: string; model: string | null; usage: TurnUsage; modelUsage: Record<string, TurnModelUsage> | null }
+  | { type: "models-available"; models: ModelInfo[] }
+  | { type: "model-changed"; model: string | null }
   | { type: "plan-summary"; requestId: string; turnId: string; plan: string };
 
 /**
@@ -600,6 +644,19 @@ export interface UsageUpdatePayload
   turnId: string;
   model: string | null;
   usage: TurnUsage;
+  modelUsage: Record<string, TurnModelUsage> | null;
+}
+
+/** Payload for `models-available` — the SDK's selectable-model list. */
+export interface ModelsAvailablePayload
+{
+  models: ModelInfo[];
+}
+
+/** Payload for `model-changed` — supervisor confirms a new model choice. */
+export interface ModelChangedPayload
+{
+  model: string | null;
 }
 
 /** Payload for the `plan-summary` agent message — KI-004 fix. */

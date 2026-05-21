@@ -101,11 +101,19 @@ pub fn package_root() -> PathBuf {
 /// MCP transport to the C# MCP Server in Unity.
 ///
 /// Resolved via Tauri's `BaseDirectory::Resource` against the bundled
-/// resource `proxy-bundle/mcp-proxy.js`. The file is staged at build
+/// resource `proxy-bundle/mcp-proxy.cjs`. The file is staged at build
 /// time by `App~/scripts/build-proxy.mjs` (run automatically via the
 /// `beforeDevCommand` / `beforeBuildCommand` hooks in `tauri.conf.json`)
 /// and shipped inside the production bundle — users do not need Node
 /// or `npm run build` on their side.
+///
+/// The `.cjs` extension is deliberate: esbuild emits a CommonJS bundle,
+/// and Node's ESM-vs-CJS decision normally walks up looking for the
+/// nearest `package.json` `"type"` field. In dev mode the resolved
+/// path sits under `App~/src-tauri/target/debug/proxy-bundle/`, which
+/// would walk up into `App~/package.json` (`"type": "module"`) and
+/// blow up with `ReferenceError: require is not defined in ES module
+/// scope`. `.cjs` short-circuits that lookup unconditionally.
 ///
 /// On Windows the resolved path comes back with the `\\?\` extended-
 /// length prefix; this function strips it so the path can be passed
@@ -119,11 +127,11 @@ pub fn package_root() -> PathBuf {
 pub fn mcp_proxy_script(app: &AppHandle) -> Option<PathBuf> {
     match app
         .path()
-        .resolve("proxy-bundle/mcp-proxy.js", BaseDirectory::Resource)
+        .resolve("proxy-bundle/mcp-proxy.cjs", BaseDirectory::Resource)
     {
         Ok(p) => Some(normalize_resource_path(p)),
         Err(e) => {
-            eprintln!("[paths] mcp-proxy.js Resource resolve failed: {e}");
+            eprintln!("[paths] mcp-proxy.cjs Resource resolve failed: {e}");
             None
         }
     }

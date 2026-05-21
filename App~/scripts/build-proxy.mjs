@@ -21,9 +21,9 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(__dirname, "..");
 const serverRoot = resolve(appRoot, "../Server~");
-const proxySrc = resolve(serverRoot, "dist/mcp-proxy.js");
+const proxySrc = resolve(serverRoot, "dist/mcp-proxy.cjs");
 const proxyDstDir = resolve(appRoot, "src-tauri/proxy-bundle");
-const proxyDst = resolve(proxyDstDir, "mcp-proxy.js");
+const proxyDst = resolve(proxyDstDir, "mcp-proxy.cjs");
 
 /**
  * Runs a shell command synchronously, streaming stdio through to the parent

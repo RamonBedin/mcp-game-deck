@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import StatusDot from "../components/atoms/StatusDot";
 import Button from "../components/atoms/Button";
 import Pill from "../components/atoms/Pill";
+import ModelPicker from "../components/ModelPicker";
 import PermissionModePicker from "../components/PermissionModePicker";
 import { SettingsGroup, SettingRow } from "../components/settings/SettingsGroup";
 import { useAgents } from "../hooks/useAgents";
@@ -503,6 +504,11 @@ const ClaudeCodePanel = () => {
           label="Default permission mode"
           value={<PermissionModePicker variant="inline" />}
           meta="What Claude does on tool calls. Cycle with ⇧⇥ from the composer."
+        />
+        <SettingRow
+          label="Model"
+          value={<ModelPicker variant="inline" />}
+          meta="Which Claude model handles your turns. Populated dynamically from your CLI login — picking applies to the next turn without resetting the session."
         />
       </SettingsGroup>
     </>

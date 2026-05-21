@@ -40,7 +40,10 @@
       "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/runtime/1.1.0/**)",
       "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/runtime/1.1.0/node_modules/@anthropic-ai/claude-agent-sdk/**)",
       "Read(//c/Users/Ramon/AppData/Local/Temp/**)",
-      "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/1.1.0/proxy-bundle/mcp-proxy.js\")"
+      "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/1.1.0/proxy-bundle/mcp-proxy.js\")",
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 UNITY_MCP_AUTH_TOKEN=\"\" PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Projects/mcp-game-deck/App~/src-tauri/target/debug/proxy-bundle/mcp-proxy.js\")",
+      "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 UNITY_MCP_AUTH_TOKEN=\"\" PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Projects/mcp-game-deck/App~/src-tauri/proxy-bundle/mcp-proxy.cjs\")"
     ],
     "deny": [
       "Bash(git:*)",

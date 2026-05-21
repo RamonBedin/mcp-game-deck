@@ -15,7 +15,7 @@
 
 import { create } from "zustand";
 import { sendMessage as sendMessageCommand, trackRecentCommand } from "../ipc/commands";
-import type { AskUserQuestionOutput, Block, Message, PermissionMode, PermissionRequestedPayload, SubagentPhase, SubagentUsage, SystemMessageSource, TurnUsage, } from "../ipc/types";
+import type { AskUserQuestionOutput, Block, Message, ModelInfo, PermissionMode, PermissionRequestedPayload, SubagentPhase, SubagentUsage, SystemMessageSource, TurnModelUsage, TurnUsage, } from "../ipc/types";
 
 // #region State shape
 
@@ -35,6 +35,9 @@ interface ConversationState
   inFlight: boolean;
   turnUsage: TurnUsage | null;
   turnUsageModel: string | null;
+  turnContextWindow: number | null;
+  availableModels: ModelInfo[];
+  currentModel: string | null;
   appendDelta: (turnId: string, text: string) => void;
   appendToolUseBlock: (turnId: string, toolUseId: string, name: string, input: unknown,) => void;
   appendToolResultBlock: (turnId: string, toolUseId: string, content: unknown, isError: boolean,) => void;
@@ -47,10 +50,12 @@ interface ConversationState
   appendSystemMessageBlock: (turnId: string, text: string, source: SystemMessageSource) => void;
   upsertSubagentStatus: (turnId: string, taskId: string | null, toolUseId: string | null, phase: SubagentPhase, description: string, summary: string | null, usage: SubagentUsage | null, lastToolName: string | null) => void;
   appendPlanSummaryBlock: (turnId: string, requestId: string, plan: string) => void;
-  setTurnUsage: (model: string | null, usage: TurnUsage) => void;
+  setTurnUsage: (model: string | null, usage: TurnUsage, modelUsage: Record<string, TurnModelUsage> | null) => void;
   clearMessages: () => void;
   loadHistory: (messages: Message[]) => void;
   setPermissionMode: (mode: PermissionMode) => void;
+  setAvailableModels: (models: ModelInfo[]) => void;
+  setCurrentModel: (model: string | null) => void;
   setCurrentSessionId: (sessionId: string | null) => void;
   endTurn: () => void;
   sendMessage: (text: string, attachmentPaths?: string[]) => Promise<void>;
@@ -148,6 +153,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   inFlight: false,
   turnUsage: null,
   turnUsageModel: null,
+  turnContextWindow: null,
+  availableModels: [],
+  currentModel: null,
   appendDelta: (turnId, text) =>
     set((state) => {
       const idx = state.messages.findIndex((m) => m.id === turnId);
@@ -328,10 +336,26 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         state: "pending",
       }),
     })),
-  setTurnUsage: (model, usage) => set({ turnUsageModel: model, turnUsage: usage }),
-  clearMessages: () => set({ messages: [], inFlight: false, turnUsage: null, turnUsageModel: null }),
+  setTurnUsage: (model, usage, modelUsage) => {
+    let contextWindow: number | null = null;
+
+    if (modelUsage !== null && typeof modelUsage === "object")
+    {
+      const direct = model !== null ? modelUsage[model] : undefined;
+      const probe = direct ?? Object.values(modelUsage)[0];
+
+      if (probe !== undefined && typeof probe.contextWindow === "number")
+      {
+        contextWindow = probe.contextWindow;
+      }
+    }
+    set({ turnUsageModel: model, turnUsage: usage, turnContextWindow: contextWindow });
+  },
+  clearMessages: () => set({ messages: [], inFlight: false, turnUsage: null, turnUsageModel: null, turnContextWindow: null }),
   loadHistory: (messages) => set({ messages, inFlight: false }),
   setPermissionMode: (mode) => set({ permissionMode: mode }),
+  setAvailableModels: (models) => set({ availableModels: models }),
+  setCurrentModel: (model) => set({ currentModel: model }),
   setCurrentSessionId: (sessionId) => set({ currentSessionId: sessionId }),
   endTurn: () => set({ inFlight: false }),
   sendMessage: async (text, attachmentPaths = []) => {

@@ -24,6 +24,7 @@ import { useSettingsStore } from "../../stores/settingsStore";
 import BrandHex from "../atoms/BrandHex";
 import Pill from "../atoms/Pill";
 import StatusDot, { type DotStatus } from "../atoms/StatusDot";
+import ModelPicker from "../ModelPicker";
 import PermissionModePicker from "../PermissionModePicker";
 import ContextRing from "./ContextRing";
 
@@ -120,6 +121,10 @@ export default function HudStrip()
       <Sep />
 
       <PermissionModePicker variant="hud" />
+
+      <Sep />
+
+      <ModelPicker variant="hud" />
 
       <div className="ml-auto flex items-center gap-3.5">
         <ContextRing />

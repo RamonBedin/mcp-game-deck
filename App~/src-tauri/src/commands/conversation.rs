@@ -2,7 +2,8 @@
 //!
 //! Forward chat traffic between the React frontend and the Claude
 //! Code supervisor (`claude_supervisor::ClaudeSupervisor`):
-//! `send_message`, `set_permission_mode`, `cancel_current_turn`.
+//! `send_message`, `set_permission_mode`, `set_model`,
+//! `cancel_current_turn`.
 //!
 //! History + clear commands were dropped in task 4.1: Claude Code's
 //! own session storage is the source of truth (Decision #6 — wired up
@@ -71,6 +72,35 @@ pub async fn set_permission_mode(
 ) -> Result<(), AppError> {
     supervisor
         .set_permission_mode(mode)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+// endregion
+
+// region: Model
+
+/// Updates the supervisor's model selection and pushes a control
+/// message to `sdk-entry.js`'s stdin so the next `query()` round-trip
+/// uses it. `None` resets to the CLI default. Tolerates a non-running
+/// supervisor — the choice is stored and re-pushed on the next `spawn`.
+///
+/// # Arguments
+///
+/// * `model` - SDK model id (e.g. `"claude-sonnet-4-6"`) or `None`.
+/// * `supervisor` - Tauri-managed `ClaudeSupervisor` state.
+///
+/// # Errors
+///
+/// Returns `AppError::Internal` when the stdin writer task is closed
+/// or the JSON encoding fails.
+#[tauri::command]
+pub async fn set_model(
+    model: Option<String>,
+    supervisor: State<'_, ClaudeSupervisor>,
+) -> Result<(), AppError> {
+    supervisor
+        .set_model(model)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))
 }

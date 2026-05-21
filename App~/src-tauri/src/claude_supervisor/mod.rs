@@ -87,6 +87,7 @@ pub struct ClaudeSupervisor {
     status: Arc<StdMutex<SupervisorStatus>>,
     permission_mode: Arc<StdMutex<PermissionMode>>,
     resume_session_id: Arc<StdMutex<Option<String>>>,
+    model: Arc<StdMutex<Option<String>>>,
     state: Arc<Mutex<State>>,
 }
 
@@ -112,6 +113,7 @@ impl ClaudeSupervisor {
             status: Arc::new(StdMutex::new(SupervisorStatus::Idle)),
             permission_mode: Arc::new(StdMutex::new(PermissionMode::Default)),
             resume_session_id: Arc::new(StdMutex::new(None)),
+            model: Arc::new(StdMutex::new(None)),
             state: Arc::new(Mutex::new(State {
                 stdin_tx: None,
                 kill_tx: None,
@@ -197,6 +199,61 @@ impl ClaudeSupervisor {
         let line = serde_json::to_string(&serde_json::json!({
             "type": "setPermissionMode",
             "mode": mode,
+        }))
+        .map_err(SendError::Serde)?;
+        match self.write_stdin_line(&line).await {
+            Ok(()) | Err(SendError::NotRunning) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Returns the supervisor's currently-selected model id, or `None`
+    /// when no explicit choice has been made (the CLI default applies).
+    pub fn current_model(&self) -> Option<String> {
+        self.model
+            .lock()
+            .expect("supervisor model mutex poisoned")
+            .clone()
+    }
+
+    /// Updates the supervisor's model selection. Always writes the new
+    /// value to local state so React's "current model" read stays
+    /// accurate; additionally pushes a `setModel` control message to
+    /// `sdk-entry.js`'s stdin when the supervisor is running so the
+    /// next prompt picks up the new model. `None` resets to the CLI
+    /// default.
+    ///
+    /// Returns `Ok(())` even when the supervisor isn't running — the
+    /// model is stored anyway and re-pushed on the next `spawn`.
+    ///
+    /// # Errors
+    ///
+    /// `SendError::WriterClosed` when the stdin writer task has
+    /// exited. `SendError::Serde` on encoding failure.
+    pub async fn set_model(
+        &self,
+        model: Option<String>,
+    ) -> Result<(), SendError> {
+        {
+            let mut current = self
+                .model
+                .lock()
+                .expect("supervisor model mutex poisoned");
+            *current = model.clone();
+        }
+        self.push_model_line(model).await
+    }
+
+    /// Internal — serializes a `setModel` JSON line and pushes it onto
+    /// the stdin writer's mpsc channel. Soft-success when the
+    /// supervisor isn't running.
+    async fn push_model_line(
+        &self,
+        model: Option<String>,
+    ) -> Result<(), SendError> {
+        let line = serde_json::to_string(&serde_json::json!({
+            "type": "setModel",
+            "model": model,
         }))
         .map_err(SendError::Serde)?;
         match self.write_stdin_line(&line).await {
@@ -346,6 +403,7 @@ impl ClaudeSupervisor {
         let app_for_stdout = app.clone();
         let status_for_stdout = self.status.clone();
         let permission_mode_for_stdout = self.permission_mode.clone();
+        let model_for_stdout = self.model.clone();
         let stdin_tx_for_stdout = tx.clone();
         tokio::spawn(async move {
             spawn::read_stdout(
@@ -353,6 +411,7 @@ impl ClaudeSupervisor {
                 app_for_stdout,
                 status_for_stdout,
                 permission_mode_for_stdout,
+                model_for_stdout,
                 stdin_tx_for_stdout,
             )
             .await;
@@ -402,6 +461,13 @@ impl ClaudeSupervisor {
             }
         }
 
+        if let Some(stored_model) = self.current_model() {
+            if let Err(e) = self.push_model_line(Some(stored_model)).await {
+                eprintln!(
+                    "[claude-supervisor] failed to re-sync model after spawn: {e}"
+                );
+            }
+        }
 
         Ok(pid)
     }

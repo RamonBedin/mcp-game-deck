@@ -157,6 +157,7 @@ pub fn run() {
             commands::connection::restart_supervisor,
             commands::conversation::send_message,
             commands::conversation::set_permission_mode,
+            commands::conversation::set_model,
             commands::conversation::cancel_current_turn,
             commands::requests::respond_to_request,
             commands::files::list_project_files,

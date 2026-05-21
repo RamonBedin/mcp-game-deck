@@ -15,6 +15,8 @@ import type {
   Message,
   MessageStreamChunkPayload,
   MessageStreamCompletePayload,
+  ModelChangedPayload,
+  ModelsAvailablePayload,
   PermissionModeChangedPayload,
   PermissionRequestedPayload,
   PlansChangedPayload,
@@ -84,6 +86,10 @@ export const onSdkInstallFailed = wrap<SdkInstallFailedPayload>("sdk-install-fai
 export const onAgentMessage = wrap<AgentMessagePayload>("agent-message");
 
 export const onPermissionModeChanged = wrap<PermissionModeChangedPayload>("permission-mode-changed");
+
+export const onModelsAvailable = wrap<ModelsAvailablePayload>("models-available");
+
+export const onModelChanged = wrap<ModelChangedPayload>("model-changed");
 
 // #endregion
 

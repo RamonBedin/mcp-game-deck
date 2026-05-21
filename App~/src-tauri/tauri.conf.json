@@ -38,7 +38,7 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "proxy-bundle/mcp-proxy.js"
+      "proxy-bundle/mcp-proxy.cjs"
     ],
     "icon": [
       "icons/32x32.png",
