@@ -22,13 +22,15 @@ use crate::types::{
 
 // region: MCP proxy resolution
 
-/// Resolves the absolute path to `Server~/dist/mcp-proxy.js` if it
-/// exists. Returns `None` when the script is missing — the caller
-/// surfaces a soft warning to React via `AgentMessage::Error` and
-/// proceeds without the `mcpServers` config (tools become unavailable
-/// for that session, but unrelated prompts still work).
-fn resolve_mcp_proxy() -> Option<std::path::PathBuf> {
-    let path = paths::mcp_proxy_script();
+/// Resolves the absolute path to the Tauri-bundled `mcp-proxy.js`
+/// resource if it exists on disk. Returns `None` when either Tauri's
+/// resource resolver fails or the file is missing at the resolved
+/// path — the caller surfaces a soft warning to React via
+/// `AgentMessage::Error` and proceeds without the `mcpServers` config
+/// (tools become unavailable for that session, but unrelated prompts
+/// still work).
+fn resolve_mcp_proxy(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let path = paths::mcp_proxy_script(app)?;
     if path.is_file() { Some(path) } else { None }
 }
 
@@ -109,19 +111,20 @@ pub fn spawn_node_child(
 
     let unity_host = std::env::var("UNITY_MCP_HOST").unwrap_or_default();
     let unity_port = std::env::var("UNITY_MCP_PORT").unwrap_or_default();
-    let mcp_proxy = resolve_mcp_proxy();
+    let mcp_proxy = resolve_mcp_proxy(app);
     let plugin_dir = resolve_plugin_dir();
     let commands_dir = resolve_commands_dir(project_path);
 
     if mcp_proxy.is_none() {
-        let expected = paths::mcp_proxy_script();
+        let expected = paths::mcp_proxy_script(app)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<resource resolution failed>".to_string());
         let _ = emit_agent_message(
             app,
             AgentMessagePayload {
                 message: AgentMessage::Error {
                     message: format!(
-                        "MCP proxy not found at {}. Build with `cd Server~ && npm run build` to enable MCP tool calls. Spawning without mcpServers — non-tool prompts still work.",
-                        expected.display()
+                        "MCP proxy not found at {expected}. In a release build this resource is shipped inside the app bundle; in dev, run `pnpm build:proxy` from App~/ (or `pnpm tauri dev` which chains it). Spawning without mcpServers — non-tool prompts still work."
                     ),
                 },
             },

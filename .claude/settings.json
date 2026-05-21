@@ -27,7 +27,20 @@
       "Bash(findstr /i \"differ identical FC:\")",
       "Bash(Get-ChildItem -Path \"C:\\\\Projects\\\\mcp-game-deck\\\\App~\" -Recurse -Depth 2)",
       "Bash(Select-Object -First 50)",
-      "Bash(findstr /v node_modules)"
+      "Bash(findstr /v node_modules)",
+      "WebSearch",
+      "WebFetch(domain:v2.tauri.app)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(ls \"C:/Users/Ramon/AppData/Local/MCP Game Deck/\" 2>&1)",
+      "Read(//c/Users/Ramon/AppData/Local/MCP Game Deck/**)",
+      "Read(//c/Users/Ramon/AppData/Local/MCP Game Deck/resources/**)",
+      "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/1.1.0/**)",
+      "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/1.1.0/proxy-bundle/**)",
+      "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/runtime/1.1.0/**)",
+      "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/runtime/1.1.0/node_modules/@anthropic-ai/claude-agent-sdk/**)",
+      "Read(//c/Users/Ramon/AppData/Local/Temp/**)",
+      "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/1.1.0/proxy-bundle/mcp-proxy.js\")"
     ],
     "deny": [
       "Bash(git:*)",
@@ -37,6 +50,10 @@
       "Bash(rm -rf:*)",
       "Bash(rm -f:*)",
       "Bash(rm -r:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Ramon\\AppData\\Roaming\\MCPGameDeck\\runtime\\1.1.0",
+      "C:\\Users\\Ramon\\AppData\\Roaming\\MCPGameDeck\\bin\\1.1.0\\proxy-bundle"
     ]
   },
   "$comment": "Shared permission config for Claude Code in this repo. Versioned. Do NOT remove deny entries without explicit approval from Ramon. Ramon owns all git operations via VS Code Source Control."

@@ -30,34 +30,41 @@ Entries are append-only by ID. When an issue is resolved, move its entry from **
 
 ---
 
-### KI-011 — Tauri binary has `package_root()` hardcoded at compile time
-
-- **Priority:** P0 (blocks v2.0 release rehearsal — does not block today's dev flow)
-- **Scope:** M
-- **Status:** open
-- **Discovered:** Ramon code-read during triage of Nicollas's bug, 2026-05-20
-
-**Symptom.** Any machine running the Tauri binary **built on a different machine** (official release downloaded via the Unity pin) will have `MCP_PROXY_PATH` unset, MCP silently disabled, ToolSearch empty. Works "by accident" on Ramon's machine because the source lives in `C:\Projects\mcp-game-deck\` — the exact path baked into `CARGO_MANIFEST_DIR` at compile time.
-
-**Diagnosis (confirmed in code).** [paths.rs:65-72](../../App~/src-tauri/src/claude_supervisor/paths.rs#L65) uses `env!("CARGO_MANIFEST_DIR")` to resolve `package_root()`. That macro is evaluated at **compile-time** and freezes an absolute literal into the binary (`C:\Projects\mcp-game-deck\App~\src-tauri` when built by Ramon). In [spawn.rs:30-33](../../App~/src-tauri/src/claude_supervisor/spawn.rs#L30), `mcp_proxy_script().is_file()` returns `false` on any machine where that path doesn't exist. The comment at [paths.rs:60-64](../../App~/src-tauri/src/claude_supervisor/paths.rs#L60) already documents the limitation:
-
-> *"CARGO_MANIFEST_DIR is a compile-time anchor that points at the source tree even after Tauri bundles the binary into an MSI. Production builds need a different resolution (e.g., walking up from `current_exe()` or asset-side embedding). For dev/preview, this is correct."*
-
-Same limitation hits `plugin_dir()` ([paths.rs:92-94](../../App~/src-tauri/src/claude_supervisor/paths.rs#L92)) — `Plugin~/` referenced by agents and skills.
-
-**Fix direction.** Three approaches under discussion:
-
-1. **Tauri resource bundle.** `mcp-proxy.js` and `Plugin~/` shipped as resources, resolved via `app.path().resource_dir()`. Cleanest long-term; idiomatic Tauri approach.
-2. **`std::env::current_exe()`** + relative path. Simple but ties to the install layout.
-3. **Env var injected via PinLauncher.** Add `MCP_GAME_DECK_PACKAGE_ROOT` to [PinLauncher.cs:221-238](../../Editor/Pin/PinLauncher.cs#L221) alongside the existing vars. Rust uses this env as primary anchor with `CARGO_MANIFEST_DIR` fallback for dev. Reuses the Unity → Tauri env channel already established.
-
-#3 is the cheapest and unblocks release rehearsal immediately. #1 is the correct long-term destination. Decision pending when attacking this KI.
-
-**Why P0 with caveat.** Doesn't block the current dev flow (everyone on the team clones the repo). Blocks v2.0 release rehearsal, which `roadmap.md:249` already lists as "immediate next". The first real install via official release will break for every external user.
-
----
 
 ## Resolved
+
+### KI-011 — Tauri binary had `package_root()` + `runtime_dir()` hardcoded at compile time, and `mcp-proxy.js` was not shipped self-contained
+
+- **Priority:** P0 (blocked v2.0 release rehearsal)
+- **Scope:** M (grew during execution as two adjacent problems surfaced)
+- **Status:** resolved 2026-05-21
+- **Discovered:** Ramon code-read during triage of Nicollas's bug, 2026-05-20
+- **Fixed in:** [App~/src-tauri/src/claude_supervisor/paths.rs](../../App~/src-tauri/src/claude_supervisor/paths.rs), [spawn.rs](../../App~/src-tauri/src/claude_supervisor/spawn.rs), [install_check.rs](../../App~/src-tauri/src/claude_supervisor/install_check.rs), [Editor/Pin/PinLauncher.cs](../../Editor/Pin/PinLauncher.cs), [Editor/Pin/PinPaths.cs](../../Editor/Pin/PinPaths.cs), [App~/package.json](../../App~/package.json), [App~/scripts/build-proxy.mjs](../../App~/scripts/build-proxy.mjs) (new), [App~/src-tauri/tauri.conf.json](../../App~/src-tauri/tauri.conf.json), [Server~/package.json](../../Server~/package.json), [.gitignore](../../.gitignore)
+
+**Symptom (historical).** Any machine running the Tauri binary built on a different machine would have `MCP_PROXY_PATH` unset, MCP silently disabled, ToolSearch empty. Worked "by accident" on Ramon's machine because the source lived in `C:\Projects\mcp-game-deck\` — the exact path baked into `CARGO_MANIFEST_DIR` at compile time. First real install via official release would break for every external user.
+
+**Diagnosis (confirmed in code).** `paths::package_root()` and `paths::runtime_dir()` both used `env!("CARGO_MANIFEST_DIR")` — a compile-time macro that freezes an absolute literal into the binary. `install_check.rs::detect_sdk_installed` had its own inline copy of the same calculation. Three downstream consumers — `mcp_proxy_script()`, `plugin_dir()`, `sdk_package_json()` — all silently broke once the binary moved off Ramon's source tree.
+
+**Scope expansion during work.** While reading the code, two adjacent problems surfaced that any partial fix would have left as latent KI-012 / KI-013:
+
+1. **`runtime_dir()` cannot live inside the UPM package tree.** When a user installs via UPM git or tarball, the package lives in `Library/PackageCache/com.mcp-game-deck@<hash>/` — read-only. `sdk_install`'s `npm install` would fail at first launch. Runtime needed to move to the OS user-data tree, versioned per package (mirroring the existing `<InstallRoot>/bin/<version>/` pattern).
+2. **The Tauri binary cannot derive package_root via `current_exe()` walk-up.** The Tauri binary lives under `<InstallRoot>/bin/<version>/` — far away from the Unity package. Only Unity (via `PackageInfo.resolvedPath`) knows where the package actually is.
+
+**Resolution — three concurrent fixes.**
+
+1. **Env-var pin contract** ([PinLauncher.cs](../../Editor/Pin/PinLauncher.cs)). Two new env vars set by Unity before spawning the Tauri process: `MCP_GAME_DECK_PACKAGE_ROOT` (= `PackageInfo.resolvedPath`, works regardless of install method) and `MCP_GAME_DECK_RUNTIME_DIR` (= `<InstallRoot>/runtime/<version>/`, always writable, version-isolated). New helper `PinPaths.RuntimeFolder(version)` mirrors `BinFolder(version)`.
+
+2. **Rust paths.rs reads env-var first, dev fallback second.** `package_root()` and `runtime_dir()` both read their respective env var; fall back to `CARGO_MANIFEST_DIR` walk-up (with `eprintln!` warning) only when running `cargo tauri dev` directly. `install_check.rs::detect_sdk_installed` adopts the `paths::sdk_package_json()` helper, killing the inline duplicate.
+
+3. **`mcp_proxy_script` resolves via `BaseDirectory::Resource`, not via `package_root`.** The proxy is no longer derived from the Unity package path — it's a Tauri-bundled resource, declared in `tauri.conf.json` `bundle.resources`. New `App~/scripts/build-proxy.mjs` chained via `beforeBuildCommand` builds `Server~/` and stages the compiled proxy at `App~/src-tauri/proxy-bundle/mcp-proxy.js` for the Tauri bundler to pick up. `normalize_resource_path` strips the Windows `\\?\` extended-length prefix that Tauri's resolver returns (see [tauri-apps/tauri#5096](https://github.com/tauri-apps/tauri/issues/5096), closed not-planned), so the path can be passed cleanly to the Node child via `MCP_PROXY_PATH`.
+
+**Surprise during smoke test (added to scope).** After the three fixes above landed and the NSIS installer was tested end-to-end, the proxy still failed: `ERR_MODULE_NOT_FOUND: Cannot find package '@modelcontextprotocol/sdk'`. Root cause: the proxy was shipped as a single `.js` file via Tauri Resource bundling, but its imports (`@modelcontextprotocol/sdk` and friends) live in `Server~/node_modules/` — which doesn't ship alongside the file. In v1.0 / dev mode this never surfaced because the proxy ran from `Server~/dist/mcp-proxy.js` where Node could walk up to `Server~/node_modules/`. Resolution: **esbuild bundles the proxy as a self-contained CJS file** (single 700KB output that inlines all JS deps). New `bundle:proxy` script in `Server~/package.json` runs `esbuild --bundle --platform=node --format=cjs --target=node20`. Format is CJS (not ESM) because the deployed file lives at a path with no parent `package.json` — Node defaults to CJS in that case, no `"type": "module"` shim needed alongside.
+
+**Validated end-to-end on 2026-05-21.** Node-side env-state dump confirms `MCP_PROXY_PATH` resolves correctly, file exists at the resolved path, and the bundled proxy connects to Unity + responds to `initialize` with the real `serverInfo`. Chat in the Tauri app surfaces all `mcp__game-deck__*` tools.
+
+**Sentinel decision (carried forward).** Whenever a similar binary-vs-package-path mismatch surfaces in future code, the established pattern is: PinLauncher passes the authoritative path via env var (Unity is the only source of truth for where the package lives), Rust reads the env var first with a `CARGO_MANIFEST_DIR` dev fallback that `eprintln!`s a warning when active.
+
+---
 
 ### KI-006 — User avatar initials hardcoded to "RB"
 

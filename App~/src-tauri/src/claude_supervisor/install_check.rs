@@ -13,13 +13,13 @@
 //! affected field rather than propagating, since the React panel treats
 //! "missing" and "probe broken" the same way.
 
-use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
 use tokio::process::Command;
 use tokio::time::timeout;
 
+use crate::claude_supervisor::paths;
 use crate::types::ClaudeInstallStatus;
 
 // region: Constants
@@ -235,29 +235,12 @@ async fn detect_claude_authenticated() -> bool {
 // region: SDK package
 
 /// True when `@anthropic-ai/claude-agent-sdk`'s `package.json` exists at the
-/// runtime path the supervisor will read in task 2.2.
-///
-/// Path is anchored at `CARGO_MANIFEST_DIR` (= `App~/src-tauri/` at compile
-/// time), walked up one level to `App~/`, then joined with the runtime
-/// subtree. Dev-only resolution: production binary placement may need a
-/// different anchor; out of scope for the install detection probe itself.
+/// runtime path the supervisor will use. Delegates to
+/// [`paths::sdk_package_json`] so the env-var-driven resolution
+/// (`MCP_GAME_DECK_RUNTIME_DIR`) and the dev fallback both apply
+/// consistently with the rest of the supervisor.
 async fn detect_sdk_installed() -> bool {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let app_dir = match manifest.parent() {
-        Some(dir) => dir.to_path_buf(),
-        None => {
-            eprintln!("[install-check] could not derive App~ dir from manifest");
-            return false;
-        }
-    };
-
-    let sdk_path = app_dir
-        .join("runtime")
-        .join("node_modules")
-        .join("@anthropic-ai")
-        .join("claude-agent-sdk")
-        .join("package.json");
-
+    let sdk_path = paths::sdk_package_json();
     tokio::fs::metadata(&sdk_path)
         .await
         .map(|m| m.is_file())

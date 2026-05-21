@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "bundle:proxy": "esbuild src/mcp-proxy.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp-proxy.js",
     "start": "node dist/index.js",
     "start:mcp": "node dist/mcp-proxy.js",
     "dev": "tsc --watch"
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
+    "esbuild": "^0.25.0",
     "typescript": "^5.6.0"
   }
 }

@@ -10,6 +10,7 @@ using GameDeck.Editor.Settings;
 using GameDeck.MCP.Utils;
 using UnityEditor;
 using UnityEngine;
+using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 
 namespace GameDeck.Editor.Pin
 {
@@ -43,6 +44,8 @@ namespace GameDeck.Editor.Pin
         private const string ENV_UPDATE_AVAILABLE = "MCP_GAME_DECK_UPDATE_AVAILABLE";
         private const string ENV_LATEST_VERSION = "MCP_GAME_DECK_LATEST_VERSION";
         private const string ENV_RELEASE_URL = "MCP_GAME_DECK_RELEASE_URL";
+        private const string ENV_PACKAGE_ROOT = "MCP_GAME_DECK_PACKAGE_ROOT";
+        private const string ENV_RUNTIME_DIR = "MCP_GAME_DECK_RUNTIME_DIR";
         private const string ENV_TRUE = "true";
         private const string ENV_FALSE = "false";
 
@@ -234,6 +237,18 @@ namespace GameDeck.Editor.Pin
             {
                 envVars[ENV_LATEST_VERSION] = EditorPrefs.GetString(PinPolling.LATEST_VERSION_PREF, string.Empty);
                 envVars[ENV_RELEASE_URL] = EditorPrefs.GetString(PinPolling.RELEASE_URL_PREF, string.Empty);
+            }
+
+            var packageInfo = PackageInfo.FindForAssembly(typeof(PinToolbarElement).Assembly);
+            
+            if (packageInfo != null)
+            {
+                envVars[ENV_PACKAGE_ROOT] = packageInfo.resolvedPath;
+                envVars[ENV_RUNTIME_DIR] = PinPaths.RuntimeFolder(packageInfo.version);
+            }
+            else
+            {
+                McpLogger.Error("[Pin] Cannot resolve PackageInfo — package root + runtime dir env vars omitted; Tauri will fall back to its dev-mode anchor");
             }
         }
 

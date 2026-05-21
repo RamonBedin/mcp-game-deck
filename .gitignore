@@ -54,6 +54,8 @@ Server~/dist/
 node_modules/
 *.js.map
 *.tsbuildinfo
+
+App~/src-tauri/proxy-bundle/
 .env
 .env.local
 .env.*.local

@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:all": "pnpm build:proxy && pnpm dev",
     "build": "tsc && vite build",
+    "build:all": "pnpm build:proxy && pnpm build",
+    "build:proxy": "node scripts/build-proxy.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",

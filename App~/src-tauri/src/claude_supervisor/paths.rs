@@ -1,27 +1,46 @@
-//! Path resolution for the Tauri-managed Node runtime.
+//! Path resolution for the Tauri-managed Node runtime + the Unity
+//! package surface (Plugin~/) + the Tauri-bundled MCP proxy script.
 //!
-//! Centralizes the dev-mode anchor used by `sdk_install.rs`. Production
-//! packaging (F02 task 7.x) replaces this with an `app_local_data_dir`
-//! resolution. `install_check.rs` currently has its own inline copy of
-//! the same calculation; that file will adopt this helper when 7.x
-//! revisits the anchor decision.
+//! Three resolution channels:
+//!
+//! - **`MCP_GAME_DECK_PACKAGE_ROOT`** env var (populated by Unity's
+//!   `PinLauncher` via `PackageInfo.resolvedPath`) — source of
+//!   `Plugin~/`. Falls back to a `CARGO_MANIFEST_DIR` walk-up in dev.
+//! - **`MCP_GAME_DECK_RUNTIME_DIR`** env var (also populated by
+//!   `PinLauncher`) — writable per-version dir under the OS user-data
+//!   tree, owns the npm SDK install and the generated `sdk-entry.js`.
+//!   Falls back to `App~/runtime/` in dev.
+//! - **Tauri `BaseDirectory::Resource`** — owns `mcp-proxy.js`, bundled
+//!   into the binary at release time by the `build-proxy.mjs` script
+//!   chained via `beforeBuildCommand`. No env var, no dev fallback —
+//!   `cargo tauri dev` resolves resources to the source tree.
 
 use std::path::PathBuf;
 
+use tauri::path::BaseDirectory;
+use tauri::{AppHandle, Manager};
+
 // region: Public surface
 
-/// Absolute path to the Tauri-managed Node runtime directory.
+/// Absolute path to the Node runtime directory — where the npm-installed
+/// SDK and the generated `sdk-entry.js` live. Must be writable.
 ///
-/// Anchored at `CARGO_MANIFEST_DIR` (= `App~/src-tauri/` at compile
-/// time), walked up one level to `App~/`, then joined with `runtime/`.
-/// Resolves to `<repo>/App~/runtime/` in dev.
+/// Primary source: `MCP_GAME_DECK_RUNTIME_DIR` env var, set by Unity's
+/// `PinLauncher` to a per-version path under the OS user-data directory
+/// (e.g. `%APPDATA%\MCPGameDeck\runtime\<version>\` on Windows). This
+/// keeps the runtime outside the UPM package tree (which may be
+/// read-only when installed via PackageCache).
 ///
-/// # Panics
-///
-/// Panics if `CARGO_MANIFEST_DIR` has no parent — that would mean the
-/// crate is at filesystem root, which never happens in any realistic
-/// build setup.
+/// Dev fallback: walks up from `CARGO_MANIFEST_DIR` to `App~/runtime/`.
+/// Triggered when the env var is unset or empty — typical when running
+/// `cargo tauri dev` directly without launching through the Unity pin.
 pub fn runtime_dir() -> PathBuf {
+    if let Ok(v) = std::env::var("MCP_GAME_DECK_RUNTIME_DIR") {
+        if !v.is_empty() {
+            return PathBuf::from(v);
+        }
+    }
+    eprintln!("[paths] MCP_GAME_DECK_RUNTIME_DIR not set; falling back to App~/runtime/ (dev mode)");
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest
         .parent()
@@ -54,15 +73,22 @@ pub fn sdk_entry_script() -> PathBuf {
 
 /// Absolute path to the MCP Game Deck Unity package root.
 ///
-/// Walks up two levels from `CARGO_MANIFEST_DIR` (= `App~/src-tauri/`)
-/// → `App~/` → `<package>/`. Resolves to the repo root in dev.
+/// Primary source: `MCP_GAME_DECK_PACKAGE_ROOT` env var, set by Unity's
+/// `PinLauncher` to the resolved package path (via
+/// `PackageInfo.resolvedPath`). Works regardless of how the package
+/// was installed — UPM git URL, `file:` reference, embedded, or
+/// PackageCache snapshot.
 ///
-/// `CARGO_MANIFEST_DIR` is a compile-time
-/// anchor that points at the source tree even after Tauri bundles
-/// the binary into an MSI. Production builds need a different
-/// resolution (e.g., walking up from `current_exe()` or asset-side
-/// embedding). For dev/preview, this is correct.
+/// Dev fallback: walks up from `CARGO_MANIFEST_DIR` to the repo root.
+/// Triggered when the env var is unset or empty — typical when running
+/// `cargo tauri dev` directly without launching through the Unity pin.
 pub fn package_root() -> PathBuf {
+    if let Ok(v) = std::env::var("MCP_GAME_DECK_PACKAGE_ROOT") {
+        if !v.is_empty() {
+            return PathBuf::from(v);
+        }
+    }
+    eprintln!("[paths] MCP_GAME_DECK_PACKAGE_ROOT not set; falling back to CARGO_MANIFEST_DIR walk-up (dev mode)");
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest
         .parent()
@@ -72,15 +98,53 @@ pub fn package_root() -> PathBuf {
 }
 
 /// Path to the compiled MCP proxy script that bridges Claude Code's
-/// MCP transport to the C# MCP Server in Unity. Built from
-/// `<package>/Server~/` via `npm run build`. Skipped silently by
-/// the supervisor when missing — the warning surfaces as an
-/// `AgentMessage::Error` to React.
-pub fn mcp_proxy_script() -> PathBuf {
-    package_root()
-        .join("Server~")
-        .join("dist")
-        .join("mcp-proxy.js")
+/// MCP transport to the C# MCP Server in Unity.
+///
+/// Resolved via Tauri's `BaseDirectory::Resource` against the bundled
+/// resource `proxy-bundle/mcp-proxy.js`. The file is staged at build
+/// time by `App~/scripts/build-proxy.mjs` (run automatically via the
+/// `beforeDevCommand` / `beforeBuildCommand` hooks in `tauri.conf.json`)
+/// and shipped inside the production bundle — users do not need Node
+/// or `npm run build` on their side.
+///
+/// On Windows the resolved path comes back with the `\\?\` extended-
+/// length prefix; this function strips it so the path can be passed
+/// cleanly to Node child processes via `MCP_PROXY_PATH`. See
+/// <https://github.com/tauri-apps/tauri/issues/5096> (closed not-planned).
+///
+/// Returns `None` only if Tauri's resource resolver fails outright —
+/// existence of the file is the caller's responsibility to verify via
+/// `is_file()` (allows the caller to craft a useful error message that
+/// includes the expected path).
+pub fn mcp_proxy_script(app: &AppHandle) -> Option<PathBuf> {
+    match app
+        .path()
+        .resolve("proxy-bundle/mcp-proxy.js", BaseDirectory::Resource)
+    {
+        Ok(p) => Some(normalize_resource_path(p)),
+        Err(e) => {
+            eprintln!("[paths] mcp-proxy.js Resource resolve failed: {e}");
+            None
+        }
+    }
+}
+
+/// Strips Windows' extended-length path prefix (`\\?\`) so the path
+/// can be serialized into env vars / JSON for child processes. No-op
+/// on non-Windows platforms.
+#[cfg(windows)]
+fn normalize_resource_path(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy().into_owned();
+    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        PathBuf::from(stripped)
+    } else {
+        PathBuf::from(s)
+    }
+}
+
+#[cfg(not(windows))]
+fn normalize_resource_path(p: PathBuf) -> PathBuf {
+    p
 }
 
 /// Path to the package's `Plugin~/` directory — the bundled Claude

@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.mcpgamedeck.app",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm dev:all",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm build:all",
     "frontendDist": "../dist"
   },
   "app": {
@@ -37,6 +37,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "proxy-bundle/mcp-proxy.js"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

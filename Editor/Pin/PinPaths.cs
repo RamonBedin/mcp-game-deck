@@ -24,6 +24,7 @@ namespace GameDeck.Editor.Pin
 
         private const string APP_FOLDER_NAME = "MCPGameDeck";
         private const string BIN_SUBFOLDER = "bin";
+        private const string RUNTIME_SUBFOLDER = "runtime";
         private const string BINARY_BASE_NAME = "mcp-game-deck-app";
         private const string WINDOWS_BINARY_EXTENSION = ".exe";
         private const string SHA256_EXTENSION = ".sha256";
@@ -135,6 +136,22 @@ namespace GameDeck.Editor.Pin
         public static string BinFolder(string version)
         {
             return Path.Combine(InstallRoot, BIN_SUBFOLDER, version);
+        }
+
+        /// <summary>
+        /// Returns the per-version Node runtime folder under
+        /// <see cref="InstallRoot"/>. Owns the npm-installed
+        /// <c>@anthropic-ai/claude-agent-sdk</c> tree and the supervisor's
+        /// generated <c>sdk-entry.js</c>. Passed to the Tauri process via
+        /// the <c>MCP_GAME_DECK_RUNTIME_DIR</c> env var so resolution works
+        /// regardless of how the package was installed (UPM PackageCache
+        /// is read-only — runtime cannot live inside the package tree).
+        /// </summary>
+        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
+        /// <returns>Absolute path of the form <c>&lt;InstallRoot&gt;/runtime/&lt;version&gt;</c>.</returns>
+        public static string RuntimeFolder(string version)
+        {
+            return Path.Combine(InstallRoot, RUNTIME_SUBFOLDER, version);
         }
 
         /// <summary>
