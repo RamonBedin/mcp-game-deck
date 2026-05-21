@@ -120,6 +120,27 @@ export function useConversationSubscription(): void
             store.markRequestAnswered(m.requestId, m.answer ?? undefined, m.outcome);
           }
           break;
+        case "system-message":
+          store.appendSystemMessageBlock(m.turnId, m.text, m.source);
+          break;
+        case "subagent-status":
+          store.upsertSubagentStatus(
+            m.turnId,
+            m.taskId,
+            m.toolUseId,
+            m.phase,
+            m.description,
+            m.summary,
+            m.usage,
+            m.lastToolName,
+          );
+          break;
+        case "usage-update":
+          store.setTurnUsage(m.model, m.usage);
+          break;
+        case "plan-summary":
+          store.appendPlanSummaryBlock(m.turnId, m.requestId, m.plan);
+          break;
         case "ready":
         case "assistant-text":
         case "permission-mode-changed":

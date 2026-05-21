@@ -21,6 +21,13 @@ import Pill from "../atoms/Pill";
 
 // #region Types
 
+/**
+ * Lightweight descriptor for a knowledge document.
+ *
+ * Carries everything the sidebar needs to render the entry — identifier,
+ * ordering prefix, display title, and word count — without loading the full
+ * body text. Hydrated into `KnowledgeDoc` when a doc is opened.
+ */
 interface KnowledgeDocMeta
 {
   id: string;
@@ -29,24 +36,30 @@ interface KnowledgeDocMeta
   wordCount: number;
 }
 
+/**
+ * Fully-loaded knowledge document.
+ *
+ * Extends `KnowledgeDocMeta` with the document's body text so it can be
+ * rendered in the reader.
+ */
 interface KnowledgeDoc extends KnowledgeDocMeta
 {
   body: string;
 }
 
+/**
+ * Props for the `KnowledgeReader` component.
+ *
+ * Renders the knowledge reader UI with a sidebar list of docs and a body
+ * pane for the selected entry, optional initial selection, free-text search
+ * highlighting, and an "Open in chat" handler that hands control back to
+ * the parent for composer prefill.
+ */
 interface KnowledgeReaderProps
 {
-  /** Pre-fetched docs (metadata + body). */
   docs: KnowledgeDoc[];
-  /** Optionally a pre-selected doc id; defaults to the first entry. */
   initialDocId?: string;
-  /** Called when "Open in chat" is hit; consumer prefills the composer. */
   onOpenInChat: (doc: KnowledgeDocMeta) => void;
-  /**
-   * Free-text search query. When non-empty, occurrences are wrapped
-   * in `<mark>` inside both the sidebar titles and the rendered body.
-   * Empty string disables highlighting (no overhead).
-   */
   highlightQuery?: string;
 }
 
@@ -76,6 +89,11 @@ const formatWordCount = (count: number): string => {
  *
  * Memoise the result at the consumer so a stable identity hits
  * react-markdown's child-equality fast path.
+ *
+ * @param query - Free-text search query. Pass an empty string to
+ *   disable highlighting and skip the per-node walk.
+ * @returns A react-markdown `Components` map covering the elements
+ *   the knowledge reader renders.
  */
 function buildRenderers(query: string): Components
 {
@@ -169,19 +187,10 @@ function buildRenderers(query: string): Components
  * @param props - See {@link KnowledgeReaderProps}.
  * @returns The reader element.
  */
-export default function KnowledgeReader({
-  docs,
-  initialDocId,
-  onOpenInChat,
-  highlightQuery = "",
-}: KnowledgeReaderProps)
+export default function KnowledgeReader({docs, initialDocId, onOpenInChat, highlightQuery = "",}: KnowledgeReaderProps)
 {
-  const [selectedId, setSelectedId] = useState<string | null>(
-    initialDocId ?? docs[0]?.id ?? null,
-  );
-
+  const [selectedId, setSelectedId] = useState<string | null>(initialDocId ?? docs[0]?.id ?? null,);
   const selectedDoc = selectedId === null ? null : docs.find((d) => d.id === selectedId) ?? null;
-
   const renderers = useMemo(() => buildRenderers(highlightQuery), [highlightQuery]);
 
   // #region Find-next/prev (Ctrl+F-style navigation)
@@ -190,9 +199,6 @@ export default function KnowledgeReader({
   const [matchCount, setMatchCount] = useState(0);
   const [matchIdx, setMatchIdx] = useState(0);
 
-  // Re-count matches after each render whose inputs could change them
-  // (doc swap or new search term). useLayoutEffect runs after DOM commit
-  // but before paint, so the count is in sync with what the user sees.
   useLayoutEffect(() => {
     if (bodyRef.current === null)
     {
@@ -211,9 +217,6 @@ export default function KnowledgeReader({
     setMatchIdx(0);
   }, [selectedId, highlightQuery]);
 
-  // Whenever the active index changes, scroll that <mark> into view and
-  // mark it as "current" via a data attribute — sibling marks get the
-  // attribute cleared so only one carries the strong outline at a time.
   useEffect(() => {
     if (bodyRef.current === null)
     {
@@ -329,6 +332,13 @@ export default function KnowledgeReader({
 
 // #region MatchNav
 
+/**
+ * Props for the `MatchNav` component.
+ *
+ * Renders the inline navigator shown alongside a search input — displaying
+ * the current match position out of the total and exposing previous/next
+ * controls for stepping through matches.
+ */
 interface MatchNavProps
 {
   idx: number;
@@ -337,12 +347,6 @@ interface MatchNavProps
   onNext: () => void;
 }
 
-/**
- * Inline "find next / previous" chip shown in the reader header when a
- * search is active. Mirrors VS Code's Ctrl+F affordance — counter +
- * paired arrow buttons that wrap around at the ends. Counter switches
- * to "no results" copy when `count === 0`.
- */
 const MatchNav = ({ idx, count, onPrev, onNext }: MatchNavProps) => (
   <div className="inline-flex items-center gap-1 rounded-r-2 border border-line-hard bg-bg-1 px-1.5 py-0.5">
     <IconButton

@@ -25,6 +25,7 @@ import BrandHex from "../atoms/BrandHex";
 import Pill from "../atoms/Pill";
 import StatusDot, { type DotStatus } from "../atoms/StatusDot";
 import PermissionModePicker from "../PermissionModePicker";
+import ContextRing from "./ContextRing";
 
 // #region Helpers
 
@@ -121,6 +122,8 @@ export default function HudStrip()
       <PermissionModePicker variant="hud" />
 
       <div className="ml-auto flex items-center gap-3.5">
+        <ContextRing />
+        <Sep />
         <span>{sessionLabel}</span>
         <Sep />
         <Pill variant="subtle" size="sm">claude</Pill>

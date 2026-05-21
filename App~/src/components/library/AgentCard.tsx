@@ -9,10 +9,6 @@
  *
  * Click handler routes through `LibraryRoute` → conversationStore →
  * ChatRoute, which prefills the composer with `@agent-name `.
- *
- * @requires-backend B.03 tool metadata — sample queries are
- *   placeholder until tool catalog includes recommended exemplars
- *   per agent.
  */
 
 import type { CatalogAgent } from "../../ipc/types";
@@ -21,18 +17,20 @@ import Button from "../atoms/Button";
 
 // #region Types
 
+/**
+ * Props for the `AgentCard` component.
+ *
+ * Renders a single catalog agent as a clickable card with avatar, optional
+ * sample prompt, and an open handler, plus a disabled state for contexts
+ * where the agent shouldn't be actionable.
+ */
 interface AgentCardProps
 {
   agent: CatalogAgent;
-  /** Auto-derived from name when omitted. */
   variant?: AvatarVariant;
-  /** Auto-derived from name when omitted. */
   initials?: string;
-  /** Optional sample-query line (one-liner). */
   sample?: string;
-  /** Click handler — receives the agent. */
   onOpen: (agent: CatalogAgent) => void;
-  /** Greys out the "Open in chat" CTA when a turn is in flight. */
   disabled?: boolean;
 }
 
@@ -41,15 +39,51 @@ interface AgentCardProps
 // #region Helpers
 
 const variantForAgent = (name: string): AvatarVariant => {
-  if (name.includes("shader"))      { return "shader"; }
-  if (name.includes("ui"))          { return "ui"; }
-  if (name.includes("dots"))        { return "dots"; }
-  if (name.includes("performance")) { return "perf"; }
-  if (name.includes("gameplay"))    { return "gameplay"; }
-  if (name.includes("systems"))     { return "systems"; }
-  if (name.includes("technical"))   { return "techart"; }
-  if (name.includes("addressables")){ return "addr"; }
-  if (name.includes("qa"))          { return "qa"; }
+  if (name.includes("shader"))
+  { 
+    return "shader";
+  }
+
+  if (name.includes("ui"))          
+  { 
+    return "ui"; 
+  }
+
+  if (name.includes("dots"))        
+  { 
+    return "dots"; 
+  }
+
+  if (name.includes("performance")) 
+  { 
+    return "perf"; 
+  }
+  
+  if (name.includes("gameplay"))    
+  { 
+    return "gameplay"; 
+  }
+
+  if (name.includes("systems"))     
+  { 
+    return "systems"; 
+  }
+
+  if (name.includes("technical"))   
+  { 
+    return "techart"; 
+  }
+
+  if (name.includes("addressables"))
+  { 
+    return "addr"; 
+  }
+
+  if (name.includes("qa"))          
+  { 
+    return "qa"; 
+  }
+
   return "unity";
 };
 

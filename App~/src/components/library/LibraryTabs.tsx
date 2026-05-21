@@ -11,6 +11,13 @@ import type { LibraryTab } from "../../routes/LibraryRoute";
 
 // #region Types
 
+/**
+ * Props for the `LibraryTabs` component.
+ *
+ * Renders the tab bar at the top of the library panel, surfacing the active
+ * tab, per-tab entry counts, and a free-text search field whose value is
+ * lifted into the parent for cross-tab filtering.
+ */
 interface LibraryTabsProps
 {
   active: LibraryTab;
@@ -34,13 +41,7 @@ const TABS: ReadonlyArray<{ id: LibraryTab; label: string }> = [
  * @param props - See {@link LibraryTabsProps}.
  * @returns The tabs element.
  */
-export default function LibraryTabs({
-  active,
-  onChange,
-  counts,
-  searchQuery,
-  onSearchChange,
-}: LibraryTabsProps)
+export default function LibraryTabs({active, onChange, counts, searchQuery, onSearchChange,}: LibraryTabsProps)
 {
   return (
     <div className="flex border-b border-line bg-bg-2 px-7 gap-0.5 shrink-0">

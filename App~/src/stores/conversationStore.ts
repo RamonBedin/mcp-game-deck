@@ -15,7 +15,7 @@
 
 import { create } from "zustand";
 import { sendMessage as sendMessageCommand, trackRecentCommand } from "../ipc/commands";
-import type { AskUserQuestionOutput, Block, Message, PermissionMode, PermissionRequestedPayload, } from "../ipc/types";
+import type { AskUserQuestionOutput, Block, Message, PermissionMode, PermissionRequestedPayload, SubagentPhase, SubagentUsage, SystemMessageSource, TurnUsage, } from "../ipc/types";
 
 // #region State shape
 
@@ -33,6 +33,8 @@ interface ConversationState
   currentSessionId: string | null;
   permissionMode: PermissionMode;
   inFlight: boolean;
+  turnUsage: TurnUsage | null;
+  turnUsageModel: string | null;
   appendDelta: (turnId: string, text: string) => void;
   appendToolUseBlock: (turnId: string, toolUseId: string, name: string, input: unknown,) => void;
   appendToolResultBlock: (turnId: string, toolUseId: string, content: unknown, isError: boolean,) => void;
@@ -42,6 +44,10 @@ interface ConversationState
   appendAutoAllowedBlock: (turnId: string, requestId: string, toolName: string,) => void;
   markRequestAnswered: (requestId: string, answer?: AskUserQuestionOutput, outcome?: "allow" | "allow-always" | "deny" | "auto-allowed",) => void;
   markAllPendingRequestsInterrupted: () => void;
+  appendSystemMessageBlock: (turnId: string, text: string, source: SystemMessageSource) => void;
+  upsertSubagentStatus: (turnId: string, taskId: string | null, toolUseId: string | null, phase: SubagentPhase, description: string, summary: string | null, usage: SubagentUsage | null, lastToolName: string | null) => void;
+  appendPlanSummaryBlock: (turnId: string, requestId: string, plan: string) => void;
+  setTurnUsage: (model: string | null, usage: TurnUsage) => void;
   clearMessages: () => void;
   loadHistory: (messages: Message[]) => void;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -140,6 +146,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   currentSessionId: null,
   permissionMode: "default",
   inFlight: false,
+  turnUsage: null,
+  turnUsageModel: null,
   appendDelta: (turnId, text) =>
     set((state) => {
       const idx = state.messages.findIndex((m) => m.id === turnId);
@@ -250,7 +258,78 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         ),
       })),
     })),
-  clearMessages: () => set({ messages: [], inFlight: false }),
+  appendSystemMessageBlock: (turnId, text, source) =>
+    set((state) => ({
+      messages: pushBlockToTurn(state.messages, turnId, {
+        type: "system-message",
+        text,
+        source,
+      }),
+    })),
+  upsertSubagentStatus: (turnId, taskId, toolUseId, phase, description, summary, usage, lastToolName) =>
+    set((state) => {
+      const idx = state.messages.findIndex((m) => m.id === turnId);
+      const incoming: Extract<Block, { type: "subagent-status" }> = {
+        type: "subagent-status",
+        toolUseId,
+        taskId,
+        phase,
+        description,
+        summary,
+        usage,
+        lastToolName,
+      };
+
+      if (idx === -1)
+      {
+        return {
+          messages: [
+            ...state.messages,
+            { id: turnId, role: "assistant", timestamp: Date.now(), blocks: [incoming] },
+          ],
+        };
+      }
+
+      const msg = state.messages[idx];
+      const existingIdx = taskId === null ? -1 : msg.blocks.findIndex((b) => b.type === "subagent-status" && b.taskId === taskId,);
+
+      let newBlocks: Block[];
+
+      if (existingIdx >= 0)
+      {
+        newBlocks = [...msg.blocks];
+        const prev = newBlocks[existingIdx] as Extract<Block, { type: "subagent-status" }>;
+        newBlocks[existingIdx] = {
+          ...prev,
+          phase,
+          description: description.length > 0 ? description : prev.description,
+          summary: summary ?? prev.summary,
+          usage: usage ?? prev.usage,
+          lastToolName: lastToolName ?? prev.lastToolName,
+          toolUseId: toolUseId ?? prev.toolUseId,
+        };
+      }
+      else
+      {
+        newBlocks = [...msg.blocks, incoming];
+      }
+
+      const next = [...state.messages];
+      next[idx] = { ...msg, blocks: newBlocks };
+      return { messages: next };
+    }),
+  appendPlanSummaryBlock: (turnId, requestId, plan) =>
+    set((state) => ({
+      messages: pushBlockToTurn(state.messages, turnId, {
+        type: "request",
+        requestId,
+        subtype: "plan-summary",
+        payload: { requestId, turnId, plan },
+        state: "pending",
+      }),
+    })),
+  setTurnUsage: (model, usage) => set({ turnUsageModel: model, turnUsage: usage }),
+  clearMessages: () => set({ messages: [], inFlight: false, turnUsage: null, turnUsageModel: null }),
   loadHistory: (messages) => set({ messages, inFlight: false }),
   setPermissionMode: (mode) => set({ permissionMode: mode }),
   setCurrentSessionId: (sessionId) => set({ currentSessionId: sessionId }),

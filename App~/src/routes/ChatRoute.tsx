@@ -20,15 +20,18 @@
 import { useEffect, useMemo, useRef } from "react";
 import ChatInput from "../components/ChatInput";
 import ChatLaunchpad from "../components/chat/ChatLaunchpad";
+import SubagentStatusPanel from "../components/chat/SubagentStatusPanel";
+import SystemMessageBlock from "../components/chat/SystemMessageBlock";
 import ToolCallNarrativeBlock, { type ToolCallStatus } from "../components/chat/ToolCallNarrativeBlock";
 import WorkingStrip from "../components/chat/WorkingStrip";
 import PermissionRequestCard from "../components/requests/PermissionRequestCard";
+import PlanSummaryCard from "../components/requests/PlanSummaryCard";
 import QuestionCard from "../components/requests/QuestionCard";
 import SessionList from "../components/SessionList";
 import Avatar from "../components/atoms/Avatar";
 import { useCollapsedColumn } from "../hooks/useCollapsedColumn";
 import { cancelCurrentTurn, respondToRequest } from "../ipc/commands";
-import type { AskUserQuestionOutput, AskUserRequestedPayload, Block, Message, PermissionRequestedPayload,} from "../ipc/types";
+import type { AskUserQuestionOutput, AskUserRequestedPayload, Block, Message, PermissionRequestedPayload, PlanSummaryPayload, SubagentPhase, SubagentUsage, SystemMessageSource,} from "../ipc/types";
 import { useConversationStore } from "../stores/conversationStore";
 
 // #region Helpers
@@ -71,7 +74,9 @@ const isTurnStreaming = (messages: Message[]): boolean => {
 type RenderedBlock =
   | { kind: "text"; text: string }
   | { kind: "tool"; toolUseId: string; name: string; input: unknown; status: ToolCallStatus; output?: unknown; isError?: boolean }
-  | { kind: "request"; block: Extract<Block, { type: "request" }> };
+  | { kind: "request"; block: Extract<Block, { type: "request" }> }
+  | { kind: "system-message"; text: string; source: SystemMessageSource }
+  | { kind: "subagent-status"; phase: SubagentPhase; description: string; summary: string | null; usage: SubagentUsage | null; lastToolName: string | null };
 
 const pairToolBlocks = (blocks: Block[]): RenderedBlock[] => {
   const rendered: RenderedBlock[] = [];
@@ -116,6 +121,25 @@ const pairToolBlocks = (blocks: Block[]): RenderedBlock[] => {
     if (b.type === "request")
     {
       rendered.push({ kind: "request", block: b });
+      continue;
+    }
+
+    if (b.type === "system-message")
+    {
+      rendered.push({ kind: "system-message", text: b.text, source: b.source });
+      continue;
+    }
+
+    if (b.type === "subagent-status")
+    {
+      rendered.push({
+        kind: "subagent-status",
+        phase: b.phase,
+        description: b.description,
+        summary: b.summary,
+        usage: b.usage,
+        lastToolName: b.lastToolName,
+      });
     }
   }
 
@@ -296,6 +320,31 @@ const MessageView = ({ message, onPermissionDecision, onQuestionSubmit }: Messag
             );
           }
 
+          if (r.kind === "system-message")
+          {
+            return (
+              <SystemMessageBlock
+                key={i}
+                text={r.text}
+                source={r.source}
+              />
+            );
+          }
+
+          if (r.kind === "subagent-status")
+          {
+            return (
+              <SubagentStatusPanel
+                key={i}
+                phase={r.phase}
+                description={r.description}
+                summary={r.summary}
+                usage={r.usage}
+                lastToolName={r.lastToolName}
+              />
+            );
+          }
+
           // request
           const block = r.block;
 
@@ -308,6 +357,24 @@ const MessageView = ({ message, onPermissionDecision, onQuestionSubmit }: Messag
                 payload={payload}
                 state={block.state}
                 outcome={block.outcome === "auto-allowed" ? undefined : block.outcome}
+                onDecision={(outcome) => onPermissionDecision(block, outcome)}
+              />
+            );
+          }
+
+          if (block.subtype === "plan-summary")
+          {
+            const payload = block.payload as PlanSummaryPayload;
+            return (
+              <PlanSummaryCard
+                key={block.requestId}
+                payload={payload}
+                state={block.state}
+                outcome={
+                  block.outcome === "allow" || block.outcome === "deny"
+                    ? block.outcome
+                    : undefined
+                }
                 onDecision={(outcome) => onPermissionDecision(block, outcome)}
               />
             );

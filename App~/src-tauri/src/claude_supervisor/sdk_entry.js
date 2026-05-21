@@ -218,6 +218,99 @@ function emitRequestResolved(requestId, outcome, answer, toolName, turnId)
 }
 
 /**
+ * Emits a `system-message` envelope carrying text the CLI generated
+ * locally (synthetic assistant message, `model: "<synthetic>"`). This
+ * covers built-in slash commands that the SDK does not forward as
+ * stream events (e.g. `/help`, `/cost`). React renders these as a
+ * terminal-style block distinct from regular assistant text — KI-009.
+ *
+ * @param {string} turnId - Stable id of the current turn.
+ * @param {string} text - Verbatim text from the synthetic message.
+ * @param {string} source - Provenance hint for the host, currently
+ *   `"cli-builtin"`. Reserved for future categorization.
+ * @returns {void}
+ */
+function emitSystemMessage(turnId, text, source)
+{
+  emit({ type: "system-message", turnId, text, source });
+}
+
+/**
+ * Emits a `subagent-status` envelope: progress signal for a `Task`
+ * tool invocation. The SDK fires three subtypes — `task_started`
+ * once at kickoff, `task_progress` per step (with the running
+ * description, e.g. `"Reading X.cs"`, and cumulative usage), and
+ * `task_notification` at completion. React groups these by `taskId`
+ * and renders a live mini-panel under the Task tool-use block.
+ *
+ * @param {string} turnId - Stable id of the current turn.
+ * @param {"started" | "progress" | "completed"} phase - Lifecycle
+ *   phase mapped from the SDK subtype.
+ * @param {string | null} taskId - SDK's `task_id` (groups events).
+ * @param {string | null} toolUseId - The originating Task tool-use id.
+ * @param {string} description - Current activity description ("",
+ *   `"Reading X.cs"`, summary text on completion, etc.).
+ * @param {string | null} summary - Populated on completion only.
+ * @param {object | null} usage - Cumulative usage stats when present
+ *   (`total_tokens`, `tool_uses`, `duration_ms`).
+ * @param {string | null} lastToolName - Most recent tool the subagent
+ *   invoked (helps the host show a richer label).
+ * @returns {void}
+ */
+function emitSubagentStatus(turnId, phase, taskId, toolUseId, description, summary, usage, lastToolName)
+{
+  emit({
+    type: "subagent-status",
+    turnId,
+    phase,
+    taskId,
+    toolUseId,
+    description,
+    summary,
+    usage,
+    lastToolName,
+  });
+}
+
+/**
+ * Emits a `usage-update` envelope summarizing token spend for the
+ * just-completed turn. Drives the topbar context-usage ring and
+ * the `/compact` affordance. Fired from the `result` SDK message
+ * which carries the final consolidated counters.
+ *
+ * @param {string} turnId - Stable id of the just-completed turn.
+ * @param {string | null} model - Model string from the SDK (e.g.
+ *   `"claude-opus-4-7[1m]"`). The host derives the max-context
+ *   denominator from this.
+ * @param {object} usage - The full `result.usage` payload — passed
+ *   through verbatim so the host can pick fields without us
+ *   committing to a shape that changes with SDK versions.
+ * @returns {void}
+ */
+function emitUsageUpdate(turnId, model, usage)
+{
+  emit({ type: "usage-update", turnId, model, usage });
+}
+
+/**
+ * Emits a `plan-summary` envelope: Claude is calling the built-in
+ * `ExitPlanMode` tool to surface its drafted plan for the user's
+ * Accept / Reject choice. The host renders a dedicated card with the
+ * plan markdown — distinct from the generic permission card the
+ * legacy path produced (KI-004). The user's decision round-trips
+ * back as a `respond-to-request` permission outcome.
+ *
+ * @param {string} requestId - SDK's `toolUseID` for the call.
+ * @param {string | null} turnId - Stable id of the current turn.
+ * @param {string} plan - The plan markdown the model wants approved.
+ * @returns {void}
+ */
+function emitPlanSummary(requestId, turnId, plan)
+{
+  emit({ type: "plan-summary", requestId, turnId, plan });
+}
+
+/**
  * Writes a debug line to stderr, prefixed with `[sdk-entry]`. Non-string args
  * are JSON-stringified so structured payloads remain inspectable in the host
  * log.
@@ -536,13 +629,10 @@ let pendingResumeSessionId = null;
 // region: catalog emit
 
 
+
 const BUILTIN_COMMANDS = new Set([
-  "clear", "help", "cost", "permissions", "agents", "init",
-  "login", "logout", "model", "review", "security-review",
-  "status", "exit",
-  "update-config", "debug", "simplify", "batch",
-  "fewer-permission-prompts", "loop", "schedule", "claude-api",
-  "compact", "context", "heapdump", "extra-usage", "usage",
+  "clear", "compact", "context", "heapdump", "init",
+  "review", "security-review", "extra-usage", "usage",
   "insights", "team-onboarding",
 ]);
 
@@ -873,6 +963,21 @@ async function canUseToolCallback(toolName, input, opts)
     emitRequestResolved(requestId, "allow", answer);
     const sanitizedAnswer = { ...answer, questions: input.questions };
     return { behavior: "allow", updatedInput: sanitizedAnswer };
+  }
+
+  if (toolName === "ExitPlanMode")
+  {
+    const plan = typeof input?.plan === "string" ? input.plan : "";
+    emitPlanSummary(requestId, turnId, plan);
+    const decision = await new Promise((resolve, reject) => {pending.set(requestId, { resolve, reject, requestType: "permission", toolName, input });});
+    emitRequestResolved(requestId, decision.outcome);
+
+    if (decision.outcome === "deny")
+    {
+      return { behavior: "deny", message: "User rejected the plan via Tauri UI", interrupt: false };
+    }
+
+    return { behavior: "allow", updatedInput: input };
   }
 
   const key = cacheKey(toolName, input);
@@ -1215,7 +1320,36 @@ async function handleInput(text, attachments)
       else if (msg?.type === "result")
       {
         captureSessionId(msg);
+
+        if (msg.usage)
+        {
+          emitUsageUpdate(turnId, msg.model ?? null, msg.usage);
+        }
         emitTurnComplete(turnId);
+      }
+      else if (msg?.type === "assistant" && msg.message?.model === "<synthetic>")
+      {
+        for (const block of msg.message.content ?? [])
+        {
+          if (block?.type === "text" && typeof block.text === "string")
+          {
+            emitSystemMessage(turnId, block.text, "cli-builtin");
+          }
+        }
+      }
+      else if (msg?.type === "system" && (msg.subtype === "task_started" || msg.subtype === "task_progress" || msg.subtype === "task_notification"))
+      {
+        const phase = msg.subtype === "task_started" ? "started" : msg.subtype === "task_notification" ? "completed" : "progress";
+        emitSubagentStatus(
+          turnId,
+          phase,
+          msg.task_id ?? null,
+          msg.tool_use_id ?? null,
+          msg.description ?? "",
+          msg.summary ?? null,
+          msg.usage ?? null,
+          msg.last_tool_name ?? null,
+        );
       }
     }
   }
@@ -1312,7 +1446,7 @@ function handleStreamEvent(ev, turnId, activeBlocks)
   {
     const idx = ev.index;
     const block = activeBlocks.get(idx);
-    
+
     if (block?.kind === "tool_use_pending")
     {
       let input;

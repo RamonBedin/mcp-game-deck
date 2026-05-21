@@ -72,7 +72,9 @@ export type Block =
   | { type: "text"; text: string }
   | { type: "tool-use"; toolUseId: string; name: string; input: unknown }
   | { type: "tool-result"; toolUseId: string; content: unknown; isError: boolean }
-  | { type: "request"; requestId: string; subtype: "permission" | "question"; payload: PermissionRequestedPayload | AskUserRequestedPayload; state: "pending" | "answered" | "interrupted" | "auto-allowed"; answer?: AskUserQuestionOutput; outcome?: "allow" | "allow-always" | "deny" | "auto-allowed" };
+  | { type: "system-message"; text: string; source: SystemMessageSource }
+  | { type: "subagent-status"; toolUseId: string | null; taskId: string | null; phase: SubagentPhase; description: string; summary: string | null; usage: SubagentUsage | null; lastToolName: string | null }
+  | { type: "request"; requestId: string; subtype: "permission" | "question" | "plan-summary"; payload: PermissionRequestedPayload | AskUserRequestedPayload | PlanSummaryPayload; state: "pending" | "answered" | "interrupted" | "auto-allowed"; answer?: AskUserQuestionOutput; outcome?: "allow" | "allow-always" | "deny" | "auto-allowed" };
 
 /**
  * A single chat message exchanged with the agent. Content lives in
@@ -519,7 +521,94 @@ export type AgentMessage =
   | { type: "ask-user-requested"; requestId: string; turnId: string; agentId: string | null; input: { questions: AskUserQuestion[] } }
   | { type: "permission-requested"; requestId: string; turnId: string; agentId: string | null; toolName: string; input: unknown; blockedPath: string | null; decisionReason: string | null }
   | { type: "request-resolved"; requestId: string; outcome: "allow" | "allow-always" | "deny" | "auto-allowed"; answer: AskUserQuestionOutput | null; toolName: string | null; turnId: string | null }
-  | { type: "catalog-ready"; commands: CatalogCommand[]; agents: CatalogAgent[] };
+  | { type: "catalog-ready"; commands: CatalogCommand[]; agents: CatalogAgent[] }
+  | { type: "system-message"; turnId: string; text: string; source: SystemMessageSource }
+  | { type: "subagent-status"; turnId: string; phase: SubagentPhase; taskId: string | null; toolUseId: string | null; description: string; summary: string | null; usage: SubagentUsage | null; lastToolName: string | null }
+  | { type: "usage-update"; turnId: string; model: string | null; usage: TurnUsage }
+  | { type: "plan-summary"; requestId: string; turnId: string; plan: string };
+
+/**
+ * Provenance hint for a `system-message`. Currently always
+ * `"cli-builtin"` (synthetic responses from CLI-handled slash
+ * commands like `/help` and `/cost` — KI-009). Reserved for future
+ * categorization.
+ */
+export type SystemMessageSource = "cli-builtin";
+
+/**
+ * Lifecycle phase of a `Task` subagent: `started` at kickoff,
+ * `progress` per step (with cumulative usage), `completed` at the
+ * final summary. Mirrors the SDK's `system/task_started`,
+ * `task_progress`, and `task_notification` subtypes.
+ */
+export type SubagentPhase = "started" | "progress" | "completed";
+
+/**
+ * Cumulative usage block reported by a `Task` subagent. Pass-through
+ * from the SDK so the shape stays additive across versions —
+ * additional fields (e.g. cache stats) can appear without code
+ * changes here.
+ */
+export interface SubagentUsage
+{
+  total_tokens?: number;
+  tool_uses?: number;
+  duration_ms?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Token-spend block for the just-completed turn, forwarded from
+ * `result.usage`. The host computes the context-window percentage
+ * from `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
+ * over the model's max. Extra fields (server_tool_use, service_tier,
+ * etc.) are kept as `unknown` so the contract is forward-compatible.
+ */
+export interface TurnUsage
+{
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  [key: string]: unknown;
+}
+
+/** Payload for the `system-message` agent message — KI-009 fix. */
+export interface SystemMessagePayload
+{
+  turnId: string;
+  text: string;
+  source: SystemMessageSource;
+}
+
+/** Payload for the `subagent-status` agent message. */
+export interface SubagentStatusPayload
+{
+  turnId: string;
+  phase: SubagentPhase;
+  taskId: string | null;
+  toolUseId: string | null;
+  description: string;
+  summary: string | null;
+  usage: SubagentUsage | null;
+  lastToolName: string | null;
+}
+
+/** Payload for the `usage-update` agent message — drives the context ring. */
+export interface UsageUpdatePayload
+{
+  turnId: string;
+  model: string | null;
+  usage: TurnUsage;
+}
+
+/** Payload for the `plan-summary` agent message — KI-004 fix. */
+export interface PlanSummaryPayload
+{
+  requestId: string;
+  turnId: string;
+  plan: string;
+}
 
 /** Wire payload for `agent-message`. */
 export interface AgentMessagePayload

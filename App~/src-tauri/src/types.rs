@@ -556,6 +556,31 @@ pub enum AgentMessage {
         commands: Vec<CatalogCommand>,
         agents: Vec<CatalogAgent>,
     },
+    SystemMessage {
+        turn_id: String,
+        text: String,
+        source: String,
+    },
+    SubagentStatus {
+        turn_id: String,
+        phase: String,
+        task_id: Option<String>,
+        tool_use_id: Option<String>,
+        description: String,
+        summary: Option<String>,
+        usage: Option<Value>,
+        last_tool_name: Option<String>,
+    },
+    UsageUpdate {
+        turn_id: String,
+        model: Option<String>,
+        usage: Value,
+    },
+    PlanSummary {
+        request_id: String,
+        turn_id: String,
+        plan: String,
+    },
 }
 
 /// Wire payload for `agent-message` — wraps an `AgentMessage` in a

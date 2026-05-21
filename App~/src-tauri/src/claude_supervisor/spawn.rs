@@ -253,6 +253,10 @@ pub async fn read_stdout(
             | AgentMessage::PermissionRequested { .. }
             | AgentMessage::RequestResolved { .. }
             | AgentMessage::CatalogReady { .. }
+            | AgentMessage::SystemMessage { .. }
+            | AgentMessage::SubagentStatus { .. }
+            | AgentMessage::UsageUpdate { .. }
+            | AgentMessage::PlanSummary { .. }
             | AgentMessage::Error { .. } => {
             }
         }

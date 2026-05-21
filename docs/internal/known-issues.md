@@ -15,21 +15,6 @@ Entries are append-only by ID. When an issue is resolved, move its entry from **
 
 ## Open
 
-### KI-004 — ExitPlanMode renders as a generic Allow card
-
-- **Priority:** P1
-- **Scope:** S
-- **Status:** open
-- **Discovered:** Nicollas dogfood, May 2026
-
-**Symptom.** When the user enters Claude Code's native plan mode (Shift+Tab) and Claude finishes drafting the plan, the SDK fires the built-in `ExitPlanMode` tool. The Tauri app renders it as a regular permission request card ("Claude wants to use ExitPlanMode") instead of showing the plan summary with explicit Accept / Reject.
-
-**Diagnosis (confirmed in code).** `canUseToolCallback` in `App~/runtime/sdk-entry.js` only special-cases `AskUserQuestion`. Every other tool — including `ExitPlanMode` — falls through to the generic `emitPermissionRequested` path.
-
-**Fix direction.** Add a branch for `ExitPlanMode`: either emit a dedicated `plan-summary` envelope and render with Accept / Reject in the chat, or auto-allow and render the `plan` field from the tool input as a markdown block inline. Decision needed when attacking this KI.
-
----
-
 ### KI-005 — Markdown tables not rendered
 
 - **Priority:** P1
@@ -81,31 +66,6 @@ Literal string hardcoded.
 
 ---
 
-### KI-009 — Built-in commands don't render in the Tauri app
-
-- **Priority:** P1
-- **Scope:** S-M
-- **Status:** open
-- **Discovered:** Ramon observation, May 2026
-
-**Symptom.** Built-in Claude Code commands like `/help`, `/clear`, `/cost`, `/permissions`, `/agents`, `/status`, etc. don't produce visible output in the Tauri chat. The catalog recognizes them (autocomplete lists them as `built-in`), but invoking them silently fails to render anything in the conversation.
-
-**Preliminary diagnosis.** Not yet investigated in code. Possibilities:
-
-- Built-in commands return special SDK message types that `sdk-entry.js` doesn't translate (the main `for await` loop in `handleInput` only handles `system/init`, `stream_event`, `user`, and `result` — any other shape is silently ignored).
-- The output is emitted as a content block the frontend doesn't know how to render.
-- The CLI handles the command locally and doesn't surface anything to the SDK.
-
-**Investigation scope.**
-
-- Trace what message types appear when `/help`, `/cost`, `/clear` are sent through `query()`.
-- Compare against the discriminator in `sdk-entry.js`'s main `for await (const msg of q)` loop — any unhandled `msg.type` is a candidate.
-- Check whether the SDK has a `command-result` or similar envelope not currently parsed.
-
-**Fix direction.** Add handling for the missing message types in `sdk-entry.js` and emit a corresponding envelope to the frontend; add a render case in `ChatRoute` for the new envelope. Likely a new `system-message` or `command-output` envelope with markdown body.
-
----
-
 ### KI-011 — Tauri binary has `package_root()` hardcoded at compile time
 
 - **Priority:** P0 (blocks v2.0 release rehearsal — does not block today's dev flow)
@@ -133,48 +93,85 @@ Same limitation hits `plugin_dir()` ([paths.rs:92-94](../../App~/src-tauri/src/c
 
 ---
 
-### KI-012 — Tauri loses Unity connection after tool-triggered recompile (does not reconnect; pin stays green)
+## Resolved
 
-- **Priority:** P0 (does not auto-recover — full app restart required)
-- **Scope:** S-M (needs instrumentation first)
-- **Status:** open
-- **Discovered:** Ramon, during KI-008 fix validation in `firepot-roulette`, 2026-05-20
+### KI-009 — Built-in commands don't render in the Tauri app
 
-**Symptom.** When a tool invocation triggers a C# recompile in Unity (creating/editing a script, etc. — not arbitrary assembly reload), Unity dutifully recompiles, **but after the reload Tauri flips its connection-status indicator to red and never reconnects**. The Unity-side pin status stays green — Unity itself reports the C# MCP server as healthy. Tauri's `unity-client` poll logs:
+- **Priority:** P1
+- **Scope:** S-M
+- **Status:** resolved 2026-05-21
+- **Discovered:** Ramon observation, May 2026
+- **Fixed in:** [App~/src-tauri/src/claude_supervisor/sdk_entry.js](../../App~/src-tauri/src/claude_supervisor/sdk_entry.js), [App~/src-tauri/src/types.rs](../../App~/src-tauri/src/types.rs), [App~/src/ipc/types.ts](../../App~/src/ipc/types.ts), [App~/src/hooks/useConversationSubscription.ts](../../App~/src/hooks/useConversationSubscription.ts), [App~/src/stores/conversationStore.ts](../../App~/src/stores/conversationStore.ts), [App~/src/routes/ChatRoute.tsx](../../App~/src/routes/ChatRoute.tsx), [App~/src/components/chat/SystemMessageBlock.tsx](../../App~/src/components/chat/SystemMessageBlock.tsx) (new)
 
-```
-[unity-client] status → connected
-...
-[unity-client] status → disconnected
-```
+**Symptom (historical).** Built-in Claude Code commands like `/help` and `/cost` produced no visible output in the Tauri chat. The catalog recognized them (autocomplete listed them as `built-in`), but invoking them silently failed to render anything in the conversation.
 
-while nothing on the Unity side surfaces an error. Recovery requires restarting the Tauri app — Unity reload alone doesn't bring it back.
+**Root cause (confirmed via instrumented probe).** Added a temporary `[probe-ki009]` catch-all to `sdk-entry.js`'s `for await` loop and to `handleStreamEvent`, then exercised `/help`, `/cost`, `/clear`, and a Shift+Tab plan flow. The probe captured:
 
-**Specificity:** the trigger is **tool-driven recompile** (a Claude tool wrote/edited a C# script), not user-initiated reloads. Manual Unity recompiles may or may not reproduce — not yet tested.
+- **Synthetic CLI assistant messages** (`msg.type === "assistant"` with `model: "<synthetic>"`) — `/help` returned `"/help isn't available in this environment."` and `/cost` returned subscription info as a single text content block. Both were silently dropped because the discriminator only handled `system/init`, `stream_event`, `user`, and `result`.
+- **`/clear` produces nothing** — consumed locally by the CLI, never reaches the SDK. Out of scope for this KI; would need frontend interception of the input string.
+- **Stale `BUILTIN_COMMANDS` set** — listed 9 commands (`help`, `cost`, `permissions`, `agents`, `login`, `logout`, `model`, `status`, `exit`) that the SDK does NOT surface in `system/init.slash_commands`. Confirmed against SDK 2.1.126: only `clear`, `compact`, `context`, `heapdump`, `init`, `review`, `security-review`, `extra-usage`, `usage`, `insights`, `team-onboarding` are real built-ins in the SDK environment.
 
-**Preliminary diagnosis.** Not yet investigated in code. The "doesn't reconnect" detail strongly suggests state cached past the reload boundary, not a transient bind-window issue. Possibilities:
+**Bonus discovery (also addressed).** The probe revealed `system/task_started`, `system/task_progress`, and `system/task_notification` events — rich subagent telemetry (per-step description, cumulative tokens / tool count / duration, completion summary) that was completely invisible to the user. A Task subagent could fire 20+ progress events during a single planning turn and the chat would show only "Finished Agent" at the end. Same probe → same fix cycle.
 
-- **Auth-token rotated post-reload.** Unity may regenerate the `auth-token` file at `<UNITY_PROJECT_PATH>/Library/GameDeck/` on assembly reload. Tauri reads the token once at supervisor spawn ([sdk_entry.js:977-990](../../App~/src-tauri/src/claude_supervisor/sdk_entry.js#L977)) and doesn't reload — every subsequent poll authed with the stale token would be rejected. **Most likely** given the "never reconnects" detail.
-- **TCP listener / endpoint reference cached.** `unity-client` may hold a stale connection or endpoint object across the reload. Even if the C# server is back on the same port, the Rust poll never retries cleanly.
-- **Hung HTTP connection.** Long-lived HTTP connection from poll cycle was open when Unity tore down the listener; the connection is now in a half-broken state that polls can't recover from.
+**Resolution.** Four new wire envelopes routed end-to-end (supervisor → Rust enum → TS mirror → store mutator → React component):
 
-**Investigation scope.**
+1. `system-message` — synthetic CLI text rendered as a terminal-style block ([`SystemMessageBlock`](../../App~/src/components/chat/SystemMessageBlock.tsx)).
+2. `subagent-status` — Task telemetry rendered as a live mini-panel ([`SubagentStatusPanel`](../../App~/src/components/chat/SubagentStatusPanel.tsx)), upserted by `taskId` so progress events update one block in place.
+3. `usage-update` — forwarded from `result.usage` for the new context-usage ring in the HUD ([`ContextRing`](../../App~/src/components/shell/ContextRing.tsx)).
+4. `plan-summary` — see [[KI-004]] (same patch landed both).
 
-- Add timestamped logging to `unity-client.rs` poll path: which step transitions to disconnected (TCP refused, HTTP 401, parse error, etc.).
-- Read `Editor/MCP/Server/` C# side to see what `LockReloadAssemblies` actually does to the listener.
-- Compare connection lifecycle across Unity reload boundaries.
-
-**Fix direction.** Depends on which hypothesis lands:
-
-- If auth-token rotated: re-read token on every poll cycle (cheap — local file), or invalidate cached token on first `disconnected` and retry.
-- If state cache: explicit re-creation of HTTP client / connection state on `disconnected → connected` transition.
-- If hung HTTP: set aggressive timeouts and tear down the client on each `disconnected` detection, recreating on next poll.
-
-May correlate with [[KI-001a]] (long-session tool disappearance) — both point at the same "Tauri loses sight of Unity" surface. Investigating KI-012 may surface root cause of KI-001a as a side effect.
+Stale `BUILTIN_COMMANDS` entries trimmed. The 3 `[probe-ki009]` catch-alls were removed after the fix landed.
 
 ---
 
-## Resolved
+### KI-004 — ExitPlanMode renders as a generic Allow card
+
+- **Priority:** P1
+- **Scope:** S
+- **Status:** resolved 2026-05-21
+- **Discovered:** Nicollas dogfood, May 2026
+- **Fixed in:** [App~/src-tauri/src/claude_supervisor/sdk_entry.js](../../App~/src-tauri/src/claude_supervisor/sdk_entry.js) — new `ExitPlanMode` branch in `canUseToolCallback`. [App~/src/components/requests/PlanSummaryCard.tsx](../../App~/src/components/requests/PlanSummaryCard.tsx) (new) — dedicated Accept / Reject card.
+
+**Symptom (historical).** When the user entered Claude Code's native plan mode (Shift+Tab) and Claude finished drafting the plan, the SDK fired the built-in `ExitPlanMode` tool. The Tauri app rendered it as a regular permission request card ("Claude wants to use ExitPlanMode") instead of showing the plan summary with explicit Accept / Reject — the actual plan body was hidden behind a "View raw inputs" accordion.
+
+**Resolution.** Landed together with [[KI-009]] in one patch cycle. `canUseToolCallback` in `sdk-entry.js` now branches on `toolName === "ExitPlanMode"` before falling through to the generic permission path: it emits a new `plan-summary` envelope carrying the markdown plan, then awaits the user's decision via the same `respond-to-request` plumbing already used for permission cards. `PlanSummaryCard` renders the plan markdown as the primary content with explicit Accept / Reject buttons (no `allow-always` — every plan is unique, caching the decision makes no sense). React routes `allow` to the supervisor as `behavior: "allow"` (Claude starts coding) and `deny` to `behavior: "deny"` with a rejection message (Claude replies but does not implement).
+
+The wire path reuses the existing permission outcome plumbing so the round-trip is symmetric with `PermissionRequestCard` — no new IPC surface was needed.
+
+---
+
+
+
+- **Priority:** P0
+- **Scope:** L (architectural)
+- **Status:** resolved 2026-05-21 (closed without in-process fix; escalated to [[37-mcp-server-out-of-process]])
+- **Discovered:** Ramon, during KI-008 fix validation in `firepot-roulette`, 2026-05-20
+
+**Symptom (historical).** After an assembly reload in Unity (typically tool-triggered: Claude edits a .cs file → Unity recompiles), Tauri's `unity-client` flips to disconnected and **never reconnects**. The Unity-side pin status stays green (Unity considers the MCP server healthy). Restarting Tauri does not help. Recovery requires restarting Unity itself (full process kill).
+
+**Root cause (confirmed via netstat + C# lifecycle instrumentation).** After a reload, `netstat -ano | findstr :8090` shows **two LISTEN sockets coexisting** on the same Unity PID, both bound to `127.0.0.1:8090` via `SO_REUSEADDR`. The old listener is an orphan — no `AcceptLoop` thread reading from it. New TCP connects from Tauri are routed non-deterministically by the Windows kernel; on the affected machine they consistently land on the orphan, where they sit in the accept queue forever and Tauri times out.
+
+The orphan exists because `.NET`'s `SafeHandle` keeps a refcount from in-flight overlapped accept I/O. `listener.Stop()` schedules `closesocket()` but defers the actual OS-level release until the IOCP cancellation unwinds. On Ramon's machine (Win11 Pro 25H2, build 26200.8457), the unwind takes long enough that the new AppDomain's `StartServer` binds a fresh listener before the old socket is released. With `SO_REUSEADDR`, both binds succeed and the orphan persists.
+
+**Machine specificity confirmed.** A second developer on the same project + same Windows version did not reproduce. Difference is timing — the race window in the IOCP unwind is wider on Ramon's hardware. Not fixable from managed C#.
+
+**Investigation summary** (all attempts reverted, see git log of `Editor/MCP/Server/McpServer.cs` and `App~/src-tauri/src/unity_client/`):
+
+- Removed `SO_REUSEADDR` + retry on `EADDRINUSE` with 10×200ms backoff: orphan persisted >2s on affected machine, all retries failed.
+- Async accept loop with `CancellationToken` + bounded `task.Wait`: lifecycle ran cleanly per `[KI012]` Info logs (drain confirmed, task completed), orphan still appeared.
+- Tracked accepted clients in `ConcurrentDictionary`, force-closed all on `StopServer`: drain confirmed, orphan still appeared.
+- HTTP keep-alive in Tauri client to stick to the live listener after first connect: first connect still routed to orphan on affected machine.
+- Diagnostic timestamp instrumentation: ThreadPool dispatch was fast (1-2ms) and `activeHandlers` count never exceeded 4. Disproved earlier "ThreadPool starvation" hypothesis.
+
+**Resolution.** Closed without in-process fix. The architectural problem (in-process TCP server in a runtime that reloads its AppDomain) is the actual root cause; the orphan listener is one symptom among several. Even on machines where the orphan doesn't accumulate, every Unity recompile causes brief disconnections, in-flight tool call abandonment, and proxy reconnect overhead (~157KB `tools/list` re-fetch).
+
+Properly tracked by **Feature 37 — MCP Server Out-of-Process** ([37-mcp-server-out-of-process.md](v2-features/37-mcp-server-out-of-process.md)). F37 introduces a sidecar process that owns the public :8090 listener and survives Unity reloads, bridging requests to Unity over reload-tolerant IPC. External clients never see the reload churn.
+
+**Workaround until F37 ships.** Restart Unity Editor (full process kill, not just script reload) when the connection gets stuck. Restarting Tauri alone does not help — the orphan socket lives in Unity's process and persists until that process exits.
+
+---
+
+
 
 ### KI-013 — Auto-resume race wipes the first user message and kills WorkingStrip
 
