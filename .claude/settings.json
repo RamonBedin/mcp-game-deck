@@ -50,7 +50,12 @@
       "Bash(python)",
       "Read(//c/tmp/**)",
       "Bash(ls -la 'C:/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/' 2>/dev/null *)",
-      "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/**)"
+      "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/**)",
+      "Bash(python -c \"from PIL import Image; import os; [print\\(f, Image.open\\(os.path.join\\('App~/src-tauri/icons', f\\)\\).size\\) for f in ['128x128.png','128x128@2x.png','32x32.png','icon.png']]\")",
+      "Read(//c/Projects/mcp-game-deck/**)",
+      "Bash(start explorer.exe)",
+      "Bash(echo \"=== C:/tmp/icon-debug/ \\(debug folder eu criei\\) ===\" *)",
+      "Read(//c/Projects/mcp-game-deck/===\nfind C:Projectsmcp-game-deck -name *.bak -o -name *.old -o -name *~ 2>/dev/**)"
     ],
     "deny": [
       "Bash(git:*)",
