@@ -1,10 +1,10 @@
 {
   "name": "com.mcp-game-deck",
   "displayName": "MCP Game Deck",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "unity": "6000.0",
   "claudeCode": ">=2.1.0 <3.0.0",
-  "description": "AI-powered Unity Editor package with 268 MCP tools, embedded chat UI with file attachments, interactive setup wizard, and knowledge-driven agents. Control scenes, assets, scripts, lighting, physics, builds and more from natural language. Includes token-based auth, permission system, and audit logging.",
+  "description": "Drive Claude Code against the Unity Editor through 269 MCP tools across 37 domains. v2.0 ships a dedicated external desktop app (Tauri) that survives assembly reloads, a model picker with per-turn switching, persistent plans and rules, an in-editor knowledge reader, and 12 Unity-specialist subagents. The Unity package is the thin connector; the chat lives in the external app launched via the toolbar pin.",
   "author": {
     "name": "RamonBedin",
     "url": "https://github.com/RamonBedin"

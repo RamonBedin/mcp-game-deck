@@ -3,6 +3,7 @@ using System.ComponentModel;
 using GameDeck.MCP.Attributes;
 using GameDeck.MCP.Models;
 using GameDeck.MCP.Utils;
+using UnityEditor.PackageManager;
 using UnityEngine;
 
 namespace GameDeck.Editor.Tools
@@ -30,7 +31,9 @@ namespace GameDeck.Editor.Tools
         {
             return MainThreadDispatcher.Execute(() =>
             {
-                var response = $"pong — MCP Game Deck v1.0.0 loaded. " + $"Unity {Application.unityVersion}, " + $"Platform: {Application.platform}";
+                var packageInfo = PackageInfo.FindForAssembly(typeof(Tool_Ping).Assembly);
+                var version = packageInfo?.version ?? "unknown";
+                var response = $"pong — MCP Game Deck v{version} loaded. " + $"Unity {Application.unityVersion}, " + $"Platform: {Application.platform}";
 
                 if (!string.IsNullOrEmpty(message))
                 {

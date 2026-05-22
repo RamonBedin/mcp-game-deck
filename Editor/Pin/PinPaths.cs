@@ -131,7 +131,7 @@ namespace GameDeck.Editor.Pin
         /// Returns the per-version subfolder under <see cref="InstallRoot"/> that
         /// holds the binary and its <c>.sha256</c> sidecar.
         /// </summary>
-        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
+        /// <param name="version">Package version string (e.g. <c>"2.0.0"</c>).</param>
         /// <returns>Absolute path of the form <c>&lt;InstallRoot&gt;/bin/&lt;version&gt;</c>.</returns>
         public static string BinFolder(string version)
         {
@@ -147,7 +147,7 @@ namespace GameDeck.Editor.Pin
         /// regardless of how the package was installed (UPM PackageCache
         /// is read-only — runtime cannot live inside the package tree).
         /// </summary>
-        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
+        /// <param name="version">Package version string (e.g. <c>"2.0.0"</c>).</param>
         /// <returns>Absolute path of the form <c>&lt;InstallRoot&gt;/runtime/&lt;version&gt;</c>.</returns>
         public static string RuntimeFolder(string version)
         {
@@ -158,7 +158,7 @@ namespace GameDeck.Editor.Pin
         /// Returns the absolute path the Tauri app binary should be installed at
         /// for the given <paramref name="version"/>.
         /// </summary>
-        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
+        /// <param name="version">Package version string (e.g. <c>"2.0.0"</c>).</param>
         /// <returns>Absolute path including the <c>.exe</c> extension on Windows
         /// and no extension on macOS/Linux.</returns>
         /// <exception cref="PlatformNotSupportedException">Thrown when
@@ -173,7 +173,7 @@ namespace GameDeck.Editor.Pin
         /// Returns the absolute path of the SHA-256 sidecar file for the binary
         /// at the given <paramref name="version"/>.
         /// </summary>
-        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).</param>
+        /// <param name="version">Package version string (e.g. <c>"2.0.0"</c>).</param>
         /// <returns><see cref="BinaryPath(string)"/> with a <c>.sha256</c> suffix.</returns>
         /// <exception cref="PlatformNotSupportedException">Thrown when
         /// <see cref="Application.platform"/> is not one of <c>WindowsEditor</c>,

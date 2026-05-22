@@ -55,7 +55,9 @@
       "Read(//c/Projects/mcp-game-deck/**)",
       "Bash(start explorer.exe)",
       "Bash(echo \"=== C:/tmp/icon-debug/ \\(debug folder eu criei\\) ===\" *)",
-      "Read(//c/Projects/mcp-game-deck/===\nfind C:Projectsmcp-game-deck -name *.bak -o -name *.old -o -name *~ 2>/dev/**)"
+      "Read(//c/Projects/mcp-game-deck/===\nfind C:Projectsmcp-game-deck -name *.bak -o -name *.old -o -name *~ 2>/dev/**)",
+      "Bash(grep -v \"\\\\.meta/$\")",
+      "Bash(xargs grep -l '\\\\[McpTool\\(')"
     ],
     "deny": [
       "Bash(git:*)",

@@ -1,7 +1,7 @@
 {
   "name": "mcp-game-deck-server",
-  "version": "0.1.0",
-  "description": "Agent SDK server for MCP Game Deck — bridges Claude Agent SDK with Unity MCP Server via WebSocket.",
+  "version": "1.0.0",
+  "description": "MCP proxy bundled with MCP Game Deck — translates STDIO MCP requests from Claude Code into HTTP JSON-RPC calls against the in-Unity C# MCP server. Compiled to a self-contained CJS bundle and shipped inside the Tauri app's resource directory.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

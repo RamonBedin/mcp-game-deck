@@ -247,7 +247,7 @@ namespace GameDeck.Editor.Pin
         /// <summary>
         /// Checks whether the per-version Tauri app binary is present on disk.
         /// </summary>
-        /// <param name="version">Package version string (e.g. <c>"1.1.0"</c>).
+        /// <param name="version">Package version string (e.g. <c>"2.0.0"</c>).
         /// Empty / whitespace versions return <c>false</c>.</param>
         /// <returns><c>true</c> if a file exists at
         /// <see cref="PinPaths.BinaryPath(string)"/> for <paramref name="version"/>;
@@ -266,7 +266,7 @@ namespace GameDeck.Editor.Pin
         /// Resolves the currently-loaded package version from the assembly's
         /// <see cref="PackageInfo"/> metadata.
         /// </summary>
-        /// <returns>Version string (e.g. <c>"1.1.0"</c>) or <c>null</c> when the
+        /// <returns>Version string (e.g. <c>"2.0.0"</c>) or <c>null</c> when the
         /// package metadata cannot be resolved (for example when the source loads
         /// from a non-package folder during local development).</returns>
         public static string? GetCurrentVersion()
@@ -279,7 +279,7 @@ namespace GameDeck.Editor.Pin
         /// Builds the convention-based GitHub Release download URL for the binary
         /// asset of the given <paramref name="version"/>.
         /// </summary>
-        /// <param name="version">Package version (e.g. <c>"1.1.0"</c>). Must be
+        /// <param name="version">Package version (e.g. <c>"2.0.0"</c>). Must be
         /// non-empty.</param>
         /// <returns>Absolute HTTPS URL of the form
         /// <c>https://github.com/.../v{version}/mcp-game-deck-app-{version}.exe</c>.</returns>
@@ -301,7 +301,7 @@ namespace GameDeck.Editor.Pin
         /// sibling <c>.sha256</c> file, and promotes it into
         /// <see cref="PinPaths.BinaryPath(string)"/> on success.
         /// </summary>
-        /// <param name="version">Package version to download (e.g. <c>"1.1.0"</c>).
+        /// <param name="version">Package version to download (e.g. <c>"2.0.0"</c>).
         /// Must be non-empty.</param>
         /// <param name="progress">Optional progress sink reporting fractional download
         /// progress in the <c>[0, 1]</c> range. Reports happen only when the server
