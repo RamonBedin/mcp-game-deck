@@ -202,13 +202,18 @@ export default function PermissionRequestCard({
     </div>
   );
 
-  const caption = state === "answered" && outcome !== undefined ? OUTCOME_LABEL[outcome] : null;
-
-  const footer = (
+  const footer = state === "answered" && outcome !== undefined ? (
+    <span
+      className="inline-flex items-center gap-1.5 font-mono text-[11.5px]"
+      style={{ color: outcome === "deny" ? "var(--bad)" : "var(--ok)" }}
+    >
+      <span aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>
+        {outcome === "deny" ? "✗" : "✓"}
+      </span>
+      <span>{OUTCOME_LABEL[outcome]}</span>
+    </span>
+  ) : (
     <>
-      {caption !== null && (
-        <span className="font-mono text-[11px] text-txt-4 italic self-center mr-2">{caption}</span>
-      )}
       <Button variant="ghost" size="sm" disabled={!isPending} onClick={() => onDecision("deny")}>
         Deny
       </Button>

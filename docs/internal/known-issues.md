@@ -15,23 +15,26 @@ Entries are append-only by ID. When an issue is resolved, move its entry from **
 
 ## Open
 
-### KI-007 — No visible confirmation after Allow / Deny
-
-- **Priority:** P1
-- **Scope:** XS
-- **Status:** open
-- **Discovered:** Nicollas dogfood, May 2026
-
-**Symptom.** After the user clicks Allow or Deny on a `PermissionRequestCard`, the card just dims (opacity). There's no positive confirmation that the action was registered — no checkmark for Allow, no X for Deny.
-
-**Diagnosis.** Store updates `state: "answered"` with `outcome` correctly. The card receives both props. Likely the component only changes opacity and doesn't render an outcome icon.
-
-**Fix direction.** In `PermissionRequestCard.tsx`, when `state === "answered"`, render a small ✓ (token `--ok`) for `allow` / `allow-always` and ✗ (token `--bad`) for `deny`, replacing the action buttons. Confirm component shape when attacking this KI.
+_(none right now)_
 
 ---
 
 
 ## Resolved
+
+### KI-007 — No visible confirmation after Allow / Deny
+
+- **Priority:** P1
+- **Scope:** XS
+- **Status:** resolved 2026-05-22
+- **Discovered:** Nicollas dogfood, May 2026
+- **Fixed in:** [App~/src/components/requests/PermissionRequestCard.tsx](../../App~/src/components/requests/PermissionRequestCard.tsx) — footer branches on `state === "answered"` to render an outcome icon in place of the action buttons.
+
+**Symptom (historical).** After the user clicked Allow / Always / Deny on a `PermissionRequestCard`, the card just dimmed (opacity-70 from `RequestCard`) and the three action buttons stayed visible-but-disabled, with a small italic caption ("Allowed" / "Allowed (always)" / "Denied") tucked to their left. No positive iconic confirmation that the action was registered.
+
+**Resolution.** Footer now branches on `state === "answered"` (with `outcome !== undefined`): renders a single inline-flex `✓` in `var(--ok)` for `allow` / `allow-always` or `✗` in `var(--bad)` for `deny`, followed by the `OUTCOME_LABEL` text in the same color. The three action buttons are not rendered in that branch — the icon row replaces them entirely. Pending and `interrupted` states are unchanged (interrupted still shows disabled buttons plus the *"Conversation interrupted — answer no longer applicable."* caption from the base `RequestCard`). The orphan `const caption` from the pre-fix footer was removed since the outcome label is now inlined into the answered branch.
+
+---
 
 ### KI-011 — Tauri binary had `package_root()` + `runtime_dir()` hardcoded at compile time, and `mcp-proxy.js` was not shipped self-contained
 

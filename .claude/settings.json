@@ -43,7 +43,14 @@
       "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/1.1.0/proxy-bundle/mcp-proxy.js\")",
       "WebFetch(domain:docs.claude.com)",
       "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 UNITY_MCP_AUTH_TOKEN=\"\" PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Projects/mcp-game-deck/App~/src-tauri/target/debug/proxy-bundle/mcp-proxy.js\")",
-      "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 UNITY_MCP_AUTH_TOKEN=\"\" PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Projects/mcp-game-deck/App~/src-tauri/proxy-bundle/mcp-proxy.cjs\")"
+      "Bash(UNITY_MCP_HOST=localhost UNITY_MCP_PORT=8090 UNITY_MCP_AUTH_TOKEN=\"\" PROJECT_CWD=\"C:/Firepot/Unity/Roulette/firepot-roulette\" node \"C:/Projects/mcp-game-deck/App~/src-tauri/proxy-bundle/mcp-proxy.cjs\")",
+      "Bash(file App~/src-tauri/icons/*.png App~/src-tauri/icons/*.ico)",
+      "Bash(file Editor/Resources/pin-icon-placeholder*.png)",
+      "Bash(python -c ' *)",
+      "Bash(python)",
+      "Read(//c/tmp/**)",
+      "Bash(ls -la 'C:/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/' 2>/dev/null *)",
+      "Read(//c/Users/Ramon/AppData/Roaming/MCPGameDeck/bin/**)"
     ],
     "deny": [
       "Bash(git:*)",
