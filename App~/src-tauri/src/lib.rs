@@ -1,0 +1,199 @@
+//! Tauri application entry point.
+//!
+//! Wires up shared state (`ClaudeSupervisor`, `UnityClient`), spawns background
+//! workers during `setup`, intercepts the window close event for a graceful
+//! shutdown, and registers every Tauri command exposed to the frontend.
+
+// region: Module declarations
+
+pub mod claude_supervisor;
+pub mod commands;
+pub mod events;
+pub mod files_watcher;
+pub mod markdown_doc;
+pub mod plans_watcher;
+pub mod project_root;
+pub mod rules_bundle;
+pub mod rules_watcher;
+pub mod types;
+pub mod unity_client;
+
+// endregion
+
+use tauri::{AppHandle, Manager, WindowEvent};
+
+use claude_supervisor::ClaudeSupervisor;
+use commands::files::FilesIndex;
+use files_watcher::FilesWatcher;
+use plans_watcher::PlansWatcher;
+use rules_watcher::RulesWatcher;
+use unity_client::UnityClient;
+
+// region: Single-instance handler
+
+const ROUTE_ARG_PREFIX: &str = "--route=";
+const ALLOWED_ROUTES: &[&str] = &["/chat", "/plans", "/rules", "/library", "/settings"];
+
+/// Single-instance callback fired when a second invocation is detected by the
+/// plugin while the primary window is still alive.
+///
+/// Focuses + unminimizes the existing window and, when the new invocation
+/// carries a `--route=/path` CLI argument that matches [`ALLOWED_ROUTES`],
+/// emits the `route-requested` event so the React side can navigate the
+/// running window. Unknown routes are dropped silently.
+fn handle_single_instance(app: &AppHandle, args: Vec<String>, _cwd: String) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+
+    let route = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix(ROUTE_ARG_PREFIX))
+        .filter(|r| ALLOWED_ROUTES.contains(r))
+        .map(|s| s.to_string());
+
+    if let Some(route) = route {
+        if let Err(e) =
+            events::emit_route_requested(app, types::RouteRequestedPayload { route })
+        {
+            eprintln!("[single-instance] failed to emit route-requested: {e}");
+        }
+    }
+}
+
+// endregion
+
+// region: Application bootstrap
+
+/// Builds and runs the Tauri application.
+///
+/// Registers `ClaudeSupervisor` and `UnityClient` as managed state, spawns
+/// the Claude Code subprocess and the Unity client worker during setup,
+/// intercepts `CloseRequested` for graceful shutdown, and binds every IPC
+/// command exposed to the React frontend.
+///
+/// Blocks until the application exits. Panics if the Tauri runtime fails to
+/// start (e.g. invalid `tauri.conf.json`).
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(handle_single_instance))
+        .plugin(tauri_plugin_cli::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(ClaudeSupervisor::new())
+        .manage(UnityClient::new())
+        .manage(PlansWatcher::new())
+        .manage(RulesWatcher::new())
+        .manage(FilesWatcher::new())
+        .manage(FilesIndex::new())
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+
+            if let Some(root) = project_root::try_resolve_project_root() {
+                if let Err(e) = rules_bundle::recompose(&root) {
+                    eprintln!("[rules-bundle] startup recompose failed: {e}");
+                }
+            }
+
+            let app_for_supervisor = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let supervisor = app_for_supervisor.state::<ClaudeSupervisor>();
+                match supervisor.spawn(app_for_supervisor.clone()).await {
+                    Ok(pid) => println!("[claude-supervisor] spawned PID {pid}"),
+                    Err(e) => eprintln!("[claude-supervisor] {e}"),
+                }
+            });
+
+            let app_for_version_check = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                claude_supervisor::version_check::run(app_for_version_check).await;
+            });
+
+            let app_for_watcher = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let watcher = app_for_watcher.state::<PlansWatcher>();
+                watcher.start(app_for_watcher.clone()).await;
+            });
+
+            let app_for_rules_watcher = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let watcher = app_for_rules_watcher.state::<RulesWatcher>();
+                watcher.start(app_for_rules_watcher.clone()).await;
+            });
+
+            let app_for_files_watcher = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let watcher = app_for_files_watcher.state::<FilesWatcher>();
+                watcher.start(app_for_files_watcher.clone()).await;
+            });
+
+            let unity = app_handle.state::<UnityClient>();
+            unity.start(app_handle.clone());
+
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let app = window.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(supervisor) = app.try_state::<ClaudeSupervisor>() {
+                        supervisor.shutdown().await;
+                    }
+                    if let Some(watcher) = app.try_state::<PlansWatcher>() {
+                        watcher.stop().await;
+                    }
+                    if let Some(watcher) = app.try_state::<RulesWatcher>() {
+                        watcher.stop().await;
+                    }
+                    if let Some(watcher) = app.try_state::<FilesWatcher>() {
+                        watcher.stop().await;
+                    }
+                    app.exit(0);
+                });
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::connection::get_unity_status,
+            commands::connection::get_supervisor_status,
+            commands::connection::restart_supervisor,
+            commands::conversation::send_message,
+            commands::conversation::set_permission_mode,
+            commands::conversation::set_model,
+            commands::conversation::cancel_current_turn,
+            commands::requests::respond_to_request,
+            commands::files::list_project_files,
+            commands::plans::list_plans,
+            commands::plans::read_plan,
+            commands::plans::write_plan,
+            commands::plans::delete_plan,
+            commands::rules::list_rules,
+            commands::rules::read_rule,
+            commands::rules::write_rule,
+            commands::rules::delete_rule,
+            commands::rules::toggle_rule,
+            commands::rules::preview_rules_bundle,
+            commands::sessions::get_sessions,
+            commands::sessions::get_session_messages,
+            commands::sessions::resume_session,
+            commands::sessions::start_new_session,
+            commands::sessions::delete_session,
+            commands::settings::get_settings,
+            commands::settings::update_settings,
+            commands::dev::dev_emit_test_event,
+            commands::dev::dev_call_unity_tool,
+            commands::env::get_env_var,
+            commands::env::get_os_username,
+            commands::install::check_claude_install_status,
+            commands::install::start_sdk_install,
+            commands::knowledge::list_knowledge_docs,
+            commands::knowledge::read_knowledge_doc,
+            commands::knowledge::read_all_knowledge_docs,
+            commands::recent_commands::list_recent_commands,
+            commands::recent_commands::track_recent_command,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+// endregion

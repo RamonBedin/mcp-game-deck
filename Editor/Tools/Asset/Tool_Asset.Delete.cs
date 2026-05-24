@@ -21,7 +21,7 @@ namespace GameDeck.Editor.Tools
         [Description("Deletes an asset from the project. Can move to trash instead of permanent deletion.")]
         public ToolResponse Delete(
             [Description("Asset path to delete.")] string assetPath,
-            [Description("Move to OS trash instead of permanent delete. Default true.")] bool moveToTrash = true
+            [Description("When true (default), moves the asset to the OS trash (recoverable from Recycle Bin / Trash). When false, permanently deletes the file with no recovery path — use only when you are certain. Default true.")] bool moveToTrash = true
         )
         {
             return MainThreadDispatcher.Execute(() =>

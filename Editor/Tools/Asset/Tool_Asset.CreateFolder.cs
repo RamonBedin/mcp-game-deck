@@ -17,7 +17,7 @@ namespace GameDeck.Editor.Tools
         /// <param name="folderPath">Full folder path to create (e.g. 'Assets/Prefabs/Enemies'). Auto-prepends 'Assets/' if omitted.</param>
         /// <returns>A <see cref="ToolResponse"/> confirming the folder was created, or that it already exists.</returns>
         [McpTool("asset-create-folder", Title = "Asset / Create Folder")]
-        [Description("Creates a folder in the project, including any missing intermediate folders.")]
+        [Description("Creates a folder in the project, including any missing intermediate folders. Idempotent: returns success when the folder already exists (no need to pre-check with asset-find or asset-exists).")]
         public ToolResponse CreateFolder(
             [Description("Full folder path (e.g. 'Assets/Prefabs/Enemies').")] string folderPath
         )

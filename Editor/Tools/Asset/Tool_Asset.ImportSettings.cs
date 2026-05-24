@@ -89,7 +89,7 @@ namespace GameDeck.Editor.Tools
         /// or an error message when parsing or application fails.
         /// </returns>
         [McpTool("asset-set-import-settings", Title = "Asset / Set Import Settings")]
-        [Description("Applies property overrides to an asset's importer via SerializedObject and triggers SaveAndReimport. " + "settingsJson must be a JSON object mapping property paths to string values " + "(e.g. {\"textureType\":\"1\",\"mipmapEnabled\":\"true\"}).")]
+        [Description("Applies property overrides to an asset's IMPORTER (not the asset itself) and triggers SaveAndReimport. Use this for importer-level settings such as textureType, mipmapEnabled, compressionQuality. For runtime properties on the asset's loaded UnityEngine.Object (e.g. material.color, texture.wrapMode), use object-modify instead — that writes the asset directly and does not reimport. settingsJson is a JSON object of property paths (discoverable via asset-get-import-settings) mapped to string values (e.g. {\"textureType\":\"1\",\"mipmapEnabled\":\"true\"}).")]
         public ToolResponse SetImportSettings(
             [Description("Project-relative asset path (e.g. 'Assets/Textures/Hero.png').")] string assetPath,
             [Description("JSON object of property-path → value pairs to apply (e.g. {\"textureType\":\"1\"}).")] string settingsJson
@@ -220,133 +220,6 @@ namespace GameDeck.Editor.Tools
                 SerializedPropertyType.ArraySize => prop.intValue.ToString(),
                 _ => $"<{prop.propertyType}>",
             };
-        }
-
-        /// <summary>
-        /// Attempts to apply a string value to a <see cref="SerializedProperty"/> by converting
-        /// it to the property's native type.
-        /// </summary>
-        /// <param name="prop">The property to set.</param>
-        /// <param name="value">The string representation of the desired value.</param>
-        /// <returns><c>true</c> if the value was successfully applied; <c>false</c> otherwise.</returns>
-        private static bool ApplyStringValueToProperty(SerializedProperty prop, string value)
-        {
-            switch (prop.propertyType)
-            {
-                case SerializedPropertyType.Integer:
-                    if (int.TryParse(value, out int intVal))
-                    {
-                        prop.intValue = intVal;
-                        return true;
-                    }
-                    return false;
-
-                case SerializedPropertyType.Float:
-                    if (float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float floatVal))
-                    {
-                        prop.floatValue = floatVal;
-                        return true;
-                    }
-                    return false;
-
-                case SerializedPropertyType.Boolean:
-                    string lower = value.ToLowerInvariant();
-                    if (lower == "true" || lower == "1")
-                    {
-                        prop.boolValue = true;
-                        return true;
-                    }
-                    if (lower == "false" || lower == "0")
-                    {
-                        prop.boolValue = false;
-                        return true;
-                    }
-                    return false;
-
-                case SerializedPropertyType.String:
-                    prop.stringValue = value;
-                    return true;
-
-                case SerializedPropertyType.Enum:
-                    if (int.TryParse(value, out int enumInt))
-                    {
-                        prop.enumValueIndex = enumInt;
-                        return true;
-                    }
-
-                    for (int i = 0; i < prop.enumNames.Length; i++)
-                    {
-                        if (string.Compare(prop.enumNames[i], value, System.StringComparison.OrdinalIgnoreCase) == 0)
-                        {
-                            prop.enumValueIndex = i;
-                            return true;
-                        }
-                    }
-                    return false;
-
-                default:
-                    return false;
-            }
-        }
-
-        /// <summary>
-        /// Splits a flat JSON object body (<c>"key":"val","key2":"val2"</c>) into individual
-        /// entry strings, respecting quoted strings so commas inside values are not split on.
-        /// </summary>
-        /// <param name="jsonBody">The content between the outer braces of a JSON object.</param>
-        /// <returns>An array of raw entry strings ready for colon-splitting.</returns>
-        private static string[] SplitJsonEntries(string jsonBody)
-        {
-            var entries = new System.Collections.Generic.List<string>();
-            int depth = 0;
-            bool inString = false;
-            int start = 0;
-
-            for (int i = 0; i < jsonBody.Length; i++)
-            {
-                char c = jsonBody[i];
-                if (c == '\\' && inString)
-                {
-                    i++;
-                    continue;
-                }
-
-                if (c == '"')
-                {
-                    inString = !inString;
-                    continue;
-                }
-
-                if (inString)
-                {
-                    continue;
-                }
-
-                if (c == '{' || c == '[')
-                {
-                    depth++;
-                    continue;
-                }
-
-                if (c == '}' || c == ']')
-                {
-                    depth--;
-                    continue;
-                }
-
-                if (c == ',' && depth == 0)
-                {
-                    entries.Add(jsonBody[start..i]);
-                    start = i + 1;
-                }
-            }
-
-            if (start < jsonBody.Length)
-            {
-                entries.Add(jsonBody[start..]);
-            }
-
-            return entries.ToArray();
         }
 
         #endregion

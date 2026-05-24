@@ -25,7 +25,7 @@ namespace GameDeck.Editor.Tools
         [Description("Renames a project asset file. Provide the current asset path and the new file name (no extension). " + "The asset stays in the same folder.")]
         public ToolResponse Rename(
             [Description("Project-relative path of the asset to rename (e.g. 'Assets/Materials/OldName.mat').")] string assetPath,
-            [Description("New file name without extension (e.g. 'NewName').")] string newName
+            [Description("New file name without extension (e.g. 'NewName'). Must be unique within the asset's current folder — Unity will reject the rename if a sibling asset already has this name.")] string newName
         )
         {
             return MainThreadDispatcher.Execute(() =>

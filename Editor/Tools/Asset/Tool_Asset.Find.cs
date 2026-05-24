@@ -20,10 +20,10 @@ namespace GameDeck.Editor.Tools
         /// <param name="maxResults">Maximum number of results to return. Default 25.</param>
         /// <returns>A <see cref="ToolResponse"/> listing matching asset paths, or an error if the filter is empty.</returns>
         [McpTool("asset-find", Title = "Asset / Find", ReadOnlyHint = true)]
-        [Description("Searches for assets using Unity filter syntax (e.g. 't:Prefab', 't:Material player', 'l:Important').")]
+        [Description("Searches for assets using Unity filter syntax. Prefixes: 't:' = type (e.g. 't:Prefab', 't:Texture2D'), 'l:' = label (e.g. 'l:Boss'), 'b:' = AssetBundle, 'ref:' = references. Multiple terms AND together (e.g. 't:Texture2D sky'). Omit prefix for a plain-name match.")]
         public ToolResponse Find(
-            [Description("Search filter (e.g. 't:Prefab', 't:Texture2D sky', 'l:MyLabel').")] string searchFilter,
-            [Description("Folder to search in (e.g. 'Assets/Prefabs'). Default 'Assets'.")] string folder = "Assets",
+            [Description("Search filter using Unity prefix syntax. Examples: 't:Prefab' (all prefabs), 't:Texture2D sky' (textures with 'sky' in name), 'l:Boss' (assets labelled 'Boss'). Prefixes: t = type, l = label, b = AssetBundle, ref = references.")] string searchFilter,
+            [Description("Folder to search in (e.g. 'Assets/Prefabs'). Default 'Assets' (entire project).")] string folder = "Assets",
             [Description("Maximum results to return. Default 25.")] int maxResults = 25
         )
         {

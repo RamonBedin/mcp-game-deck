@@ -71,7 +71,7 @@ namespace GameDeck.MCP.Utils
                 AppendEscaped(sb, param.Description);
                 sb.Append('"');
 
-                if (param.IsOptional && param.DefaultValue is not null)
+                if (param.IsOptional && param.DefaultValue is not null && IsValidJsonDefault(param.DefaultValue))
                 {
                     sb.Append(",\"default\":");
                     AppendDefaultValue(sb, param);
@@ -172,6 +172,24 @@ namespace GameDeck.MCP.Utils
         private static void AppendEscaped(StringBuilder sb, string? s)
         {
             McpProtocol.AppendEscaped(sb, s);
+        }
+
+        /// <summary>
+        /// Whether <paramref name="value"/> is representable as a valid JSON token.
+        /// Filters out float/double sentinels (NaN, +/-Infinity) used as "not provided"
+        /// markers, which break strict JSON parsers like the MCP SDK when emitted bare —
+        /// the spec (RFC 8259 §6) only admits finite numeric literals.
+        /// </summary>
+        /// <param name="value">The default value candidate.</param>
+        /// <returns>True when safe to serialize, false to omit the <c>default</c> field.</returns>
+        private static bool IsValidJsonDefault(object value)
+        {
+            return value switch
+            {
+                float f => !float.IsNaN(f) && !float.IsInfinity(f),
+                double d => !double.IsNaN(d) && !double.IsInfinity(d),
+                _ => true,
+            };
         }
 
         #endregion

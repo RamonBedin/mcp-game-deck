@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm tauri *)",
+      "Bash(Tee-Object -FilePath ../release-build.log)",
+      "Bash(New-Item -ItemType Directory -Force -Path release-artifacts)",
+      "Bash(Out-Null)",
+      "Bash(Resolve-Path release-artifacts *)",
+      "Bash(Write-Output \"release-artifacts ready: $\\(Resolve-Path release-artifacts\\)\")",
+      "Bash(tee ../release-build.log)",
+      "Bash(awk '{print $1}')"
+    ]
+  }
+}

@@ -23,25 +23,25 @@ namespace GameDeck.Editor.Tools
         /// <param name="tag">New tag to assign (must exist in Tag Manager). Empty string to leave unchanged.</param>
         /// <param name="layer">New layer index (0–31). Pass -1 to leave unchanged.</param>
         /// <param name="isActive">
-        /// Active state: 1 = activate, 0 = deactivate, -1 = unchanged.
+        /// Active state: "true" = activate, "false" = deactivate, "" (empty) = unchanged.
         /// </param>
         /// <param name="isStatic">
-        /// Static flag: 1 = mark static, 0 = clear static, -1 = unchanged.
+        /// Static flag: "true" = mark static, "false" = clear static, "" (empty) = unchanged.
         /// </param>
         /// <returns>
         /// A <see cref="ToolResponse"/> listing each property that was changed,
         /// or an error when the GameObject cannot be located.
         /// </returns>
         [McpTool("gameobject-update", Title = "GameObject / Update")]
-        [Description("Updates properties of an existing GameObject: name, tag, layer, active state, and static flag. " + "Locate the object by instanceId or hierarchy path. Only supplied non-default values are applied.")]
+        [Description("Updates properties of an existing GameObject: name, tag, layer, active state, and static flag. " + "Locate the object by instanceId or hierarchy path. Each property has a 'leave unchanged' sentinel — only non-sentinel values are applied (see per-param descriptions).")]
         public ToolResponse Update(
             [Description("Unity instance ID of the target GameObject. Pass 0 to use objectPath instead.")] int instanceId = 0,
             [Description("Hierarchy path of the target GameObject (e.g. 'World/Props/Crate'). Used when instanceId is 0.")] string objectPath = "",
             [Description("New name for the GameObject. Empty string to leave unchanged.")] string name = "",
             [Description("New tag (must exist in Tag Manager). Empty string to leave unchanged.")] string tag = "",
             [Description("New layer index (0-31). Pass -1 to leave unchanged.")] int layer = -1,
-            [Description("Active state: 1 = active, 0 = inactive, -1 = unchanged.")] int isActive = -1,
-            [Description("Static flag: 1 = static, 0 = not static, -1 = unchanged.")] int isStatic = -1
+            [Description("Active state: 'true' = activate, 'false' = deactivate, empty = leave unchanged.")] string isActive = "",
+            [Description("Static flag: 'true' = mark static, 'false' = clear static, empty = leave unchanged.")] string isStatic = ""
         )
         {
             return MainThreadDispatcher.Execute(() =>
@@ -75,17 +75,23 @@ namespace GameDeck.Editor.Tools
                     go.layer = layer;
                     sb.AppendLine($"  Layer: {layer} ({LayerMask.LayerToName(layer)})");
                 }
-
-                if (isActive == 0 || isActive == 1)
+                try
                 {
-                    go.SetActive(isActive == 1);
-                    sb.AppendLine($"  Active: {(isActive == 1)}");
+                    if (TryParseNullableBool(isActive, out bool activeValue))
+                    {
+                        go.SetActive(activeValue);
+                        sb.AppendLine($"  Active: {activeValue}");
+                    }
+
+                    if (TryParseNullableBool(isStatic, out bool staticValue))
+                    {
+                        go.isStatic = staticValue;
+                        sb.AppendLine($"  Static: {staticValue}");
+                    }
                 }
-
-                if (isStatic == 0 || isStatic == 1)
+                catch (System.ArgumentException ex)
                 {
-                    go.isStatic = isStatic == 1;
-                    sb.AppendLine($"  Static: {(isStatic == 1)}");
+                    return ToolResponse.Error(ex.Message);
                 }
 
                 EditorUtility.SetDirty(go);
