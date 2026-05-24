@@ -24,13 +24,14 @@ use crate::types::{
 
 // region: MCP proxy resolution
 
-/// Resolves the absolute path to the Tauri-bundled `mcp-proxy.js`
-/// resource if it exists on disk. Returns `None` when either Tauri's
-/// resource resolver fails or the file is missing at the resolved
-/// path — the caller surfaces a soft warning to React via
-/// `AgentMessage::Error` and proceeds without the `mcpServers` config
-/// (tools become unavailable for that session, but unrelated prompts
-/// still work).
+/// Resolves the absolute path to the runtime-extracted `mcp-proxy.cjs`
+/// — `mcp_proxy_script` writes the compiled-in blob to
+/// `runtime_dir()/proxy-bundle/mcp-proxy.cjs` on every call. Returns
+/// `None` only when the filesystem write itself fails (e.g. read-only
+/// runtime dir, disk full). The caller surfaces a soft warning to
+/// React via `AgentMessage::Error` and proceeds without the
+/// `mcpServers` config (tools become unavailable for that session,
+/// but unrelated prompts still work).
 fn resolve_mcp_proxy(app: &AppHandle) -> Option<std::path::PathBuf> {
     let path = paths::mcp_proxy_script(app)?;
     if path.is_file() { Some(path) } else { None }
@@ -120,13 +121,13 @@ pub fn spawn_node_child(
     if mcp_proxy.is_none() {
         let expected = paths::mcp_proxy_script(app)
             .map(|p| p.display().to_string())
-            .unwrap_or_else(|| "<resource resolution failed>".to_string());
+            .unwrap_or_else(|| "<runtime_dir write failed>".to_string());
         let _ = emit_agent_message(
             app,
             AgentMessagePayload {
                 message: AgentMessage::Error {
                     message: format!(
-                        "MCP proxy not found at {expected}. In a release build this resource is shipped inside the app bundle; in dev, run `pnpm build:proxy` from App~/ (or `pnpm tauri dev` which chains it). Spawning without mcpServers — non-tool prompts still work."
+                        "MCP proxy could not be extracted to {expected}. The proxy is compiled into the binary and extracted to runtime_dir on demand — this error means the runtime directory could not be created or written to (check disk space and permissions on MCP_GAME_DECK_RUNTIME_DIR). Spawning without mcpServers — non-tool prompts still work."
                     ),
                 },
             },

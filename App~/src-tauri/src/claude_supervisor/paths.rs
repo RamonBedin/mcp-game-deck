@@ -1,5 +1,5 @@
 //! Path resolution for the Tauri-managed Node runtime + the Unity
-//! package surface (Plugin~/) + the Tauri-bundled MCP proxy script.
+//! package surface (Plugin~/) + the embedded MCP proxy script.
 //!
 //! Three resolution channels:
 //!
@@ -8,17 +8,18 @@
 //!   `Plugin~/`. Falls back to a `CARGO_MANIFEST_DIR` walk-up in dev.
 //! - **`MCP_GAME_DECK_RUNTIME_DIR`** env var (also populated by
 //!   `PinLauncher`) — writable per-version dir under the OS user-data
-//!   tree, owns the npm SDK install and the generated `sdk-entry.js`.
-//!   Falls back to `App~/runtime/` in dev.
-//! - **Tauri `BaseDirectory::Resource`** — owns `mcp-proxy.js`, bundled
-//!   into the binary at release time by the `build-proxy.mjs` script
-//!   chained via `beforeBuildCommand`. No env var, no dev fallback —
-//!   `cargo tauri dev` resolves resources to the source tree.
+//!   tree, owns the npm SDK install, the generated `sdk-entry.js`,
+//!   and the extracted `proxy-bundle/mcp-proxy.cjs`. Falls back to
+//!   `App~/runtime/` in dev.
+//! - **Compiled-in `EMBEDDED_PROXY` blob** — the entire `mcp-proxy.cjs`
+//!   (esbuild output) is `include_bytes!`-embedded into the .exe at
+//!   build time. `mcp_proxy_script` extracts it to `runtime_dir()`
+//!   on demand so the binary is self-contained — no installer-staged
+//!   resource folder required.
 
 use std::path::PathBuf;
 
-use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 // region: Public surface
 
@@ -97,62 +98,44 @@ pub fn package_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Path to the compiled MCP proxy script that bridges Claude Code's
-/// MCP transport to the C# MCP Server in Unity.
-///
-/// Resolved via Tauri's `BaseDirectory::Resource` against the bundled
-/// resource `proxy-bundle/mcp-proxy.cjs`. The file is staged at build
-/// time by `App~/scripts/build-proxy.mjs` (run automatically via the
-/// `beforeDevCommand` / `beforeBuildCommand` hooks in `tauri.conf.json`)
-/// and shipped inside the production bundle — users do not need Node
-/// or `npm run build` on their side.
-///
-/// The `.cjs` extension is deliberate: esbuild emits a CommonJS bundle,
-/// and Node's ESM-vs-CJS decision normally walks up looking for the
-/// nearest `package.json` `"type"` field. In dev mode the resolved
-/// path sits under `App~/src-tauri/target/debug/proxy-bundle/`, which
-/// would walk up into `App~/package.json` (`"type": "module"`) and
-/// blow up with `ReferenceError: require is not defined in ES module
-/// scope`. `.cjs` short-circuits that lookup unconditionally.
-///
-/// On Windows the resolved path comes back with the `\\?\` extended-
-/// length prefix; this function strips it so the path can be passed
-/// cleanly to Node child processes via `MCP_PROXY_PATH`. See
-/// <https://github.com/tauri-apps/tauri/issues/5096> (closed not-planned).
-///
-/// Returns `None` only if Tauri's resource resolver fails outright —
-/// existence of the file is the caller's responsibility to verify via
-/// `is_file()` (allows the caller to craft a useful error message that
-/// includes the expected path).
-pub fn mcp_proxy_script(app: &AppHandle) -> Option<PathBuf> {
-    match app
-        .path()
-        .resolve("proxy-bundle/mcp-proxy.cjs", BaseDirectory::Resource)
-    {
-        Ok(p) => Some(normalize_resource_path(p)),
-        Err(e) => {
-            eprintln!("[paths] mcp-proxy.cjs Resource resolve failed: {e}");
-            None
-        }
-    }
-}
+const EMBEDDED_PROXY: &[u8] = include_bytes!("../../proxy-bundle/mcp-proxy.cjs");
 
-/// Strips Windows' extended-length path prefix (`\\?\`) so the path
-/// can be serialized into env vars / JSON for child processes. No-op
-/// on non-Windows platforms.
-#[cfg(windows)]
-fn normalize_resource_path(p: PathBuf) -> PathBuf {
-    let s = p.to_string_lossy().into_owned();
-    if let Some(stripped) = s.strip_prefix(r"\\?\") {
-        PathBuf::from(stripped)
-    } else {
-        PathBuf::from(s)
-    }
-}
+/// Path to the MCP proxy script that bridges Claude Code's MCP transport
+/// to the C# MCP Server in Unity. Always lives under `runtime_dir()` —
+/// the file is extracted from the compiled-in `EMBEDDED_PROXY` blob on
+/// every call so the binary stays self-contained (no separate
+/// `proxy-bundle/` folder required next to the .exe).
+///
+/// The `.cjs` extension is preserved deliberately: esbuild emits a
+/// CommonJS bundle, and Node's ESM-vs-CJS decision normally walks up
+/// looking for the nearest `package.json` `"type"` field. `.cjs`
+/// short-circuits that lookup unconditionally.
+///
+/// Writes are idempotent — the bytes are identical across calls within
+/// a single binary version, and `runtime_dir()` is version-isolated
+/// (`%APPDATA%\MCPGameDeck\runtime\<version>\` in release), so stale
+/// extractions from older versions can't poison the current one.
+///
+/// Returns `None` only if the filesystem operations fail (cannot create
+/// the parent directory or cannot write the file). Existence of the
+/// file after a successful call is guaranteed.
+pub fn mcp_proxy_script(_app: &AppHandle) -> Option<PathBuf> {
+    let dest = runtime_dir().join("proxy-bundle").join("mcp-proxy.cjs");
+    let parent = dest.parent()?;
 
-#[cfg(not(windows))]
-fn normalize_resource_path(p: PathBuf) -> PathBuf {
-    p
+    if let Err(e) = std::fs::create_dir_all(parent) {
+        eprintln!("[paths] Failed to create {}: {e}", parent.display());
+        return None;
+    }
+    if let Err(e) = std::fs::write(&dest, EMBEDDED_PROXY) {
+        eprintln!(
+            "[paths] Failed to extract embedded mcp-proxy.cjs to {}: {e}",
+            dest.display()
+        );
+        return None;
+    }
+
+    Some(dest)
 }
 
 /// Path to the package's `Plugin~/` directory — the bundled Claude
