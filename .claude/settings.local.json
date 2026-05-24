@@ -36,7 +36,11 @@
       "Bash(echo \"cargo=$?\")",
       "Bash(awk '{print $2}')",
       "Bash(awk '{sum+=$1; print $1, $2} END {print \"TOTAL\", sum, \"bytes\"}')",
-      "Bash(where dotnet *)"
+      "Bash(where dotnet *)",
+      "Bash(Get-ChildItem -Path \"e:\\\\Projects\\\\mcp-game-deck\" -Recurse -Name)",
+      "Bash(xargs grep -l \"dangerouslySetInnerHTML\")",
+      "Bash(pnpm build:proxy)",
+      "Bash(pnpm install *)"
     ]
   }
 }

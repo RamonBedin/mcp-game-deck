@@ -31,16 +31,16 @@ use unity_client::UnityClient;
 
 // region: Single-instance handler
 
-/// Argument prefix that re-launches use to request a route change in the
-/// already-running window — see [`handle_single_instance`].
 const ROUTE_ARG_PREFIX: &str = "--route=";
+const ALLOWED_ROUTES: &[&str] = &["/chat", "/plans", "/rules", "/library", "/settings"];
 
 /// Single-instance callback fired when a second invocation is detected by the
 /// plugin while the primary window is still alive.
 ///
 /// Focuses + unminimizes the existing window and, when the new invocation
-/// carries a `--route=/path` CLI argument, emits the `route-requested` event
-/// so the React side can navigate the running window.
+/// carries a `--route=/path` CLI argument that matches [`ALLOWED_ROUTES`],
+/// emits the `route-requested` event so the React side can navigate the
+/// running window. Unknown routes are dropped silently.
 fn handle_single_instance(app: &AppHandle, args: Vec<String>, _cwd: String) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -49,7 +49,9 @@ fn handle_single_instance(app: &AppHandle, args: Vec<String>, _cwd: String) {
 
     let route = args
         .iter()
-        .find_map(|arg| arg.strip_prefix(ROUTE_ARG_PREFIX).map(|s| s.to_string()));
+        .find_map(|arg| arg.strip_prefix(ROUTE_ARG_PREFIX))
+        .filter(|r| ALLOWED_ROUTES.contains(r))
+        .map(|s| s.to_string());
 
     if let Some(route) = route {
         if let Err(e) =

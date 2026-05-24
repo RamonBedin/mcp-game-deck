@@ -74,16 +74,24 @@ pub fn dev_emit_test_event(app: AppHandle) -> Result<(), String> {
 /// Returns the underlying `ToolCallError` stringified (auth missing,
 /// transport failure, non-200, JSON parse, RPC error, malformed response).
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn dev_call_unity_tool(
     name: String,
     arguments: Option<Value>,
     client: State<'_, UnityClient>,
 ) -> Result<Value, String> {
-    let args = arguments.unwrap_or_else(|| Value::Object(Map::new()));
-    client
-        .call_tool(&name, args)
-        .await
-        .map_err(|e| e.to_string())
+    #[cfg(debug_assertions)]
+    {
+        let args = arguments.unwrap_or_else(|| Value::Object(Map::new()));
+        client
+            .call_tool(&name, args)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        Err("dev_call_unity_tool is disabled in release builds".to_string())
+    }
 }
 
 // endregion

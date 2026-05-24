@@ -5,6 +5,9 @@
 //! `Editor/Pin/PinLauncher.cs` for the producer side and
 //! `src/components/UpdateBanner.tsx` for the consumer.
 
+
+const ALLOWED_PREFIXES: &[&str] = &["MCP_GAME_DECK_"];
+
 /// Reads a single environment variable from the Tauri host process.
 ///
 /// # Arguments
@@ -13,12 +16,17 @@
 ///
 /// # Returns
 ///
-/// `Some(value)` when the variable is set and contains valid UTF-8;
-/// `None` when it is unset or contains invalid UTF-8. An explicitly empty
-/// value is returned as `Some("")` — callers should treat empty strings
-/// as absent at the application layer.
+/// `Some(value)` when the name matches one of [`ALLOWED_PREFIXES`] AND
+/// the variable is set with valid UTF-8; `None` otherwise. Names outside
+/// the allowlist collapse silently to `None` (same shape as
+/// "variable not set" — the React side already handles that case).
+/// An explicitly empty value is returned as `Some("")` — callers should
+/// treat empty strings as absent at the application layer.
 #[tauri::command]
 pub fn get_env_var(name: String) -> Option<String> {
+    if !ALLOWED_PREFIXES.iter().any(|p| name.starts_with(p)) {
+        return None;
+    }
     std::env::var(name).ok()
 }
 
