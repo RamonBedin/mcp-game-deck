@@ -408,8 +408,6 @@ A few decisions worth knowing if you're going to dig in:
 - **Token-based auth.** A per-project auth token at `Library/GameDeck/auth-token` gates the MCP server. The desktop app reads it transparently; external MCP clients can opt in via the `UNITY_MCP_AUTH_TOKEN` env var.
 - **Permission contract via env vars.** The pin passes `MCP_GAME_DECK_PACKAGE_ROOT` (resolved Unity package path) and `MCP_GAME_DECK_RUNTIME_DIR` (per-version writable runtime tree) to the Tauri process at spawn time, decoupling the desktop binary from compile-time path assumptions.
 
-For deeper architectural context, see `docs/internal/` (committed, internal-facing).
-
 ---
 
 ## Third-party dependencies

@@ -1,6 +1,6 @@
 [package]
 name = "mcp-game-deck-app"
-version = "1.0.0"
+version = "2.0.0"
 description = "MCP Game Deck — Tauri-based external chat host that drives Claude Code against the Unity Editor MCP server"
 authors = ["RamonBedin"]
 edition = "2021"
