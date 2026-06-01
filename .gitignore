@@ -91,3 +91,8 @@ release-artifacts.meta
 RELEASE_NOTES_*.md
 RELEASE_NOTES_*.md.meta
 release-build.log.meta
+
+# ----- Icon inspection scratch (extracted ICO frames / git-show dumps) -----
+App~/src-tauri/icons/_frame_*.png
+_f09_*.png
+old_*.ico

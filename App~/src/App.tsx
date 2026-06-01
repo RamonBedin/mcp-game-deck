@@ -27,13 +27,14 @@ import { useCatalogSubscription } from "./hooks/useCatalogSubscription";
 import { useConversationSubscription } from "./hooks/useConversationSubscription";
 import { usePlansSubscription } from "./hooks/usePlansSubscription";
 import { useRulesSubscription } from "./hooks/useRulesSubscription";
-import { checkClaudeInstallStatus, getSupervisorStatus, getUnityStatus } from "./ipc/commands";
+import { checkClaudeInstallStatus, getSettings, getSupervisorStatus, getUnityStatus } from "./ipc/commands";
 import { onRouteRequested, onSupervisorStatusChanged } from "./ipc/events";
 import type { ClaudeInstallStatus } from "./ipc/types";
 import { useConnectionStore } from "./stores/connectionStore";
 import { useConversationStore } from "./stores/conversationStore";
 import { usePlansStore } from "./stores/plansStore";
 import { useRulesStore } from "./stores/rulesStore";
+import { useSettingsStore } from "./stores/settingsStore";
 
 // #region Constants
 
@@ -53,6 +54,7 @@ export default function App()
 {
   const setUnityStatus = useConnectionStore((s) => s.setUnityStatus);
   const setSupervisorStatus = useConnectionStore((s) => s.setSupervisorStatus);
+  const setSettings = useSettingsStore((s) => s.setSettings);
   const navigate = useNavigate();
   const [installStatus, setInstallStatus] = useState<ClaudeInstallStatus | null>(null);
 
@@ -62,6 +64,30 @@ export default function App()
   useConversationSubscription();
 
   // #region Effects
+
+  // Hydrate settings store from the Rust side on boot — populates
+  // `unityProjectPath` so the HUD shows the bound Unity project
+  // instead of "no project". The Rust `get_settings` resolves the
+  // path live via env-then-saved-settings, so this single call is
+  // enough for the current single-instance / single-project model.
+  useEffect(() => {
+    let cancelled = false;
+
+    void getSettings()
+      .then((settings) => {
+        if (!cancelled)
+        {
+          setSettings(settings);
+        }
+      })
+      .catch((err) => {
+        console.error("[app] failed to hydrate settings:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setSettings]);
 
   // Claude install-detection poll. Drives the FirstRunPanel gate.
   useEffect(() => {
