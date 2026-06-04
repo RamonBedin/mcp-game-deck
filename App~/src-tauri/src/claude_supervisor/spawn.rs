@@ -196,7 +196,10 @@ pub async fn read_stdout(
         let payload: AgentMessagePayload = match serde_json::from_str(&line) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("[claude-supervisor] bad stdout line: {line} — {e}");
+                crate::logging::log(
+                    "WARN",
+                    &format!("[claude-supervisor] bad stdout line: {line} — {e}"),
+                );
                 continue;
             }
         };
@@ -301,7 +304,7 @@ pub async fn read_stdout(
 pub async fn read_stderr(stderr: ChildStderr) {
     let mut reader = BufReader::new(stderr).lines();
     while let Ok(Some(line)) = reader.next_line().await {
-        eprintln!("[sdk-entry/stderr] {line}");
+        crate::logging::log("SDK", &line);
     }
 }
 

@@ -1,19 +1,19 @@
 /**
- * MCP Game Deck — MCP Proxy Server
+ * MCP Game Deck - MCP Proxy Server
  *
  * Transparent STDIO-based MCP proxy that forwards all tool, resource, and prompt
  * requests to the C# MCP server running inside the Unity Editor via HTTP JSON-RPC.
  *
  * This is the entry point for Claude Desktop / Claude Code MCP integration and is
  * also spawned by the Agent SDK Server ({@link index.ts}) as a child process.
- * No tool schemas are declared locally — everything is proxied as-is, which is why
+ * No tool schemas are declared locally - everything is proxied as-is, which is why
  * the low-level {@link Server} class is used instead of {@link McpServer}.
  *
  * Connection errors during Unity assembly reloads are handled with automatic retry
  * and exponential backoff (up to {@link MAX_RETRIES} attempts).
  * 
  * Architecture:
- *   Claude ←→ STDIO ←→ This Proxy ←→ HTTP JSON-RPC ←→ C# MCP Server (:8090) ←→ Unity Editor
+ *   Claude <--> STDIO <--> This Proxy <--> HTTP JSON-RPC <--> C# MCP Server (:8090) <--> Unity Editor
  * 
  * @packageDocumentation
  */
@@ -22,7 +22,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { ServerResult } from "@modelcontextprotocol/sdk/types.js";
 import { ListToolsRequestSchema, CallToolRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema, ListPromptsRequestSchema, GetPromptRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync } from "fs";
+import { readFileSync, appendFileSync, mkdirSync } from "fs";
 import path from "path";
 import {
   DEFAULT_MCP_PORT, DEFAULT_HOST, DEFAULT_REQUEST_TIMEOUT_MS,
@@ -54,13 +54,80 @@ function validateHost(host: string): string
   return DEFAULT_HOST;
 }
 
+// ─── Logging ───
+// Defined before Configuration so the module-load `loadAuthToken()` call
+// (which may log) has a working logger. Mirrors the Tauri host's
+// `Library/GameDeck/app.log` with a sibling `proxy.log`, so a disconnect
+// can be traced across both layers (the proxy is what Claude actually
+// uses to drive Unity; the Rust client only drives the status dot).
+
+/**
+ * Resolves the proxy log file path under the Unity project's
+ * `Library/GameDeck/` directory. Returns null when no project root is
+ * resolvable or the directory can't be created.
+ * @returns Absolute path to `proxy.log`, or null if unavailable.
+ */
+function resolveLogFile(): string | null
+{
+  const root = process.env.UNITY_PROJECT_PATH ?? process.env.PROJECT_CWD ?? process.cwd();
+
+  if (!root)
+  {
+    return null;
+  }
+  try
+  {
+    const dir = path.join(root, "Library", "GameDeck");
+    mkdirSync(dir, { recursive: true });
+    return path.join(dir, "proxy.log");
+  }
+  catch
+  {
+    return null;
+  }
+}
+
+const LOG_FILE = resolveLogFile();
+
+/**
+ * Writes a timestamped line to stderr and, when available, appends it to
+ * `proxy.log`. Never throws - logging must not be able to break the proxy.
+ * @param level Severity label (info / warn / error).
+ * @param msg Message body.
+ */
+function log(level: string, msg: string): void
+{
+  const line = `${new Date().toISOString()} [${level}] ${msg}\n`;
+  process.stderr.write(line);
+
+  if (LOG_FILE)
+  {
+    try
+    {
+      appendFileSync(LOG_FILE, line);
+    }
+    catch
+    {
+      // Swallow - a logging failure must never take down the bridge.
+    }
+  }
+}
+
 // ─── Configuration ───
 
-const UNITY_PORT = parseInt(process.env.UNITY_MCP_PORT ?? String(DEFAULT_MCP_PORT), 10);
-const UNITY_HOST = validateHost(process.env.UNITY_MCP_HOST ?? DEFAULT_HOST);
+// Robust against an empty/missing port or host. `sdk-entry.js` passes
+// `UNITY_MCP_PORT: process.env.UNITY_MCP_PORT ?? ""`, so an unset port
+// (typical in `tauri dev`, where the launcher's env contract isn't
+// applied) arrives here as "" - and `parseInt("")` is NaN, which would
+// produce `http://host:NaN/` and silently break every request. Coerce
+// any empty/invalid value back to the defaults so the only env var a
+// dev run truly needs is UNITY_PROJECT_PATH.
+const parsedPort = parseInt(process.env.UNITY_MCP_PORT ?? "", 10);
+const UNITY_PORT = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : DEFAULT_MCP_PORT;
+const UNITY_HOST = validateHost(process.env.UNITY_MCP_HOST || DEFAULT_HOST);
 const UNITY_URL = `http://${UNITY_HOST}:${UNITY_PORT}/`;
 const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS ?? String(DEFAULT_REQUEST_TIMEOUT_MS), 10);
-const AUTH_TOKEN = loadAuthToken();
+let AUTH_TOKEN = loadAuthToken();
 const SERVER = new Server(
   {
     name: MCP_SERVER_NAME,
@@ -100,16 +167,9 @@ function loadAuthToken(): string
   }
   catch
   {
-    log("warn", "No auth token found — requests will be unauthenticated");
+    log("warn", "No auth token found - requests will be unauthenticated");
     return "";
   }
-}
-
-// ─── Logging  ───
-
-function log(level: string, msg: string): void 
-{
-  process.stderr.write(`[${level}] ${msg}\n`);
 }
 
 // ─── HTTP JSON-RPC bridge to C# MCP server ───
@@ -125,7 +185,9 @@ function log(level: string, msg: string): void
  */
 async function forwardToUnity(method: string, params?: unknown): Promise<unknown>
 {
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) 
+  let authReloaded = false;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++)
   {
     const id = `proxy-${++requestCounter}`;
     const body = JSON.stringify({
@@ -147,12 +209,21 @@ async function forwardToUnity(method: string, params?: unknown): Promise<unknown
         },
         body,
         signal: controller.signal,
+        keepalive: false,
       });
 
       clearTimeout(timeout);
 
-      if (!res.ok) 
+      if (!res.ok)
       {
+        if (res.status === 401 && !authReloaded)
+        {
+          authReloaded = true;
+          AUTH_TOKEN = loadAuthToken();
+          log("warn", `Unity MCP returned 401 - reloaded auth token, retrying [${method}]`);
+          continue;
+        }
+
         throw new Error(`Unity MCP HTTP ${res.status}: ${res.statusText}`);
       }
 
@@ -203,7 +274,7 @@ async function forwardToUnity(method: string, params?: unknown): Promise<unknown
  * Waits for the Unity C# MCP server to become reachable.
  * Sends GET requests with exponential backoff (factor 1.5, capped at 5s).
  * If the server never responds, logs a warning and returns anyway so the
- * proxy can start — requests will fail-and-retry individually via {@link forwardToUnity}.
+ * proxy can start - requests will fail-and-retry individually via {@link forwardToUnity}.
  * @param maxAttempts Maximum number of connection attempts before giving up. Default: 10.
  * @param baseDelayMs Initial delay between retries in milliseconds. Default: 500.
  * @returns Resolves when the server is reachable or all attempts are exhausted.
@@ -235,60 +306,60 @@ async function waitForUnity(maxAttempts = WAIT_MAX_ATTEMPTS, baseDelayMs = WAIT_
     }
   }
 
-  log("warn", `Unity MCP server not reachable after ${maxAttempts} attempts — starting proxy anyway (requests will fail until Unity is ready)`);
+  log("warn", `Unity MCP server not reachable after ${maxAttempts} attempts - starting proxy anyway (requests will fail until Unity is ready)`);
 }
 
 // ─── Tool handlers ───
 
 SERVER.setRequestHandler(ListToolsRequestSchema, async () => {
-  log("info", "tools/list → forwarding to Unity");
+  log("info", "tools/list -> forwarding to Unity");
   const result = (await forwardToUnity("tools/list")) as { tools?: unknown[] };
   const toolCount = result?.tools?.length ?? 0;
-  log("info", `tools/list ← ${toolCount} tools`);
+  log("info", `tools/list <- ${toolCount} tools`);
   return result;
 });
 
 SERVER.setRequestHandler(CallToolRequestSchema, async (request) => {
   const toolName = request.params.name;
-  log("info", `tools/call [${toolName}] → forwarding to Unity`);
+  log("info", `tools/call [${toolName}] -> forwarding to Unity`);
   const result = await forwardToUnity("tools/call", request.params);
-  log("info", `tools/call [${toolName}] ← done`);
+  log("info", `tools/call [${toolName}] <- done`);
   return result as ServerResult;
 });
 
 // ─── Resource handlers ───
 
 SERVER.setRequestHandler(ListResourcesRequestSchema, async () => {
-  log("info", "resources/list → forwarding to Unity");
+  log("info", "resources/list -> forwarding to Unity");
   const result = (await forwardToUnity("resources/list")) as { resources?: unknown[] };
   const count = result?.resources?.length ?? 0;
-  log("info", `resources/list ← ${count} resources`);
+  log("info", `resources/list <- ${count} resources`);
   return result;
 });
 
 SERVER.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   const uri = request.params.uri;
-  log("info", `resources/read [${uri}] → forwarding to Unity`);
+  log("info", `resources/read [${uri}] -> forwarding to Unity`);
   const result = await forwardToUnity("resources/read", request.params);
-  log("info", `resources/read [${uri}] ← done`);
+  log("info", `resources/read [${uri}] <- done`);
   return result as ServerResult;
 });
 
 // ─── Prompt handlers ───
 
 SERVER.setRequestHandler(ListPromptsRequestSchema, async () => {
-  log("info", "prompts/list → forwarding to Unity");
+  log("info", "prompts/list -> forwarding to Unity");
   const result = (await forwardToUnity("prompts/list")) as { prompts?: unknown[] };
   const count = result?.prompts?.length ?? 0;
-  log("info", `prompts/list ← ${count} prompts`);
+  log("info", `prompts/list <- ${count} prompts`);
   return result;
 });
 
 SERVER.setRequestHandler(GetPromptRequestSchema, async (request) => {
   const promptName = request.params.name;
-  log("info", `prompts/get [${promptName}] → forwarding to Unity`);
+  log("info", `prompts/get [${promptName}] -> forwarding to Unity`);
   const result = await forwardToUnity("prompts/get", request.params);
-  log("info", `prompts/get [${promptName}] ← done`);
+  log("info", `prompts/get [${promptName}] <- done`);
   return result as ServerResult;
 });
 
@@ -310,7 +381,7 @@ async function main(): Promise<void>
   const transport = new StdioServerTransport();
   await SERVER.connect(transport);
 
-  log("info", "MCP Proxy server ready — listening on STDIO");
+  log("info", "MCP Proxy server ready - listening on STDIO");
 }
 
 // ─── Graceful shutdown ───
@@ -359,15 +430,16 @@ process.stdin.on("end", shutdown);
 process.on("uncaughtException", (error: NodeJS.ErrnoException) => {
   if ((FATAL_ERROR_CODES as readonly string[]).includes(error.code ?? ""))
   {
+    log("warn", `Fatal STDIO error (${error.code}) - shutting down`);
     shutdown();
     return;
   }
-  
-  log("error", `Uncaught exception: ${error.message}`);
-  process.exit(1);
+
+  log("error", `Uncaught exception (continuing): ${error.stack ?? error.message}`);
 });
 
 process.on("unhandledRejection", (reason) => {
-  log("error", `Unhandled rejection: ${reason}`);
-  process.exit(1);
+  // Same rationale as uncaughtException: a stray rejection (e.g. an
+  // aborted/late fetch during a reload) must never tear down the bridge.
+  log("error", `Unhandled rejection (continuing): ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);
 });

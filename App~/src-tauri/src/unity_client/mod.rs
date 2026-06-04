@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use tauri::AppHandle;
+use tokio::sync::Notify;
 
 use crate::events::emit_unity_status_changed;
 use crate::types::{ConnectionStatus, UnityStatusChangedPayload};
@@ -72,6 +73,7 @@ pub struct UnityClient {
     addr: SocketAddr,
     auth_token: Arc<StdMutex<Option<String>>>,
     next_id: Arc<AtomicU64>,
+    reconnect: Arc<Notify>,
 }
 
 impl UnityClient {
@@ -89,6 +91,7 @@ impl UnityClient {
             addr,
             auth_token: Arc::new(StdMutex::new(None)),
             next_id: Arc::new(AtomicU64::new(1)),
+            reconnect: Arc::new(Notify::new()),
         }
     }
 
@@ -101,10 +104,19 @@ impl UnityClient {
         *self.status.lock().unwrap()
     }
 
-    /// Spawns the background connection task.
+    /// Spawns the self-healing supervisor for the connection loop.
     ///
-    /// Idempotent only at the caller's discretion — calling twice would
-    /// start two tasks. Setup should call this exactly once.
+    /// The actual `run` loop is spawned as a child task; if it ever
+    /// exits — whether by returning or by **panicking** (a panic in a
+    /// spawned tokio task is caught at the task boundary and does NOT
+    /// crash the process, it just ends that one task) — the supervisor
+    /// logs it and re-spawns after a short delay. This is the fix for
+    /// the "Unity goes red and never reconnects until the app is fully
+    /// restarted" bug: previously `run` was spawned exactly once, so a
+    /// single panic in the loop (e.g. a `println!` to the dead release
+    /// stdout) silently killed reconnection for the whole session.
+    ///
+    /// Setup should call this exactly once.
     ///
     /// # Arguments
     ///
@@ -113,14 +125,37 @@ impl UnityClient {
     pub fn start(&self, app: AppHandle) {
         let client = self.clone();
         tauri::async_runtime::spawn(async move {
-            client.run(app).await;
+            loop {
+                let run_client = client.clone();
+                let run_app = app.clone();
+                let handle = tauri::async_runtime::spawn(async move {
+                    run_client.run(run_app).await;
+                });
+
+                match handle.await {
+                    Ok(()) => crate::logging::log(
+                        "WARN",
+                        "[unity-client] run loop returned unexpectedly - restarting in 1s",
+                    ),
+                    Err(e) => crate::logging::log(
+                        "ERROR",
+                        &format!("[unity-client] run loop task died ({e:?}) - restarting in 1s"),
+                    ),
+                }
+
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
         });
     }
 
     /// Connection management loop.
     ///
     /// Heartbeats while connected, then falls back to the backoff schedule
-    /// until reconnection succeeds. Runs until the app exits.
+    /// until reconnection succeeds. Both the heartbeat interval (while
+    /// connected) and the backoff delay (while disconnected) are
+    /// interruptible by `request_reconnect`, so a manual/agent-driven
+    /// reconnect re-probes immediately instead of waiting out the sleep.
+    /// Runs until the app exits.
     ///
     /// # Arguments
     ///
@@ -134,7 +169,15 @@ impl UnityClient {
                 backoff_idx = 0;
 
                 loop {
-                    tokio::time::sleep(connection::HEARTBEAT_INTERVAL).await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(connection::HEARTBEAT_INTERVAL) => {}
+                        _ = self.reconnect.notified() => {
+                            crate::logging::log(
+                                "INFO",
+                                "[unity-client] reconnect requested while connected - re-probing now",
+                            );
+                        }
+                    }
                     if !connection::heartbeat(self.addr).await {
                         break;
                     }
@@ -145,9 +188,31 @@ impl UnityClient {
                 self.transition(&app, ConnectionStatus::Disconnected);
             }
 
-            tokio::time::sleep(connection::backoff_delay(backoff_idx)).await;
-            backoff_idx = (backoff_idx + 1).min(connection::BACKOFF_SCHEDULE_SECS.len() - 1);
+            let delay = connection::backoff_delay(backoff_idx);
+            tokio::select! {
+                _ = tokio::time::sleep(delay) => {
+                    backoff_idx =
+                        (backoff_idx + 1).min(connection::BACKOFF_SCHEDULE_SECS.len() - 1);
+                }
+                _ = self.reconnect.notified() => {
+                    crate::logging::log(
+                        "INFO",
+                        "[unity-client] reconnect requested - retrying immediately",
+                    );
+                    backoff_idx = 0;
+                }
+            }
         }
+    }
+
+    /// Wakes the connection loop to re-probe Unity immediately, skipping
+    /// any in-progress backoff. Exposed to the frontend (and, later, to
+    /// the agent via the control MCP) through the `reconnect_unity`
+    /// command. `Notify::notify_one` stores a permit when no waiter is
+    /// parked, so a nudge issued between sleeps is not lost.
+    pub fn request_reconnect(&self) {
+        crate::logging::log("INFO", "[unity-client] reconnect requested via command");
+        self.reconnect.notify_one();
     }
 
     /// Updates `status` and emits `unity-status-changed` only when the new
@@ -180,7 +245,7 @@ impl UnityClient {
                 ConnectionStatus::Busy => "busy",
                 ConnectionStatus::Disconnected => "disconnected",
             };
-            println!("[unity-client] status → {label}");
+            crate::logging::log("INFO", &format!("[unity-client] status -> {label}"));
         }
     }
 

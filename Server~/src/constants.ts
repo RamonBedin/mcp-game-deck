@@ -25,14 +25,23 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 
 // ── Retry / Backoff ──
 
-/** Maximum number of retry attempts for transient connection errors. */
-export const MAX_RETRIES = 15;
+/**
+ * Maximum number of retry attempts for transient connection errors.
+ *
+ * Sized to outlast a Unity domain reload: a large project's recompile +
+ * domain reload can take well over a minute, during which the C# MCP
+ * server is down and every `fetch` fails with ECONNREFUSED. With the
+ * delays below this budget covers roughly ~75s of continuous retrying,
+ * so a tool call issued mid-reload waits the reload out and succeeds
+ * instead of failing and making Claude believe Unity is gone.
+ */
+export const MAX_RETRIES = 40;
 
 /** Initial delay between retries in milliseconds. */
 export const RETRY_BASE_DELAY_MS = 1000;
 
 /** Maximum delay between retries in milliseconds. */
-export const RETRY_MAX_DELAY_MS = 3000;
+export const RETRY_MAX_DELAY_MS = 2000;
 
 /** Exponential backoff multiplier for retry delays. */
 export const RETRY_BACKOFF_FACTOR = 1.3;
@@ -75,8 +84,12 @@ export const TRANSIENT_ERROR_CODES = [
   "ECONNREFUSED",
   "ECONNRESET",
   "EPIPE",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
   "UND_ERR_SOCKET",
   "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
 ] as const;
 
 /** Error message substrings that indicate a transient connection failure. */

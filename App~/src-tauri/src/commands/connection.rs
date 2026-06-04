@@ -54,6 +54,24 @@ pub fn get_supervisor_status(supervisor: State<'_, ClaudeSupervisor>) -> Supervi
 
 // region: Manual triggers
 
+/// Nudges the Unity TCP client to re-probe the MCP server immediately,
+/// bypassing any in-progress reconnect backoff.
+///
+/// This is the manual recovery path for a stuck "disconnected" (red)
+/// state — the status dot in the UI calls it on click, and it is also
+/// the hook the agent-facing control MCP uses to recover the editor
+/// connection without restarting the whole app. Returns immediately;
+/// the actual re-probe happens asynchronously on the run loop and the
+/// result surfaces via the usual `unity-status-changed` event.
+///
+/// # Arguments
+///
+/// * `client` - Tauri-managed `UnityClient` state.
+#[tauri::command]
+pub fn reconnect_unity(client: State<'_, UnityClient>) {
+    client.request_reconnect();
+}
+
 /// Restarts the Claude Code supervisor and rebinds the plans + files
 /// watchers (plus the rules watcher) and refreshes the rules bundle.
 ///

@@ -10,6 +10,7 @@ pub mod claude_supervisor;
 pub mod commands;
 pub mod events;
 pub mod files_watcher;
+pub mod logging;
 pub mod markdown_doc;
 pub mod plans_watcher;
 pub mod project_root;
@@ -89,6 +90,8 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            logging::init();
+
             if let Some(root) = project_root::try_resolve_project_root() {
                 if let Err(e) = rules_bundle::recompose(&root) {
                     eprintln!("[rules-bundle] startup recompose failed: {e}");
@@ -156,6 +159,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection::get_unity_status,
             commands::connection::get_supervisor_status,
+            commands::connection::reconnect_unity,
             commands::connection::restart_supervisor,
             commands::conversation::send_message,
             commands::conversation::set_permission_mode,

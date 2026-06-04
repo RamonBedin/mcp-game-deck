@@ -37,7 +37,23 @@ pub const BACKOFF_SCHEDULE_SECS: &[u64] = &[1, 2, 5, 10, 30];
 ///
 /// `true` iff the server responded with HTTP 200 within `CONNECT_TIMEOUT`.
 pub async fn heartbeat(addr: SocketAddr) -> bool {
-    matches!(http_get_status(addr, CONNECT_TIMEOUT).await, Ok(200))
+    match http_get_status(addr, CONNECT_TIMEOUT).await {
+        Ok(200) => true,
+        Ok(code) => {
+            crate::logging::log(
+                "WARN",
+                &format!("[unity-client] heartbeat: unexpected HTTP {code} from {addr}"),
+            );
+            false
+        }
+        Err(e) => {
+            crate::logging::log(
+                "DEBUG",
+                &format!("[unity-client] heartbeat probe failed ({}): {e}", e.kind()),
+            );
+            false
+        }
+    }
 }
 
 /// Returns the backoff delay for a given reconnect attempt.
