@@ -224,7 +224,16 @@ namespace GameDeck.MCP.Server
             {
                 IPAddress bindAddress = ResolveBindAddress(McpServerConfig.Host);
                 _tcpListener = new TcpListener(bindAddress, McpServerConfig.Port);
-                _tcpListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+                if (Application.platform == RuntimePlatform.WindowsEditor)
+                {
+                    _tcpListener.ExclusiveAddressUse = true;
+                }
+                else
+                {
+                    _tcpListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                }
+
                 _tcpListener.Start();
 
                 _running = true;
@@ -249,6 +258,29 @@ namespace GameDeck.MCP.Server
                     $"{_toolRegistry?.Count ?? 0} tools, " +
                     $"{_resourceRegistry?.Count ?? 0} resources, " +
                     $"{_promptRegistry?.Count ?? 0} prompts.");
+            }
+            catch (SocketException sockEx) when (sockEx.SocketErrorCode == SocketError.AddressAlreadyInUse)
+            {
+                // Port is held by another process — almost always a leftover /
+                // zombie Unity Editor that didn't fully exit, or a second Editor
+                // instance. With ExclusiveAddressUse (Windows) this is now a clean,
+                // visible failure instead of a silent connection-routing mess. The
+                // message intentionally contains "address already in use" and the
+                // port number so PinPolling flags it as BIND_FAILURE on the toolbar.
+                McpLogger.Error(
+                    $"MCP Server failed to bind port {McpServerConfig.Port}: address already in use. " +
+                    "Another process is holding the port — most likely a leftover Unity Editor process. " +
+                    "Close other Unity instances (or kill stray 'Unity' processes), then reload.");
+                try
+                {
+                    _tcpListener?.Stop();
+                }
+                catch (Exception stopEx)
+                {
+                    Debug.LogWarning($"[MCP Server] Cleanup failed while stopping listener: {stopEx}");
+                }
+
+                _tcpListener = null;
             }
             catch (Exception ex)
             {
