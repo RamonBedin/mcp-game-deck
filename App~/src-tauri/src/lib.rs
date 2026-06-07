@@ -159,6 +159,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection::get_unity_status,
             commands::connection::get_supervisor_status,
+            commands::connection::get_mcp_endpoint,
             commands::connection::reconnect_unity,
             commands::connection::restart_supervisor,
             commands::conversation::send_message,

@@ -49,6 +49,7 @@ console.log(`[build-proxy] Output:       ${proxyDst}`);
 run("npm install", serverRoot);
 run("npm run build", serverRoot);
 run("npm run bundle:proxy", serverRoot);
+run("npm run bundle:sidecar", serverRoot);
 
 if (!existsSync(proxySrc))
 {

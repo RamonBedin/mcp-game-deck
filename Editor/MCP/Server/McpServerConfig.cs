@@ -4,14 +4,15 @@ using GameDeck.Editor.Settings;
 namespace GameDeck.MCP.Server
 {
     /// <summary>
-    /// Static configuration for the MCP WebSocket server.
+    /// Static configuration for the MCP server's public endpoint.
     /// Reads values from <see cref="GameDeckSettings"/> so they can be changed
     /// via <b>Project Settings &gt; MCP Game Deck</b>.
     /// </summary>
     /// <remarks>
-    /// Modifying these values after the server has started has no effect on the running
-    /// listener — a restart via <see cref="McpServer.StopServer"/> followed by
-    /// <see cref="McpServer.StartServer"/> is required for changes to take effect.
+    /// These values tell <see cref="SidecarManager"/> what host/port the sidecar
+    /// should bind. Changing the port in Project Settings respawns the sidecar on
+    /// the new port at the next domain load; the Tauri app must be relaunched to
+    /// pick up the new port (it reads it from the launch environment).
     /// </remarks>
     public static class McpServerConfig
     {

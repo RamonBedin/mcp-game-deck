@@ -50,6 +50,24 @@ pub fn get_supervisor_status(supervisor: State<'_, ClaudeSupervisor>) -> Supervi
     supervisor.current_status()
 }
 
+/// Returns the resolved Unity MCP endpoint URL (`http://host:port`) the client
+/// probes, derived from `UNITY_MCP_HOST` / `UNITY_MCP_PORT`.
+///
+/// The Settings UI displays this so the shown port/host reflect the configured
+/// values (Project Settings → `GameDeckSettings`) instead of a hardcoded default.
+///
+/// # Arguments
+///
+/// * `client` - Tauri-managed `UnityClient` state.
+///
+/// # Returns
+///
+/// The endpoint URL, e.g. `http://127.0.0.1:9090`.
+#[tauri::command]
+pub fn get_mcp_endpoint(client: State<'_, UnityClient>) -> String {
+    client.endpoint_url()
+}
+
 // endregion
 
 // region: Manual triggers

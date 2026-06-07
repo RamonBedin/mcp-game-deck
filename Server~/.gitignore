@@ -1,3 +1,6 @@
 node_modules/
-dist/
+# Ignore build output EXCEPT the sidecar bundle — Unity spawns it with `node`
+# from inside the shipped UPM package, so the prebuilt bundle must be tracked.
+dist/*
+!dist/sidecar.cjs
 .env

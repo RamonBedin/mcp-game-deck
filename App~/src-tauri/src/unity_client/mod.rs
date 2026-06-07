@@ -23,7 +23,46 @@ const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 8090;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const ENV_UNITY_PROJECT_PATH: &str = "UNITY_PROJECT_PATH";
+const ENV_UNITY_MCP_HOST: &str = "UNITY_MCP_HOST";
+const ENV_UNITY_MCP_PORT: &str = "UNITY_MCP_PORT";
 const AUTH_TOKEN_RELATIVE_PATH: &str = "Library/GameDeck/auth-token";
+
+// endregion
+
+// region: Address resolution
+
+/// Resolves the Unity MCP server address from the env contract the pin sets
+/// (`UNITY_MCP_HOST` / `UNITY_MCP_PORT`), falling back to `127.0.0.1:8090`.
+///
+/// Previously this client hardcoded `127.0.0.1:8090` and ignored the env, so
+/// changing the port in Project Settings (GameDeckSettings) left the status dot
+/// probing the wrong port forever (server on e.g. 9090, dot stuck on 8090 →
+/// always red), even though the proxy — which DOES read the env — connected
+/// fine. `localhost` maps to the IPv4 loopback to match the C# server's bind
+/// (`IPAddress.Loopback`) and because `SocketAddr` parsing does not resolve DNS.
+/// Read once at construction — change the port and relaunch the app to apply.
+fn resolve_unity_addr() -> SocketAddr {
+    let mut host = std::env::var(ENV_UNITY_MCP_HOST)
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_HOST.to_string());
+
+    if host.eq_ignore_ascii_case("localhost") {
+        host = DEFAULT_HOST.to_string();
+    }
+
+    let port = std::env::var(ENV_UNITY_MCP_PORT)
+        .ok()
+        .and_then(|s| s.trim().parse::<u16>().ok())
+        .filter(|p| *p != 0)
+        .unwrap_or(DEFAULT_PORT);
+
+    format!("{host}:{port}").parse().unwrap_or_else(|_| {
+        format!("{DEFAULT_HOST}:{DEFAULT_PORT}")
+            .parse()
+            .expect("fallback addr parses")
+    })
+}
 
 // endregion
 
@@ -83,9 +122,7 @@ impl UnityClient {
     ///
     /// A new `UnityClient`. No tasks are spawned until `start` is called.
     pub fn new() -> Self {
-        let addr: SocketAddr = format!("{DEFAULT_HOST}:{DEFAULT_PORT}")
-            .parse()
-            .expect("hardcoded host:port should parse");
+        let addr = resolve_unity_addr();
         Self {
             status: Arc::new(StdMutex::new(ConnectionStatus::Disconnected)),
             addr,
@@ -102,6 +139,14 @@ impl UnityClient {
     /// The latest `ConnectionStatus` observed by the run loop.
     pub fn current_status(&self) -> ConnectionStatus {
         *self.status.lock().unwrap()
+    }
+
+    /// Returns the resolved MCP endpoint URL the client actually probes
+    /// (`http://host:port`, derived from `UNITY_MCP_HOST/PORT`). This is the
+    /// source of truth for the configured host/port, so the Settings UI shows it
+    /// instead of a hardcoded default.
+    pub fn endpoint_url(&self) -> String {
+        format!("http://{}", self.addr)
     }
 
     /// Spawns the self-healing supervisor for the connection loop.
@@ -123,6 +168,10 @@ impl UnityClient {
     /// * `app` - Tauri application handle, cloned into the spawned task so
     ///   it can emit `unity-status-changed` events.
     pub fn start(&self, app: AppHandle) {
+        crate::logging::log(
+            "INFO",
+            &format!("[unity-client] target = {} (from UNITY_MCP_HOST/PORT env)", self.addr),
+        );
         let client = self.clone();
         tauri::async_runtime::spawn(async move {
             loop {

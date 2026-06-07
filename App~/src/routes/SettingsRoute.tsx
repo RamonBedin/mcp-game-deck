@@ -23,7 +23,7 @@ import PermissionModePicker from "../components/PermissionModePicker";
 import { SettingsGroup, SettingRow } from "../components/settings/SettingsGroup";
 import { useAgents } from "../hooks/useAgents";
 import { useCommands } from "../hooks/useCommands";
-import { checkClaudeInstallStatus, devCallUnityTool, devEmitTestEvent, listKnowledgeDocs, restartSupervisor, } from "../ipc/commands";
+import { checkClaudeInstallStatus, devCallUnityTool, devEmitTestEvent, getMcpEndpoint, listKnowledgeDocs, restartSupervisor, } from "../ipc/commands";
 import { onUnityStatusChanged } from "../ipc/events";
 import type { ClaudeInstallStatus, ConnectionStatus, SupervisorStatus, } from "../ipc/types";
 import { useConnectionStore } from "../stores/connectionStore";
@@ -208,6 +208,26 @@ const ConnectionPanel = () => {
   const [restartResult, setRestartResult] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [mcpUrl, setMcpUrl] = useState<string>(`http://localhost:${DEFAULT_MCP_PORT}`);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getMcpEndpoint()
+      .then((url) => {
+        if (!cancelled)
+        {
+          setMcpUrl(url);
+        }
+      })
+      .catch((err) => {
+        console.error("[settings] failed to load mcp endpoint:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fast-path Unity status subscription (App.tsx polls; this catches transitions in ms).
   useEffect(() => {
@@ -261,7 +281,10 @@ const ConnectionPanel = () => {
     }
   };
 
-  const mcpUrl = `http://localhost:${DEFAULT_MCP_PORT}`;
+  const mcpPort = (() => {
+    try { return new URL(mcpUrl).port || String(DEFAULT_MCP_PORT); }
+    catch { return String(DEFAULT_MCP_PORT); }
+  })();
 
   const handleCopyUrl = () => {
     void navigator.clipboard.writeText(mcpUrl).then(() => {
@@ -282,7 +305,7 @@ const ConnectionPanel = () => {
       <SettingsGroup label="Live status">
         <SettingRow
           label="Unity Editor"
-          value={<StatusDot status={connectionToDot(unityStatus)} label={`${unityStatus.toUpperCase()} · ${DEFAULT_MCP_PORT}`} />}
+          value={<StatusDot status={connectionToDot(unityStatus)} label={`${unityStatus.toUpperCase()} · ${mcpPort}`} />}
           meta="Polled every 2s · event-driven fast path active"
         />
         <SettingRow

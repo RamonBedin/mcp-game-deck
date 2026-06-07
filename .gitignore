@@ -50,7 +50,11 @@ crashlytics-build.properties
 
 # ----- Node.js / TypeScript (Agent SDK Server in Server~/) -----
 Server~/node_modules/
-Server~/dist/
+# Ignore build output, EXCEPT the sidecar bundle: Unity spawns it with `node`
+# from inside the shipped UPM package, so the prebuilt bundle must be tracked.
+# (mcp-proxy.cjs stays ignored — it's embedded into the Tauri app at build time.)
+Server~/dist/*
+!Server~/dist/sidecar.cjs
 node_modules/
 *.js.map
 *.tsbuildinfo

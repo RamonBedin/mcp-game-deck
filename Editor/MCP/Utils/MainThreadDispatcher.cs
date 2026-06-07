@@ -35,6 +35,7 @@ namespace GameDeck.MCP.Utils
         private static int _mainThreadId;
         private static readonly ConcurrentQueue<WorkItem> _queue = new();
         private static bool _initialized;
+        private const int MAIN_THREAD_TIMEOUT_MS = 60_000;
 
         #endregion
 
@@ -120,12 +121,27 @@ namespace GameDeck.MCP.Utils
             }
 
             EnsureInitialized();
-            using var item = new WorkItem<T>(func);
+            var item = new WorkItem<T>(func);
             _queue.Enqueue(item);
 
-            item.Wait();
+            if (item.Wait(MAIN_THREAD_TIMEOUT_MS))
+            {
+                try
+                {
+                    return item.GetResultOrThrow();
+                }
+                finally
+                {
+                    item.Dispose();
+                }
+            }
 
-            return item.GetResultOrThrow();
+            if (item.Abandon())
+            {
+                item.Dispose();
+            }
+
+            throw new TimeoutException($"Main-thread work did not run within {MAIN_THREAD_TIMEOUT_MS}ms — " + "the Unity Editor is busy or in a domain reload.");
         }
 
         #endregion
@@ -180,6 +196,7 @@ namespace GameDeck.MCP.Utils
             #region FIELDS
 
             private readonly ManualResetEventSlim _done = new(false);
+            private int _claimed;
             private T? _result;
             private Exception? _exception;
 
@@ -197,6 +214,11 @@ namespace GameDeck.MCP.Utils
             /// <inheritdoc/>
             public override void Execute()
             {
+                if (Interlocked.CompareExchange(ref _claimed, 1, 0) != 0)
+                {
+                    return;
+                }
+
                 try
                 {
                     _result = OnFunc();
@@ -212,9 +234,20 @@ namespace GameDeck.MCP.Utils
             }
 
             /// <summary>
-            /// Blocks the calling (background) thread until <see cref="Execute"/> has completed.
+            /// Blocks the calling (background) thread until <see cref="Execute"/> has
+            /// completed or <paramref name="timeoutMs"/> elapses.
             /// </summary>
-            public void Wait() => _done.Wait();
+            /// <param name="timeoutMs">Maximum wait in milliseconds.</param>
+            /// <returns><c>true</c> if the work completed; <c>false</c> on timeout.</returns>
+            public bool Wait(int timeoutMs) => _done.Wait(timeoutMs);
+
+            /// <summary>
+            /// Claims the item for a producer that timed out, so the main thread
+            /// skips it instead of running it late. Returns <c>true</c> when the
+            /// main thread had not already started executing it — in which case the
+            /// producer owns disposal.
+            /// </summary>
+            public bool Abandon() => Interlocked.CompareExchange(ref _claimed, 1, 0) == 0;
 
             /// <summary>
             /// Returns the result produced by the work, or re-throws the captured exception.

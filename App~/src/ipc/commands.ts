@@ -36,6 +36,8 @@ export const getUnityStatus = (): Promise<ConnectionStatus> => invoke("get_unity
 
 export const getSupervisorStatus = (): Promise<SupervisorStatus> => invoke("get_supervisor_status");
 
+export const getMcpEndpoint = (): Promise<string> => invoke("get_mcp_endpoint");
+
 export const restartSupervisor = (): Promise<void> => invoke("restart_supervisor");
 
 // #endregion

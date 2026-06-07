@@ -3,10 +3,16 @@
 namespace GameDeck.MCP.Server
 {
     /// <summary>
-    /// Shared constants for the MCP Server covering protocol identity, JSON-RPC method names,
-    /// HTTP server configuration, JSON parsing tokens, HTTP headers/methods/status codes,
-    /// and MIME/URI template utilities.
+    /// Shared constants for the MCP server: protocol identity, JSON-RPC method
+    /// names, request limits, JSON parsing tokens, MIME/URI template utilities,
+    /// and the auth-token contract.
     /// </summary>
+    /// <remarks>
+    /// HTTP transport constants (methods, headers, status codes, socket timeouts,
+    /// rate-limit window, CORS) now live in the sidecar process
+    /// (<c>Server~/src/sidecar.ts</c>) — the Editor no longer owns the listening
+    /// socket. See <see cref="SidecarManager"/> / <see cref="McpBackendClient"/>.
+    /// </remarks>
     public static class McpConstants
     {
         #region SERVER IDENTITY
@@ -30,16 +36,10 @@ namespace GameDeck.MCP.Server
 
         #endregion
 
-        #region HTTP SERVER
+        #region REQUEST LIMITS
 
         public const int MAX_REQUEST_BODY_SIZE = 16 * 1024 * 1024;
         public const long MAX_SCRIPT_FILE_SIZE = 10 * 1024 * 1024;
-        public const string THREAD_NAME_ACCEPT_LOOP = "MCP-AcceptLoop";
-        public const int RECEIVE_TIMEOUT_MS = 30000;
-        public const int SEND_TIMEOUT_MS = 10000;
-        public const string STATUS_OK_JSON = "{\"status\":\"ok\"}";
-        public const string CONTENT_TYPE_JSON = "application/json";
-        public const int KEEP_ALIVE_TIMEOUT_SECONDS = 30;
 
         #endregion
 
@@ -47,27 +47,11 @@ namespace GameDeck.MCP.Server
 
         public const string JSON_NULL = "null";
         public const string EMPTY_JSON_OBJECT = "{}";
-        public const char CONTROL_CHAR_BOUNDARY = '\u0020';
+        public const char CONTROL_CHAR_BOUNDARY = ' ';
         public const string JSON_TRUE = "true";
         public const string JSON_TRUE_PASCAL = "True";
         public const string JSON_FALSE = "false";
         public const string JSON_FALSE_PASCAL = "False";
-
-        #endregion
-
-        #region HTTP HEADERS AND METHODS
-
-        public const string HOST_LOCALHOST = "localhost";
-        public const string HOST_WILDCARD = "*";
-        public const string HOST_ANY_ADDRESS = "0.0.0.0";
-        public const string HEADER_CONTENT_LENGTH = "Content-Length:";
-        public const int HEADER_CONTENT_LENGTH_SIZE = 15;
-        public const string HEADER_CONNECTION = "Connection:";
-        public const int HEADER_CONNECTION_SIZE = 11;
-        public const string CONNECTION_CLOSE = "close";
-        public const string HTTP_METHOD_POST = "POST";
-        public const string HTTP_METHOD_GET = "GET";
-        public const string HTTP_METHOD_OPTIONS = "OPTIONS";
 
         #endregion
 
@@ -86,25 +70,7 @@ namespace GameDeck.MCP.Server
 
         public const string AUTH_TOKEN_DIR = "Library/GameDeck";
         public const string AUTH_TOKEN_FILE = "Library/GameDeck/auth-token";
-        public const string HEADER_AUTHORIZATION = "Authorization:";
-        public const int HEADER_AUTHORIZATION_SIZE = 14;
-        public const string AUTH_BEARER_PREFIX = "Bearer ";
         public const int AUTH_TOKEN_BYTE_LENGTH = 16;
-        public const int HTTP_UNAUTHORIZED = 401;
-        public const int HTTP_TOO_MANY_REQUESTS = 429;
-        public const int RATE_LIMIT_MAX_REQUESTS = 120;
-        public const long RATE_LIMIT_WINDOW_TICKS = 600000000L;
-
-        #endregion
-
-        #region HTTP STATUS CODES
-
-        public const int HTTP_OK = 200;
-        public const int HTTP_NO_CONTENT = 204;
-        public const int HTTP_BAD_REQUEST = 400;
-        public const int HTTP_METHOD_NOT_ALLOWED = 405;
-        public const int HTTP_CONTENT_TOO_LARGE = 413;
-        public const int HTTP_INTERNAL_ERROR = 500;
 
         #endregion
     }
