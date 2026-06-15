@@ -132,13 +132,49 @@ let AUTH_TOKEN = loadToken();
 
 let backend: net.Socket | null = null;
 let nextCid = 1;
-const pending = new Map<number, (payload: string) => void>();
+const pending = new Map<number, { resolve: (payload: string) => void; reject: (err: Error) => void }>();
+
+/**
+ * Rejects every in-flight request. Called when the active backend is lost or
+ * replaced so HTTP relays fail fast (502) instead of waiting out the 30s
+ * timeout on a connection that will never answer.
+ * @param reason Human-readable cause, surfaced in the rejection.
+ */
+function flushPending(reason: string): void
+{
+  if (pending.size === 0)
+  {
+    return;
+  }
+
+  log("warn", `flushing ${pending.size} pending request(s): ${reason}`);
+
+  for (const { reject } of pending.values())
+  {
+    reject(new Error(reason));
+  }
+
+  pending.clear();
+}
 
 const backendServer = net.createServer((sock) =>
 {
   log("info", "Editor backend connected");
+
+  // A Unity domain reload spins up a fresh outbound connection; the previous one
+  // may belong to a now-dead AppDomain (Unity does not always tear those threads
+  // down promptly). Always treat the NEWEST connection as authoritative: drop the
+  // old socket and fail its in-flight requests so we never relay to a dead domain.
+  const previous = backend;
   backend = sock;
   sock.setNoDelay(true);
+
+  if (previous && previous !== sock)
+  {
+    log("warn", "replacing previous Editor backend connection");
+    flushPending("backend connection replaced");
+    try { previous.destroy(); } catch { /* best-effort */ }
+  }
 
   let buf = Buffer.alloc(0);
   sock.on("data", (chunk: Buffer) =>
@@ -164,11 +200,11 @@ const backendServer = net.createServer((sock) =>
       const payload = buf.toString("utf8", 8, 8 + len);
       buf = buf.subarray(8 + len);
 
-      const resolve = pending.get(cid);
-      if (resolve)
+      const entry = pending.get(cid);
+      if (entry)
       {
         pending.delete(cid);
-        resolve(payload);
+        entry.resolve(payload);
       }
     }
   });
@@ -178,6 +214,7 @@ const backendServer = net.createServer((sock) =>
     if (backend === sock)
     {
       backend = null;
+      flushPending("Editor backend disconnected");
       log("warn", "Editor backend disconnected");
     }
   };
@@ -204,7 +241,7 @@ function sendToBackend(payload: string): Promise<string>
     }
 
     const cid = nextCid++;
-    pending.set(cid, resolve);
+    pending.set(cid, { resolve, reject });
 
     const payloadBuf = Buffer.from(payload, "utf8");
     const header = Buffer.alloc(8);

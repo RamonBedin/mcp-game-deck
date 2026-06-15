@@ -306,19 +306,48 @@ namespace GameDeck.MCP.Server
         /// sees a clean disconnect. Safe to call when not running. Invoked before a
         /// domain reload and on Editor quit.
         /// </summary>
+        /// <remarks>
+        /// Joins the loop thread (with a bounded wait) before returning. Unity does
+        /// NOT abort <see cref="Thread"/>s started with <c>new Thread()</c> on a
+        /// domain reload, so without this join the loop thread leaks across reloads:
+        /// each leaked thread keeps its outbound connection to the sidecar alive, and
+        /// the sidecar (which tracks a single backend socket) can end up relaying tool
+        /// calls to a connection owned by a DEAD AppDomain — whose
+        /// <see cref="Utils.MainThreadDispatcher"/> pump no longer runs, so every
+        /// <c>tools/call</c> hangs until timeout while <c>tools/list</c> (served off
+        /// the worker thread) still succeeds.
+        /// </remarks>
         public static void Stop()
         {
             _running = false;
             try
-            { 
+            {
                 _client?.Close();
             }
-            catch 
-            { 
-                /* best-effort */ 
+            catch
+            {
+                /* best-effort */
             }
 
             _client = null;
+
+            Thread? loop = _loopThread;
+            _loopThread = null;
+
+            if (loop != null && loop.IsAlive && loop != Thread.CurrentThread)
+            {
+                try
+                {
+                    // Closing the socket unblocks the Serve() read; the loop then sees
+                    // _running == false and exits. Bounded so a wedged read can't block
+                    // the reload indefinitely.
+                    loop.Join(TimeSpan.FromSeconds(2));
+                }
+                catch
+                {
+                    /* best-effort */
+                }
+            }
         }
 
         #endregion
