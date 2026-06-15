@@ -35,6 +35,11 @@ namespace GameDeck.MCP.Server
 
         static McpServer()
         {
+            if (AssetDatabase.IsAssetImportWorkerProcess())
+            {
+                return;
+            }
+
             SubscribeEditorEvents();
             DiscoverAndRegister();
             EnsureAuthToken();
