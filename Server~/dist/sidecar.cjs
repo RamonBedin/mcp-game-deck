@@ -86,29 +86,10 @@ var AUTH_TOKEN = loadToken();
 var backend = null;
 var nextCid = 1;
 var pending = /* @__PURE__ */ new Map();
-function flushPending(reason) {
-  if (pending.size === 0) {
-    return;
-  }
-  log("warn", `flushing ${pending.size} pending request(s): ${reason}`);
-  for (const { reject } of pending.values()) {
-    reject(new Error(reason));
-  }
-  pending.clear();
-}
 var backendServer = import_net.default.createServer((sock) => {
   log("info", "Editor backend connected");
-  const previous = backend;
   backend = sock;
   sock.setNoDelay(true);
-  if (previous && previous !== sock) {
-    log("warn", "replacing previous Editor backend connection");
-    flushPending("backend connection replaced");
-    try {
-      previous.destroy();
-    } catch {
-    }
-  }
   let buf = Buffer.alloc(0);
   sock.on("data", (chunk) => {
     buf = Buffer.concat([buf, chunk]);
@@ -125,17 +106,16 @@ var backendServer = import_net.default.createServer((sock) => {
       }
       const payload = buf.toString("utf8", 8, 8 + len);
       buf = buf.subarray(8 + len);
-      const entry = pending.get(cid);
-      if (entry) {
+      const resolve = pending.get(cid);
+      if (resolve) {
         pending.delete(cid);
-        entry.resolve(payload);
+        resolve(payload);
       }
     }
   });
   const drop = () => {
     if (backend === sock) {
       backend = null;
-      flushPending("Editor backend disconnected");
       log("warn", "Editor backend disconnected");
     }
   };
@@ -153,7 +133,7 @@ function sendToBackend(payload) {
       return;
     }
     const cid = nextCid++;
-    pending.set(cid, { resolve, reject });
+    pending.set(cid, resolve);
     const payloadBuf = Buffer.from(payload, "utf8");
     const header = Buffer.alloc(8);
     header.writeInt32BE(cid, 0);
